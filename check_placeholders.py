@@ -12,6 +12,9 @@ import pathlib
 import re
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = pathlib.Path(__file__).resolve().parent
 TARGETS = ["CLAUDE.md", "AGENTS.md", "PRODUCT.md", "CONTRIBUTING.md", "SECURITY.md", "organized"]
 PLACEHOLDER = re.compile(r"<[A-Z][A-Z0-9_ /.]*>")

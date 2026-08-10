@@ -16,6 +16,7 @@ graphify-out/*
 
 # État interne des hooks organized (régénéré, pas de valeur à versionner)
 organized/CLAUDE_CONTEXT/.task_state.json
+organized/CLAUDE_CONTEXT/.hook_debug_dump.json
 
 # Build outputs courants
 dist/
