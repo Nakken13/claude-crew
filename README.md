@@ -1,72 +1,120 @@
-# Scaffold de démarrage projet
+# organized
 
-Gabarit personnel (référencé depuis `~/.claude/CLAUDE.md`) à copier sur tout
-nouveau projet où on veut le même dispositif que sur `voyageo` : routage de
-skills, cycle de vie de tâches par dossiers (organized), hooks de sync.
+**File-based task lifecycle + multi-agent collision prevention for Claude Code.**
 
-## Bootstrap
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#whats-in-the-box)
+[![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
+[![GitHub stars](https://img.shields.io/github/stars/Nakken13/organized?style=social)](https://github.com/Nakken13/organized)
 
-Voie rapide : copier ce dossier à la racine du nouveau projet (au moins
-`.claude/skills/organized-init/`), ouvrir Claude Code dedans, lancer `/organized-init`
-— ce skill fait les étapes 1 à 3 ci-dessous (copie des fichiers restants,
-détection stack, questions ciblées, résolution des placeholders,
-`check_placeholders.py`) sans qu'il faille les dérouler à la main.
+Claude Code forgets everything between sessions. Run two instances on the
+same repo and they'll happily edit the same files at the same time, with no
+warning. `organized` fixes both — with markdown files and two stdlib-only
+Python hooks, no server, no DB, no dashboard.
 
-Détail des étapes (ce que `/organized-init` exécute) :
+Install in one command, working in five minutes, nothing to host.
 
-1. Copier dans la racine du nouveau projet : `CLAUDE.md`, `AGENTS.md`,
-   `PRODUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.gitignore`,
-   `check_placeholders.py`, le dossier `organized/` entier, le dossier
-   `.claude/agents/` (personas), `.claude/skills/organized-*` (ces skills
-   eux-mêmes, pour disposer de `/organized-new-task`/`/organized-close-task`/
-   `/organized-status` sur le nouveau projet aussi), et fusionner
-   `.claude/settings.json`/`.gitignore` avec ceux du projet s'ils existent
-   déjà.
-2. Remplacer tous les `<NOM_PROJET>` et `<...>` par les infos réelles du
-   projet (stack, repo map, commandes vérifiées) — ne jamais laisser de
-   placeholder non résolu dans un fichier livré.
-3. Lancer `python check_placeholders.py` à la racine du nouveau projet : un
-   bootstrap n'est "fini" que quand cette commande n'affiche rien (exit 0).
-   Supprimer `check_placeholders.py` une fois le bootstrap validé (outil de
-   scaffold, pas destiné à rester dans le repo final — sauf si tu veux le
-   garder en pre-commit).
-4. Si le projet a plusieurs subtrees (frontend/backend/mobile/...), dupliquer
-   le pattern `AGENTS.md` + `CLAUDE.md` fin (`@AGENTS.md`) dans chaque subtree
-   plutôt que de tout mettre à la racine — cf. § "Guides AGENTS.md segmentés"
-   dans le `CLAUDE.md` de ce scaffold.
-5. Lancer `graphify init` dès que le repo dépasse quelques fichiers (cf. skill
-   `graphify`, déclenché par `/graphify`).
-6. Adapter la section "Routage des skills" du `CLAUDE.md` à la stack réelle
-   du projet (retirer les lignes qui ne s'appliquent pas — ex. `dataviz` si
-   pas de dashboard/chart, `motion-design-rn`/`accessibility-motion`/
-   `haptics`/`sound-design-ui` si pas de stack React Native/mobile,
-   `security-review` reste presque toujours pertinent dès qu'il y a de
-   l'auth).
+**[Quick start](#quick-start)** · **[How it works](#how-it-works)** ·
+**[Batching](#the-actual-differentiator-batching)** ·
+**[What's in the box](#whats-in-the-box)** · **[Is this for you?](#not-for-you-if)**
 
-Une fois le projet en route, 3 autres commandes exécutent le cycle de vie
-organized au lieu de le dérouler à la main : `/organized-new-task` (créer),
-`/organized-close-task` (clôturer), `/organized-status` (rapport lecture seule —
-batchs actifs, chevauchements, avancement). Détail dans le `CLAUDE.md` §
-"Commandes dédiées organized".
+## The problem
 
-## Ce qui est toujours inclus (pas de version allégée)
+- **Session amnesia.** Every new Claude Code session starts blind: what's
+  done, what's half-done, why a decision was made — gone unless you paste it
+  back in yourself.
+- **Multi-agent collisions.** Parallelizing Claude Code (one instance per
+  workstream) is the obvious way to go faster. It's also the fastest way to
+  get two agents editing the same file at the same time, silently.
 
-Le système `organized/` (PROBLEMS/TODO/CURRENT_TASKS/TESTS/CLAUDE_CONTEXT + hooks
-`organized_hook.py`/`spec_to_task_hook.py`) est copié tel quel sur **tous** les
-projets, quelle que soit leur taille — décision explicite : pas de mode light.
+## How it works
 
-## Fichiers de ce scaffold
+A task is a file. Its state *is* which folder it's in — no status field to
+forget to update, `git mv` is the state transition:
 
-| Fichier | Rôle |
+```
+organized/PROBLEMS/<slug>.md        raw bug/friction report
+organized/TODO/<slug>.md            not started
+organized/CURRENT_TASKS/<slug>.md   in progress (moved here when work starts)
+organized/CLAUDE_CONTEXT/HISTORIQUE.md   done — what, when, key files/commits (long-term memory)
+organized/TESTS/IA/ + /DEV/         validation checklist, split by who can run it (agent vs human)
+```
+
+A file is never in two folders at once. `git log --follow` on a task file is
+its entire history.
+
+## The actual differentiator: batching
+
+Plenty of scaffolds give you a prompt template and a folder layout. What
+`organized` adds is tracking *which files each task touches* (its "zone"),
+grouping tasks that share a zone into the same batch, and flagging it —
+before a task moves to `CURRENT_TASKS` — if its zone overlaps an **active**
+batch it doesn't belong to. A routing rule tells Claude Code to check this
+before starting any task, backed by a hook that re-checks and warns
+(non-blocking, stderr) on every turn. You catch the collision before you
+point a second Claude Code instance at the same code, not after you've
+resolved the merge conflict.
+
+```
+Batch A — Zone: frontend/checkout/**        [1 task in CURRENT_TASKS]
+Batch B — Zone: backend/payments/**         [1 task in CURRENT_TASKS]
+Batch C — Zone: frontend/checkout/**  <-- overlaps Batch A, flagged before start
+```
+
+This is the part that matters once you're running more than one agent — the
+folder lifecycle alone is a nice-to-have, the collision check is what keeps
+parallel Claude Code instances from stepping on each other.
+
+## What's in the box
+
+| Piece | What it does |
 |---|---|
-| `CLAUDE.md` | Comportement Claude Code : routage skills, efficience de contexte, pointeur organized |
-| `AGENTS.md` | Stack, repo map, commandes vérifiées — squelette à remplir |
-| `PRODUCT.md` | Vision produit / utilisateur cible / scope — à remplir ou supprimer si non pertinent |
-| `CONTRIBUTING.md` | Conventions de commit/branche/PR — à remplir ou supprimer si solo sans convention particulière |
-| `SECURITY.md` | Limites secrets/auth/PII — à remplir dès qu'il y a de l'auth ou des données sensibles |
-| `organized/` | Cycle de vie des tâches par dossiers (dont `ICEBOX/` pour les idées parkées) + hooks de sync |
-| `.claude/settings.json` | Hooks pré-cablés (Stop → organized_hook.py, PostToolUse Write → spec_to_task_hook.py, PreToolUse → rappel graphify), fallback `python3`/`python` |
-| `.gitignore` | Exclusions courantes (node_modules, .venv, .env, graphify-out/*, état interne organized) |
-| `check_placeholders.py` | Garde-fou : liste les `<...>` non résolus après bootstrap |
-| `.claude/agents/` | Personas subagents (`ceo`/`manager`/`comms`) — décision business, découpage organized, copy marketing ; à adapter (voix de marque, `<NOM_PROJET>`) |
-| `.claude/skills/organized-*` | Commandes `/organized-init`, `/organized-new-task`, `/organized-close-task`, `/organized-status` — exécutent le cycle de vie/batching documenté dans `CLAUDE.md`, génériques (pas de placeholder à remplir) |
+| `organized/` | The task lifecycle folders (`PROBLEMS`/`TODO`/`CURRENT_TASKS`/`TESTS`/`CLAUDE_CONTEXT`/`ICEBOX`) |
+| `organized_hook.py` | Runs on `Stop` — regenerates `INDEX.md` files, warns (non-blocking, stderr) on zone overlaps and orphaned tasks |
+| `spec_to_task_hook.py` | Runs on file writes — keeps specs and tasks in sync |
+| `/organized-init` | Bootstraps the whole scaffold onto a project, resolves every `<placeholder>`, fails loud if one is left unresolved |
+| `/organized-new-task`, `/organized-close-task`, `/organized-status` | Run the lifecycle + batching instead of doing it by hand every time |
+| `.claude/agents/ceo.md` `manager.md` `comms.md` `architect.md` | Subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, and structural tech choices don't get answered by the same voice that writes your diff |
+| `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading 2000-line files whole) wired into Claude Code from day one |
+
+Everything is plain markdown + JSON state — readable, greppable, diffable in
+a normal PR review. No hosted board, no account, nothing to sync.
+
+## Quick start
+
+```bash
+git clone https://github.com/Nakken13/organized.git
+cp -r organized/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,organized,.claude} your-project/
+```
+
+Open `your-project` in Claude Code and run:
+
+```
+/organized-init
+```
+
+That's it — this detects your stack, resolves every `<placeholder>` with the
+real repo info, and fails loud (`check_placeholders.py`) until nothing is
+left unfilled. Full step-by-step in [`CLAUDE.md`](./CLAUDE.md).
+
+Once it's running, three commands drive day-to-day work:
+
+- `/organized-new-task` — create a task, auto-categorized into a batch
+- `/organized-close-task` — close a finished task: checks, history, tests moved out
+- `/organized-status` — read-only report: active batches, overlaps, orphaned tasks
+
+## Not for you if
+
+- You're solo, one Claude Code session, small script — this is overhead you
+  don't need yet.
+- You want a hosted task board with a UI — this is deliberately local-first,
+  files-only, no service to run.
+
+## Contributing
+
+Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
+`organized` saves you a merge conflict, a star helps other people find it.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE).
