@@ -1,0 +1,33 @@
+# Dépendances / envs
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Graphify (régénérable via `graphify update .` / `graphify init`)
+graphify-out/*
+!graphify-out/.gitkeep
+
+# État interne des hooks organized (régénéré, pas de valeur à versionner)
+organized/CLAUDE_CONTEXT/.task_state.json
+
+# Build outputs courants
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+
+# Claude Code — état local/perso, jamais partagé entre postes
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
