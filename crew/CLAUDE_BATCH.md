@@ -12,3 +12,4 @@ Un batch = un Claude. Voir § Batching dans `CLAUDE.md` racine pour les règles
 Zone : <fichiers/modules>
 
 - `<slug>.md`
+

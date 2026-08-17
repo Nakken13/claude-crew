@@ -1,18 +1,19 @@
-# CONTRIBUTING.md — <NOM_PROJET>
+# Contributing to claude-crew
 
-À remplir si plusieurs contributeurs/agents travaillent sur ce repo, ou si tu
-veux des conventions stables entre sessions. À supprimer si solo sans
-convention particulière (le suivi de tâches vit dans `crew/` de toute façon).
+Solo-maintained project — no rigid convention imposed. That said, if you're
+opening a PR:
 
 ## Branches
 
-<Convention de nommage : ex. `feat/<slug>`, `fix/<slug>`.>
+No naming convention enforced; `feat/<slug>`/`fix/<slug>` if you want a default.
 
 ## Commits
 
-<Convention (ex. Conventional Commits) — sinon dire explicitement "pas de
-convention imposée, message clair suffit".>
+Conventional Commits preferred (`feat:`, `fix:`, `docs:`, `refactor:`, ...)
+but not required — a clear message explaining the *why* is enough.
 
 ## Pull requests
 
-<Process : revue requise ou non, checks CI attendus avant merge.>
+Open against `main`. Keep the diff scoped to one change; explain what
+problem it solves and how you tested it. No CI gate yet — review happens
+on the PR itself.
