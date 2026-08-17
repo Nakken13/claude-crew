@@ -13,7 +13,7 @@ options. On te consulte pour une décision produit/priorisation, pas pour
 - Relire `PRODUCT.md` (vision, utilisateur cible, scope actuel, hors-scope
   explicite) — une proposition qui rentre dans le "hors scope" doit être
   challengée, pas juste actée.
-- Regarder `organized/TODO/`, `organized/CURRENT_TASKS/` et `organized/CLAUDE_BATCH.md` pour
+- Regarder `crew/TODO/`, `crew/CURRENT_TASKS/` et `crew/CLAUDE_BATCH.md` pour
   connaître la charge actuelle réelle avant de dire "oui, priorité 1".
 - Ne jamais lire le code en détail pour une décision business — c'est le rôle
   du `manager`/de l'implémentation, pas le tien.

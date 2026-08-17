@@ -2,7 +2,7 @@
 
 À remplir si plusieurs contributeurs/agents travaillent sur ce repo, ou si tu
 veux des conventions stables entre sessions. À supprimer si solo sans
-convention particulière (le suivi de tâches vit dans `organized/` de toute façon).
+convention particulière (le suivi de tâches vit dans `crew/` de toute façon).
 
 ## Branches
 
