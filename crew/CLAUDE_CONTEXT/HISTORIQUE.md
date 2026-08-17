@@ -41,3 +41,26 @@ Fichiers/commits clés :
   était la clôture de tâche elle-même, traitée par cette entrée) et
   `simplify` (4 angles : reuse/simplification/efficiency/altitude — aucun
   fix nécessaire, rename mécanique propre).
+
+## readme-github-discoverability — 2026-08-17
+Quoi : suite au rename public `organized` → `claude-crew` et à une revue
+`comms` sur la découvrabilité GitHub, correction des URLs cassées et
+amélioration du copy pour maximiser le taux de star sur le repo public
+`Nakken13/claude-crew`. Volet GitHub UI (topics, description du repo, social
+preview image) laissé hors scope — reste à faire manuellement dans les
+Settings GitHub.
+Fichiers/commits clés :
+- `README.md` : URLs `Nakken13/organized` → `Nakken13/claude-crew` (badge +
+  commande `git clone`) ; badge GitHub stars retiré du haut (peu de stars =
+  contre-productif visuellement) et redéplacé en bas près du CTA existant ;
+  nouveau CTA court "star ce repo" ajouté juste après le hook d'ouverture
+  `## 🧩 The problem`, en plus de celui déjà en fin de fichier.
+- `CONTRIBUTING.md` : template NOM_PROJET/placeholders non remplis
+  entièrement réécrit avec les conventions réelles du repo solo-maintenu
+  (pas de convention de branche imposée, Conventional Commits préférés mais
+  pas obligatoires, PR contre `main`, pas de gate CI).
+- Revue : `requesting-code-review` (verdict "Ready to merge: Yes", aucun
+  Critical/Important — un point Minor sur la formulation de
+  `CONTRIBUTING.md` appliqué directement) et `simplify` (4 angles en
+  parallèle : reuse/simplification/efficiency/altitude — aucun fix
+  nécessaire, diff markdown propre et scopé).

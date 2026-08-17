@@ -7,7 +7,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
 [![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#-whats-in-the-box)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
-[![GitHub stars](https://img.shields.io/github/stars/Nakken13/organized?style=social)](https://github.com/Nakken13/organized)
 
 **[Quick start](#-quick-start)** · **[How it works](#-how-it-works)** ·
 **[Batching](#-the-actual-differentiator-batching)** ·
@@ -33,6 +32,9 @@
 |---|---|
 | 🧠 **Session amnesia** | Every new Claude Code session starts blind: what's done, what's half-done, why a decision was made — gone unless you paste it back in yourself. |
 | 💥 **Multi-agent collisions** | Parallelizing Claude Code (one instance per workstream) is the obvious way to go faster. It's also the fastest way to get two agents editing the same file at the same time, silently. |
+
+> [!TIP]
+> Recognize either of these? A ⭐ on [`claude-crew`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
 
 <br>
 
@@ -105,8 +107,8 @@ a normal PR review. No hosted board, no account, nothing to sync.
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/Nakken13/organized.git
-cp -r organized/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+git clone https://github.com/Nakken13/claude-crew.git
+cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
 ```
 
 Open `your-project` in Claude Code and run:
@@ -141,6 +143,8 @@ Once it's running, three commands drive day-to-day work:
 
 Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
 `claude-crew` saves you a merge conflict, a ⭐ helps other people find it.
+
+[![GitHub stars](https://img.shields.io/github/stars/Nakken13/claude-crew?style=social)](https://github.com/Nakken13/claude-crew)
 
 ## 📄 License
 
