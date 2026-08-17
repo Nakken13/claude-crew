@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🗂️ organized
+# 🗂️ claude-crew
 
 **File-based task lifecycle + multi-agent collision prevention for Claude Code.**
 
@@ -20,7 +20,7 @@
 > [!TIP]
 > Claude Code forgets everything between sessions. Run two instances on the
 > same repo and they'll happily edit the same files at the same time, with no
-> warning. `organized` fixes both — with markdown files and two stdlib-only
+> warning. `claude-crew` fixes both — with markdown files and two stdlib-only
 > Python hooks. No server, no DB, no dashboard.
 >
 > **Install in one command, working in five minutes, nothing to host.**
@@ -62,7 +62,7 @@ its entire history.
 ## 🎯 The actual differentiator: batching
 
 Plenty of scaffolds give you a prompt template and a folder layout. What
-`organized` adds is tracking *which files each task touches* (its "zone"),
+`claude-crew` adds is tracking *which files each task touches* (its "zone"),
 grouping tasks that share a zone into the same batch, and flagging it —
 before a task moves to `CURRENT_TASKS` — if its zone overlaps an **active**
 batch it doesn't belong to. A routing rule tells Claude Code to check this
@@ -89,11 +89,11 @@ parallel Claude Code instances from stepping on each other.
 
 | Piece | What it does |
 |---|---|
-| 🗂️ `organized/` | The task lifecycle folders (`PROBLEMS`/`TODO`/`CURRENT_TASKS`/`TESTS`/`CLAUDE_CONTEXT`/`ICEBOX`) |
-| 🪝 `organized_hook.py` | Runs on `Stop` — regenerates `INDEX.md` files, warns (non-blocking, stderr) on zone overlaps and orphaned tasks |
+| 🗂️ `crew/` | The task lifecycle folders (`PROBLEMS`/`TODO`/`CURRENT_TASKS`/`TESTS`/`CLAUDE_CONTEXT`/`ICEBOX`) |
+| 🪝 `crew_hook.py` | Runs on `Stop` — regenerates `INDEX.md` files, warns (non-blocking, stderr) on zone overlaps and orphaned tasks |
 | 🪝 `spec_to_task_hook.py` | Runs on file writes — keeps specs and tasks in sync |
-| ⚡ `/organized-init` | Bootstraps the whole scaffold onto a project, resolves every `<placeholder>`, fails loud if one is left unresolved |
-| ⚡ `/organized-new-task` `/organized-close-task` `/organized-status` | Run the lifecycle + batching instead of doing it by hand every time |
+| ⚡ `/crew-init` | Bootstraps the whole scaffold onto a project, resolves every `<placeholder>`, fails loud if one is left unresolved |
+| ⚡ `/crew-new-task` `/crew-close-task` `/crew-status` | Run the lifecycle + batching instead of doing it by hand every time |
 | 🎭 `.claude/agents/ceo.md` `manager.md` `comms.md` `architect.md` | Subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, and structural tech choices don't get answered by the same voice that writes your diff |
 | 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading 2000-line files whole) wired into Claude Code from day one |
 
@@ -106,13 +106,13 @@ a normal PR review. No hosted board, no account, nothing to sync.
 
 ```bash
 git clone https://github.com/Nakken13/organized.git
-cp -r organized/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,organized,.claude} your-project/
+cp -r organized/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
 ```
 
 Open `your-project` in Claude Code and run:
 
 ```
-/organized-init
+/crew-init
 ```
 
 That's it — this detects your stack, resolves every `<placeholder>` with the
@@ -121,9 +121,9 @@ left unfilled. Full step-by-step in [`CLAUDE.md`](./CLAUDE.md).
 
 Once it's running, three commands drive day-to-day work:
 
-- ✨ `/organized-new-task` — create a task, auto-categorized into a batch
-- ✅ `/organized-close-task` — close a finished task: checks, history, tests moved out
-- 📊 `/organized-status` — read-only report: active batches, overlaps, orphaned tasks
+- ✨ `/crew-new-task` — create a task, auto-categorized into a batch
+- ✅ `/crew-close-task` — close a finished task: checks, history, tests moved out
+- 📊 `/crew-status` — read-only report: active batches, overlaps, orphaned tasks
 
 <br>
 
@@ -140,7 +140,7 @@ Once it's running, three commands drive day-to-day work:
 ## 🤝 Contributing
 
 Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
-`organized` saves you a merge conflict, a ⭐ helps other people find it.
+`claude-crew` saves you a merge conflict, a ⭐ helps other people find it.
 
 ## 📄 License
 

@@ -43,4 +43,4 @@ le client/logs, référence vers SECURITY.md si présent.>
 - Vision produit / scope : `PRODUCT.md` (si présent).
 - Conventions de contribution : `CONTRIBUTING.md` (si présent).
 - Limites sécurité : `SECURITY.md` (si présent).
-- Guide global de contexte : `organized/CLAUDE_CONTEXT/AGENTS.md`.
+- Guide global de contexte : `crew/CLAUDE_CONTEXT/AGENTS.md`.

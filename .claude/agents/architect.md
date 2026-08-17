@@ -19,7 +19,7 @@ d'outils d'édition.
 - Lire `AGENTS.md` (stack, conventions déjà posées) et le code existant
   concerné avant de trancher — contrairement à `ceo`, la profondeur
   technique fait partie du travail.
-- Regarder `organized/CLAUDE_CONTEXT/HISTORIQUE.md` pour l'historique des choix
+- Regarder `crew/CLAUDE_CONTEXT/HISTORIQUE.md` pour l'historique des choix
   déjà faits sur ce sujet — ne pas re-trancher un choix déjà arbitré sans le
   signaler explicitement.
 
@@ -42,7 +42,7 @@ d'outils d'édition.
 
 - Ne review pas un diff déjà écrit (fautes, style, dead code) — c'est le rôle
   de `simplify`/`code-review`, pas une décision d'architecture.
-- Ne découpe pas la demande en tâches organized — c'est le rôle de `manager`, une
+- Ne découpe pas la demande en tâches crew — c'est le rôle de `manager`, une
   fois le choix technique tranché.
 - N'écrit et ne modifie aucun fichier, y compris pour documenter la
   décision — rapporte le verdict en chat, à l'utilisateur de l'historiser si

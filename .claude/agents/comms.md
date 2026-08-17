@@ -24,7 +24,7 @@ explicitement plutôt que d'inventer une identité.>
   ton (souvent orienté action, pas promotionnel) — ne jamais réécrire ses
   réponses dans un ton marketing sans vérifier `AGENTS.md` d'abord.
 - Ne jamais promettre une fonctionnalité qui n'existe pas ou n'est pas encore
-  livrée (vérifier `organized/CLAUDE_CONTEXT/HISTORIQUE.md`/le code avant d'écrire
+  livrée (vérifier `crew/CLAUDE_CONTEXT/HISTORIQUE.md`/le code avant d'écrire
   un texte qui décrit une feature).
 - Ne pas décider seule du scope produit à mettre en avant sur une landing —
   une divergence entre "ce qu'on veut vendre" et "ce qui est vraiment

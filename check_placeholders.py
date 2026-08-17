@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Garde-fou bootstrap : liste les placeholders `<...>` non résolus dans les
 fichiers du scaffold (CLAUDE.md, AGENTS.md, PRODUCT.md, CONTRIBUTING.md,
-SECURITY.md, organized/**). À lancer juste après avoir rempli le scaffold, avant
+SECURITY.md, crew/**). À lancer juste après avoir rempli le scaffold, avant
 de committer — un bootstrap n'est "fini" que quand cette commande n'affiche
 rien.
 
@@ -16,7 +16,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = pathlib.Path(__file__).resolve().parent
-TARGETS = ["CLAUDE.md", "AGENTS.md", "PRODUCT.md", "CONTRIBUTING.md", "SECURITY.md", "organized"]
+TARGETS = ["CLAUDE.md", "AGENTS.md", "PRODUCT.md", "CONTRIBUTING.md", "SECURITY.md", "crew"]
 PLACEHOLDER = re.compile(r"<[A-Z][A-Z0-9_ /.]*>")
 # Faux positifs légitimes : exemples de syntaxe montrés dans les squelettes
 ALLOWLIST = {"<A>", "<B>", "<...>"}
