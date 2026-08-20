@@ -1,0 +1,11 @@
+{
+  "name": "claude-crew",
+  "version": "0.1.0",
+  "description": "File-based task lifecycle + multi-agent collision prevention for Claude Code.",
+  "author": {
+    "name": "Nakken13",
+    "url": "https://github.com/Nakken13"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Nakken13/claude-crew"
+}
