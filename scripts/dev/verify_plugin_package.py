@@ -97,10 +97,15 @@ ENGINE_FILE_PAIRS = [
 
 def check_engine_files_copied(repo_root: Path) -> list[str]:
     problems = []
-    for _source_rel, target_rel in ENGINE_FILE_PAIRS:
+    for source_rel, target_rel in ENGINE_FILE_PAIRS:
+        source = repo_root / source_rel
         target = repo_root / target_rel
         if not target.exists():
             problems.append(f"missing {target}")
+        elif not source.exists():
+            problems.append(f"source missing {source}")
+        elif not filecmp.cmp(source, target, shallow=False):
+            problems.append(f"content mismatch: {target} differs from {source}")
     return problems
 
 
