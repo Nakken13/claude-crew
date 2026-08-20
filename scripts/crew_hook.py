@@ -5,10 +5,7 @@
   2. journalise les transitions (démarrée / terminée / ajoutée) dans
      crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md,
   3. bloque la fin de tour si une tâche est à la fois dans TODO/ et CURRENT_TASKS/,
-  4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée,
-  5. maintient des verrous live par batch (anti-collision multi-Claude) et bloque
-     le démarrage d'une tâche dont une voisine de batch est verrouillée par une
-     autre session (cf. crew/CLAUDE_CONTEXT/BATCH_LOCKS.md, régénéré à chaque tour).
+  4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée.
 Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux.
 """
 import json, re, sys, datetime, pathlib, shutil
@@ -28,9 +25,6 @@ CTX = CREW / "CLAUDE_CONTEXT"
 SNAP = CTX / ".task_state.json"
 CHANGELOG = CTX / "CHANGELOG_TACHES.md"
 BATCH_FILE = CREW / "CLAUDE_BATCH.md"
-LOCKS_FILE = CTX / ".batch_locks.json"
-BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
-LOCK_TTL = datetime.timedelta(hours=6)
 
 INTRO = {
     "PROBLEMS": "Problèmes. Résolu → déplacer le contexte vers `HISTORIQUE.md`.\n\n",
@@ -98,15 +92,11 @@ def process_completed_tests():
 def check_batches():
     """Avertit (non bloquant) si une tâche TODO/CURRENT n'est pas catégorisée dans
     CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
-    entre backticks (`slug.md`) → les placeholders `<...>.md` sont ignorés. Les
-    refs barrées (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par
-    convention du projet : leur fichier a normalement été supprimé, donc elles
-    sont exclues du scan pour ne pas générer un faux positif à chaque clôture."""
+    entre backticks (`slug.md`) → les placeholders `<...>.md` sont ignorés."""
     warnings = []
     if not BATCH_FILE.exists():
         return warnings
-    text = re.sub(r"~~.*?~~", "", BATCH_FILE.read_text(encoding="utf-8"), flags=re.DOTALL)
-    referenced = set(re.findall(r"`([\w\-.]+\.md)`", text))
+    referenced = set(re.findall(r"`([\w\-.]+\.md)`", BATCH_FILE.read_text(encoding="utf-8")))
     actual = set()
     for d in (DIRS["TODO"], DIRS["CURRENT_TASKS"]):
         if d.exists():
@@ -121,99 +111,22 @@ def check_batches():
     return warnings
 
 
-def rotate_graphify_snapshots(keep=3):
-    """Purge les snapshots datés graphify-out/AAAA-MM-JJ (régénérables via
-    `graphify update .`), en gardant les `keep` plus récents. Tri lexical
-    = tri chronologique sur ce format de nom."""
-    out = ROOT / "graphify-out"
-    if not out.exists():
-        return
-    dated = sorted(d for d in out.glob("20??-??-??") if d.is_dir())
-    for d in dated[:-keep]:
-        shutil.rmtree(d, ignore_errors=True)
-
-
-def load_locks():
-    if LOCKS_FILE.exists():
-        try:
-            return json.loads(LOCKS_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
-
-
-def save_locks(locks):
-    LOCKS_FILE.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def purge_stale_locks(locks, now_dt):
-    """Retire les verrous plus vieux que LOCK_TTL (session probablement crashee).
-    Retourne la liste triee des slugs purges."""
-    stale = []
-    for slug, info in list(locks.items()):
-        since_raw = info.get("since") if isinstance(info, dict) else None
-        try:
-            since = datetime.datetime.fromisoformat(since_raw)
-            expired = now_dt - since > LOCK_TTL
-        except Exception:
-            expired = True  # entree corrompue -> on la degage aussi
-        if expired:
-            stale.append(slug)
-            del locks[slug]
-    return sorted(stale)
-
-
 def slugs_by_batch_section(text):
     """Parse CLAUDE_BATCH.md : decoupe sur les en-tetes '## Batch'/'### Batch',
-    extrait pour chaque section les slugs `xxx.md` references entre backticks
-    (format nu ou chemin complet `crew/<sous-dossier>/xxx.md`), et les chemins
-    declares sur sa ligne `Zone : ...` (pour la detection de chevauchement
-    inter-batchs, cf. check_zone_overlaps)."""
+    extrait pour chaque section les slugs `xxx.md` references entre backticks,
+    et les chemins declares sur sa ligne `Zone : ...` (pour la detection de
+    chevauchement inter-batchs, cf. check_zone_overlaps)."""
     sections = []
     headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
     for i, m in enumerate(headers):
         start = m.end()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
         body = text[start:end]
-        raw_refs = re.findall(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`", body)
-        slugs = set(raw_refs)
+        slugs = set(re.findall(r"`([\w\-.]+\.md)`", body))
         zone_match = re.search(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", body, re.MULTILINE)
         zone_paths = set(re.findall(r"`([^`]+)`", zone_match.group(1))) if zone_match else set()
         sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths})
     return sections
-
-
-def find_section_for(slug, sections):
-    for section in sections:
-        if slug in section["slugs"]:
-            return section
-    return None
-
-
-def check_batch_collisions(started, sections, locks, session_id):
-    """Pour chaque tache qui demarre, verifie que ses voisines de meme section
-    de batch ne sont pas deja verrouillees par une AUTRE session. Retourne une
-    raison de blocage combinee (ou None)."""
-    reasons = []
-    for f in sorted(started):
-        section = find_section_for(f, sections)
-        if not section:
-            continue
-        for neighbor in sorted(section["slugs"] - {f}):
-            info = locks.get(neighbor)
-            if not info:
-                continue
-            other_session = info.get("session_id")
-            if other_session and other_session != session_id:
-                since = info.get("since", "?")
-                reasons.append(
-                    f"batch « {section['header']} » : `{f}` demarre alors que `{neighbor}` "
-                    f"est deja verrouille par une autre session (depuis {since})"
-                )
-    if not reasons:
-        return None
-    return ("Verrou live batch — collision detectee : " + " ; ".join(reasons) +
-            ". Attendre la fin de l'autre session ou choisir une tache d'un autre batch.")
 
 
 def active_task_slugs():
@@ -226,34 +139,18 @@ def active_task_slugs():
     return active
 
 
-def _expand_brace_glob(path):
-    """Expanse tous les segments `{a,b,c}` d'un chemin en chemins concrets
-    (produit cartesien des membres). Sans brace-glob, retourne [path] inchange."""
-    m = re.search(r"\{([^{}]+)\}", path)
-    if not m:
-        return [path]
-    expanded = [path[:m.start()] + member + path[m.end():] for member in m.group(1).split(",")]
-    return [p for e in expanded for p in _expand_brace_glob(e)]
-
-
 def _path_overlaps(a, b):
-    """Deux chemins se chevauchent si l'un est prefixe (par segment) de l'autre,
-    apres expansion des brace-globs (`{a,b,c}/`) de chaque cote en chemins concrets."""
-    for pa in _expand_brace_glob(a):
-        sa = pa.rstrip("/").split("/")
-        for pb in _expand_brace_glob(b):
-            sb = pb.rstrip("/").split("/")
-            n = min(len(sa), len(sb))
-            if sa[:n] == sb[:n]:
-                return True
-    return False
+    """Deux chemins se chevauchent si l'un est prefixe (par segment) de l'autre."""
+    sa = a.rstrip("/").split("/")
+    sb = b.rstrip("/").split("/")
+    n = min(len(sa), len(sb))
+    return sa[:n] == sb[:n]
 
 
 def check_zone_overlaps(sections, active):
     """Avertit (non bloquant) si deux batchs ACTIFS (>=1 tache en TODO/CURRENT_TASKS)
-    declarent des `Zone :` qui se chevauchent. Sert de garde-fou automatise pour
-    l'invariant CLAUDE.md « zones de deux batchs actifs disjointes », en plus de la
-    verification manuelle que le manager doit faire avant de demarrer une tache."""
+    declarent des `Zone :` qui se chevauchent. Garde-fou automatise complementaire a
+    la verification manuelle que le manager doit faire avant de demarrer une tache."""
     warnings = []
     active_sections = [s for s in sections if s["slugs"] & active and s["zone_paths"]]
     for i, sec_a in enumerate(active_sections):
@@ -269,33 +166,48 @@ def check_zone_overlaps(sections, active):
     return warnings
 
 
-def regen_batch_locks_md(sections, locks, active):
-    """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
-    batch ayant au moins une tache actuellement en TODO/ ou CURRENT_TASKS/."""
-    lines = ["# Verrous batch (temps reel)\n\n",
-              "> Regenere automatiquement par `crew/crew_hook.py` a chaque tour. "
-              "Ne pas editer a la main.\n\n"]
-    any_section = False
-    for section in sections:
-        relevant = sorted(section["slugs"] & active)
-        if not relevant:
-            continue
-        any_section = True
-        lines.append(f"## {section['header']}\n\n")
-        for slug in relevant:
-            info = locks.get(slug)
-            if info:
-                try:
-                    since_fmt = datetime.datetime.fromisoformat(info.get("since", "")).strftime("%H:%M")
-                except Exception:
-                    since_fmt = info.get("since", "?")
-                lines.append(f"- 🔒 `{slug}` — verrouille (session `{info.get('session_id')}`, depuis {since_fmt})\n")
-            else:
-                lines.append(f"- 🔓 `{slug}` — libre\n")
-        lines.append("\n")
-    if not any_section:
-        lines.append("_Aucun batch actif avec tache en TODO/CURRENT_TASKS pour le moment._\n")
-    BATCH_LOCKS_MD.write_text("".join(lines), encoding="utf-8")
+def rotate_graphify_snapshots(keep=3):
+    """Purge les snapshots datés graphify-out/AAAA-MM-JJ (régénérables via
+    `graphify update .`), en gardant les `keep` plus récents. Tri lexical
+    = tri chronologique sur ce format de nom."""
+    out = ROOT / "graphify-out"
+    if not out.exists():
+        return
+    dated = sorted(d for d in out.glob("20??-??-??") if d.is_dir())
+    for d in dated[:-keep]:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+DEBUG_HOOK_DUMP = CTX / ".hook_debug_dump.json"
+
+
+def dump_hook_payload_for_spike(raw):
+    """Instrumentation temporaire (spike batch-live-locks, cf.
+    docs/superpowers/specs/2026-08-01-batch-live-locks-design.md dans le repo
+    voyageo d'origine) : journalise le JSON stdin brut de chaque appel de hook
+    pour vérifier la présence/stabilité de `session_id` sur toute la durée
+    d'une session, prérequis à un futur mécanisme de verrouillage de batch
+    anti-collision multi-Claude. PAS ENCORE IMPLÉMENTÉ au-delà de ce spike —
+    à retirer (ou à remplacer par la vraie logique de verrous) une fois le
+    spike conclu. Ne pas construire de feature dessus tant que l'hypothèse
+    `session_id` stable n'est pas confirmée."""
+    try:
+        payload = json.loads(raw) if raw else {}
+    except Exception:
+        payload = {"_raw_unparsed": raw}
+    history = []
+    if DEBUG_HOOK_DUMP.exists():
+        try:
+            history = json.loads(DEBUG_HOOK_DUMP.read_text(encoding="utf-8"))
+        except Exception:
+            history = []
+    history.append({
+        "seen_at": datetime.datetime.now().isoformat(),
+        "session_id": payload.get("session_id"),
+        "hook_event_name": payload.get("hook_event_name"),
+        "keys": sorted(payload.keys()) if isinstance(payload, dict) else None,
+    })
+    DEBUG_HOOK_DUMP.write_text(json.dumps(history[-20:], ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main():
@@ -305,13 +217,7 @@ def main():
         raw = sys.stdin.read()
     except Exception:
         raw = ""
-    try:
-        payload = json.loads(raw) if raw else {}
-    except Exception:
-        payload = {}
-    session_id = payload.get("session_id")
-    hook_event = payload.get("hook_event_name")
-    now_dt = datetime.datetime.now()
+    dump_hook_payload_for_spike(raw)
 
     state = {name: regen_index(name, d) for name, d in DIRS.items()}
 
@@ -328,7 +234,7 @@ def main():
     finished = prev_c - cur_c
     added = (cur_t - prev_t) - started
 
-    now = now_dt.date().isoformat()
+    now = datetime.date.today().isoformat()
     entries = []
     for f in sorted(started):
         entries.append(f"- {now} ▶️ **démarrée** : `{f}`")
@@ -347,30 +253,6 @@ def main():
         # Forcer la regénération de l'index IA puisqu'on a déplacé un fichier
         state["TESTS/IA"] = regen_index("TESTS/IA", DIRS["TESTS/IA"])
 
-    # Verrous live par batch (anti-collision multi-Claude)
-    locks = load_locks()
-    for slug in purge_stale_locks(locks, now_dt):
-        entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé** : `{slug}`")
-
-    for f in finished:
-        locks.pop(f, None)
-
-    sections = slugs_by_batch_section(BATCH_FILE.read_text(encoding="utf-8")) if BATCH_FILE.exists() else []
-    active = active_task_slugs()
-
-    collision_reason = None
-    if hook_event == "SessionEnd":
-        if session_id:
-            for slug in [s for s, info in locks.items() if info.get("session_id") == session_id]:
-                del locks[slug]
-    else:
-        for f in started:
-            locks[f] = {"session_id": session_id, "since": now_dt.isoformat()}
-        collision_reason = check_batch_collisions(started, sections, locks, session_id)
-
-    save_locks(locks)
-    regen_batch_locks_md(sections, locks, active)
-
     if entries and prev:  # ne pas journaliser le premier snapshot de référence
         head = ""
         if not CHANGELOG.exists():
@@ -385,23 +267,17 @@ def main():
     # JSON de décision émis sur stdout.
     for w in check_batches():
         sys.stderr.write(w + "\n")
-    for w in check_zone_overlaps(sections, active):
+    sections = slugs_by_batch_section(BATCH_FILE.read_text(encoding="utf-8")) if BATCH_FILE.exists() else []
+    for w in check_zone_overlaps(sections, active_task_slugs()):
         sys.stderr.write(w + "\n")
 
-    # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
-    reasons = []
-
+    # Invariant bloquant : pas de tâche dans TODO/ ET CURRENT_TASKS/
     dup = {f[:-3] for f in cur_t} & {f[:-3] for f in cur_c}
     if dup:
-        reasons.append("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
-                        "crew/TODO/ et crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup)) +
-                        ". Retire-les de crew/TODO/ (une tâche commencée ne reste pas dans le backlog).")
-
-    if collision_reason:
-        reasons.append(collision_reason)
-
-    if reasons:
-        print(json.dumps({"decision": "block", "reason": "\n\n".join(reasons)}))
+        reason = ("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
+                  "crew/TODO/ et crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup)) +
+                  ". Retire-les de crew/TODO/ (une tâche commencée ne reste pas dans le backlog).")
+        print(json.dumps({"decision": "block", "reason": reason}))
         return
 
 
