@@ -5,11 +5,12 @@
 Idempotent : ne fait rien si la tâche existe déjà (CURRENT_TASKS ou TODO).
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parent.parent)
 SPECS_DIR = ROOT / "docs" / "superpowers" / "specs"
 CURRENT = ROOT / "crew" / "CURRENT_TASKS"
 TODO = ROOT / "crew" / "TODO"
