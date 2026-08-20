@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Sync crew (index / journal / invariants / verrous batch)",
+            "statusMessage": "Sync crew (index / journal / invariants)",
             "timeout": 30
           }
         ]
@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Libère les verrous batch de la session",
+            "statusMessage": "Sync crew on session end",
             "timeout": 30
           }
         ]
