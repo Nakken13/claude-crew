@@ -8,9 +8,9 @@
   4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée.
 Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux.
 """
-import json, re, sys, datetime, pathlib, shutil
+import json, os, re, sys, datetime, pathlib, shutil
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
+ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
