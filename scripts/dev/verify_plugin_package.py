@@ -162,12 +162,24 @@ def check_crew_init_is_plugin_native(repo_root: Path) -> list[str]:
     return problems
 
 
+def check_readme_has_marketplace_install(repo_root: Path) -> list[str]:
+    problems = []
+    readme = repo_root / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    if "/plugin marketplace add Nakken13/claude-crew" not in text:
+        problems.append(f"{readme} missing the /plugin marketplace add command")
+    if "/plugin install claude-crew@claude-crew" not in text:
+        problems.append(f"{readme} missing the /plugin install command")
+    return problems
+
+
 CHECKS = [
     check_manifests,
     check_template_matches_source,
     check_engine_files_copied,
     check_hooks_json,
     check_crew_init_is_plugin_native,
+    check_readme_has_marketplace_install,
 ]
 
 
