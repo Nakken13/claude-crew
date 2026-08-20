@@ -82,7 +82,10 @@ def _collect_diffs(comparison, attr, prefix=""):
 
 ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-close-task/SKILL.md", "skills/crew-close-task/SKILL.md"),
-    (".claude/skills/crew-init/SKILL.md", "skills/crew-init/SKILL.md"),
+    # crew-init is intentionally excluded: it was copied byte-for-byte in Task
+    # 3, but Task 5 rewrote skills/crew-init/SKILL.md in place for
+    # plugin-native install, so it no longer matches .claude/skills/crew-init/
+    # by design. check_crew_init_is_plugin_native covers its correctness now.
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
@@ -140,7 +143,32 @@ def check_hooks_json(repo_root: Path) -> list[str]:
     return problems
 
 
-CHECKS = [check_manifests, check_template_matches_source, check_engine_files_copied, check_hooks_json]
+def check_crew_init_is_plugin_native(repo_root: Path) -> list[str]:
+    problems = []
+    skill_path = repo_root / "skills" / "crew-init" / "SKILL.md"
+    if not skill_path.exists():
+        problems.append(f"missing {skill_path}")
+        return problems
+
+    text = skill_path.read_text(encoding="utf-8")
+    if "${CLAUDE_PLUGIN_ROOT}/template" not in text:
+        problems.append(f"{skill_path} does not reference \\${{CLAUDE_PLUGIN_ROOT}}/template")
+    if "~/.claude/templates/project-scaffold" in text:
+        problems.append(f"{skill_path} still references the local-machine template path")
+    if ".claude/skills/crew-*" in text or ".claude/agents/" in text:
+        problems.append(f"{skill_path} still instructs copying skills/agents into the target project")
+    if "CLAUDE_PLUGIN_ROOT" not in text or "install" not in text.lower():
+        problems.append(f"{skill_path} has no guard for a missing/unset CLAUDE_PLUGIN_ROOT")
+    return problems
+
+
+CHECKS = [
+    check_manifests,
+    check_template_matches_source,
+    check_engine_files_copied,
+    check_hooks_json,
+    check_crew_init_is_plugin_native,
+]
 
 
 def main() -> int:
