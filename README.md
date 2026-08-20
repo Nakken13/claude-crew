@@ -129,6 +129,21 @@ Once it's running, three commands drive day-to-day work:
 
 <br>
 
+### 🔌 Install via marketplace (recommended)
+
+```
+/plugin marketplace add Nakken13/claude-crew
+/plugin install claude-crew@claude-crew
+/crew-init
+```
+
+No cloning, no manual file copying — skills, agents, and hooks run straight
+from the installed plugin. `/crew-init` still asks the same bootstrap
+questions (product vision, commit conventions, secrets model) and writes the
+same project files as the manual flow above.
+
+<br>
+
 ## 🙅 Not for you if
 
 > [!NOTE]
