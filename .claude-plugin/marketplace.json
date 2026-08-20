@@ -1,0 +1,14 @@
+{
+  "name": "claude-crew",
+  "owner": {
+    "name": "Nakken13",
+    "url": "https://github.com/Nakken13"
+  },
+  "plugins": [
+    {
+      "name": "claude-crew",
+      "source": ".",
+      "description": "File-based task lifecycle + multi-agent collision prevention for Claude Code."
+    }
+  ]
+}
