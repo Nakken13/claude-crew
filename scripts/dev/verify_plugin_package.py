@@ -4,12 +4,24 @@
 Run directly: python scripts/dev/verify_plugin_package.py
 Exits 0 if every check passes, 1 otherwise (with problems printed).
 """
-import filecmp
 import json
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _content_equal(path_a: Path, path_b: Path) -> bool:
+    """Byte-for-byte compare, tolerant of CRLF/LF checkout normalization.
+
+    A plain filecmp.cmp on Windows checkouts can report a false mismatch
+    when one file was freshly checked out (CRLF, per core.autocrlf) and the
+    other has sat untouched since an earlier checkout (LF) — same content,
+    different line endings. Normalize both before comparing.
+    """
+    a = path_a.read_bytes().replace(b"\r\n", b"\n")
+    b = path_b.read_bytes().replace(b"\r\n", b"\n")
+    return a == b
 
 
 def check_manifests(repo_root: Path) -> list[str]:
@@ -98,7 +110,7 @@ def check_template_matches_source(repo_root: Path) -> list[str]:
         if not source_file.exists():
             problems.append(f"source missing {source_file} (cannot verify {template_file})")
             continue
-        if not filecmp.cmp(source_file, template_file, shallow=False):
+        if not _content_equal(source_file, template_file):
             problems.append(f"content differs from source scaffold: {rel}")
     return problems
 
@@ -136,7 +148,7 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
             problems.append(f"missing {target}")
         elif not source.exists():
             problems.append(f"source missing {source}")
-        elif not filecmp.cmp(source, target, shallow=False):
+        elif not _content_equal(source, target):
             problems.append(f"content mismatch: {target} differs from {source}")
     return problems
 
