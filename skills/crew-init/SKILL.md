@@ -4,7 +4,7 @@ description: Bootstrap le scaffold crew (CLAUDE.md/AGENTS.md/PRODUCT.md/CONTRIBU
 ---
 
 Ce skill exécute le bootstrap déjà décrit en prose dans le `README.md` du
-scaffold (`~/.claude/templates/project-scaffold/`) — il ne remplace pas ce
+scaffold (`${CLAUDE_PLUGIN_ROOT}/template/`) — il ne remplace pas ce
 document, il évite de dérouler les étapes à la main et de laisser un
 placeholder non résolu par oubli.
 
@@ -20,14 +20,23 @@ placeholder non résolu par oubli.
 
 ## Étapes
 
+0. **Vérifier l'installation du plugin** : si `${CLAUDE_PLUGIN_ROOT}` n'est pas
+   défini ou ne résout vers aucun répertoire existant, ce skill tourne hors
+   contexte plugin — arrêter immédiatement et dire à l'utilisateur d'installer
+   d'abord le plugin (`/plugin marketplace add Nakken13/claude-crew` puis
+   `/plugin install claude-crew@claude-crew`) avant de relancer `/crew-init`.
+   Ne jamais tenter une copie partielle dans ce cas.
 1. **Copier** à la racine du projet (sans écraser un fichier déjà présent et
-   déjà rempli) : `CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`,
-   `SECURITY.md`, `check_placeholders.py`, le dossier `crew/` entier,
-   `.claude/agents/`, `.claude/skills/crew-*` (ces skills eux-mêmes, pour que
-   `/crew-new-task`, `/crew-close-task`, `/crew-status`,
-   `/crew-start` soient aussi disponibles sur le nouveau projet). Fusionner `.gitignore` et
-   `.claude/settings.json` avec l'existant s'il y en a déjà un — ne jamais
-   écraser des règles/hooks déjà en place, seulement ajouter ce qui manque.
+   déjà rempli), depuis `${CLAUDE_PLUGIN_ROOT}/template/` : `CLAUDE.md`,
+   `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+   `check_placeholders.py`, le dossier `crew/` entier (structure vide :
+   `README.md` + `INDEX.md` par sous-dossier, aucun fichier de tâche).
+   **Ne pas copier** les skills, les agents, ni les scripts de hooks — ils
+   tournent directement depuis le plugin installé (`${CLAUDE_PLUGIN_ROOT}`),
+   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` sont
+   déjà disponibles sans rien copier. Ne rien toucher à `.claude/settings.json`
+   pour les hooks crew — ils sont fournis par le plugin (`hooks/hooks.json`),
+   pas par une entrée locale.
    **Vérifier/installer les dépendances des skills routés dans `CLAUDE.md`** —
    `claude plugin list` ne les liste pas tous, certains manquent silencieusement
    si on ne les checke pas explicitement :
