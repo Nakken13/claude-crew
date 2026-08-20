@@ -106,30 +106,10 @@ a normal PR review. No hosted board, no account, nothing to sync.
 
 ## 🚀 Quick start
 
-```bash
-git clone https://github.com/Nakken13/claude-crew.git
-cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
-```
+Pick one — all three end up in the same place: `/crew-init` running against
+your project.
 
-Open `your-project` in Claude Code and run:
-
-```
-/crew-init
-```
-
-That's it — this detects your stack, resolves every `<placeholder>` with the
-real repo info, and fails loud (`check_placeholders.py`) until nothing is
-left unfilled. Full step-by-step in [`CLAUDE.md`](./CLAUDE.md).
-
-Once it's running, three commands drive day-to-day work:
-
-- ✨ `/crew-new-task` — create a task, auto-categorized into a batch
-- ✅ `/crew-close-task` — close a finished task: checks, history, tests moved out
-- 📊 `/crew-status` — read-only report: active batches, overlaps, orphaned tasks
-
-<br>
-
-### 🔌 Install via marketplace (recommended)
+### 🔌 Option A — Install via marketplace (recommended)
 
 ```
 /plugin marketplace add Nakken13/claude-crew
@@ -138,9 +118,44 @@ Once it's running, three commands drive day-to-day work:
 ```
 
 No cloning, no manual file copying — skills, agents, and hooks run straight
-from the installed plugin. `/crew-init` still asks the same bootstrap
-questions (product vision, commit conventions, secrets model) and writes the
-same project files as the manual flow above.
+from the installed plugin.
+
+### 🤖 Option B — Ask Claude to install it
+
+Paste this into Claude Code, in the project you want to set up:
+
+```
+Install the claude-crew plugin (marketplace add Nakken13/claude-crew, then
+install claude-crew@claude-crew), then run /crew-init here.
+```
+
+Claude runs the marketplace add + install for you, then bootstraps the
+project the same way as Option A.
+
+### 📋 Option C — Manual clone (no plugin system)
+
+```bash
+git clone https://github.com/Nakken13/claude-crew.git
+cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+```
+
+Open `your-project` in Claude Code and run `/crew-init`. Use this if you
+don't want a marketplace dependency — everything (skills, agents, hooks)
+gets copied straight into the project instead of running from an installed
+plugin.
+
+<br>
+
+Whichever option you pick, `/crew-init` detects your stack, resolves every
+`<placeholder>` with the real repo info, and fails loud
+(`check_placeholders.py`) until nothing is left unfilled. Full step-by-step
+in [`CLAUDE.md`](./CLAUDE.md).
+
+Once it's running, three commands drive day-to-day work:
+
+- ✨ `/crew-new-task` — create a task, auto-categorized into a batch
+- ✅ `/crew-close-task` — close a finished task: checks, history, tests moved out
+- 📊 `/crew-status` — read-only report: active batches, overlaps, orphaned tasks
 
 <br>
 
