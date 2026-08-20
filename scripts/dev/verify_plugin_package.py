@@ -109,7 +109,38 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
     return problems
 
 
-CHECKS = [check_manifests, check_template_matches_source, check_engine_files_copied]
+def check_hooks_json(repo_root: Path) -> list[str]:
+    problems = []
+    hooks_path = repo_root / "hooks" / "hooks.json"
+    if not hooks_path.exists():
+        problems.append(f"missing {hooks_path}")
+        return problems
+
+    try:
+        data = json.loads(hooks_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        problems.append(f"{hooks_path} is not valid JSON: {e}")
+        return problems
+
+    events = data.get("hooks", {})
+    for event_name in ("Stop", "SessionEnd", "PostToolUse"):
+        if event_name not in events:
+            problems.append(f"{hooks_path} missing event: {event_name}")
+
+    text = hooks_path.read_text(encoding="utf-8")
+    for script_rel in ("scripts/crew_hook.py", "scripts/spec_to_task_hook.py"):
+        if script_rel not in text:
+            problems.append(f"{hooks_path} does not reference {script_rel}")
+        if not (repo_root / script_rel).exists():
+            problems.append(f"{hooks_path} references {script_rel} but it does not exist")
+
+    if "graphify" in text.lower():
+        problems.append(f"{hooks_path} must not reference graphify (dogfood-only, not product surface)")
+
+    return problems
+
+
+CHECKS = [check_manifests, check_template_matches_source, check_engine_files_copied, check_hooks_json]
 
 
 def main() -> int:
