@@ -4,6 +4,7 @@
 Run directly: python scripts/dev/verify_plugin_package.py
 Exits 0 if every check passes, 1 otherwise (with problems printed).
 """
+import filecmp
 import json
 import sys
 from pathlib import Path
@@ -47,7 +48,39 @@ def check_manifests(repo_root: Path) -> list[str]:
     return problems
 
 
-CHECKS = [check_manifests]
+def check_template_matches_source(repo_root: Path) -> list[str]:
+    problems = []
+    template_dir = repo_root / "template"
+    source_dir = Path.home() / ".claude" / "templates" / "project-scaffold"
+
+    if not template_dir.exists():
+        problems.append(f"missing {template_dir}")
+        return problems
+    if not source_dir.exists():
+        problems.append(f"source scaffold not found at {source_dir} — cannot verify drift")
+        return problems
+
+    comparison = filecmp.dircmp(source_dir, template_dir)
+    only_in_source = _collect_diffs(comparison, "only_in_source")
+    only_in_template = _collect_diffs(comparison, "only_in_template")
+    if only_in_source:
+        problems.append(f"files present in {source_dir} but missing from {template_dir}: {only_in_source}")
+    if only_in_template:
+        problems.append(f"files present in {template_dir} but not in source scaffold: {only_in_template}")
+    if comparison.diff_files:
+        problems.append(f"content differs from source scaffold: {comparison.diff_files}")
+    return problems
+
+
+def _collect_diffs(comparison, attr, prefix=""):
+    label = "left_only" if attr == "only_in_source" else "right_only"
+    found = [f"{prefix}{name}" for name in getattr(comparison, label)]
+    for sub_name, sub_comparison in comparison.subdirs.items():
+        found.extend(_collect_diffs(sub_comparison, attr, prefix=f"{prefix}{sub_name}/"))
+    return found
+
+
+CHECKS = [check_manifests, check_template_matches_source]
 
 
 def main() -> int:
