@@ -48,6 +48,35 @@ def check_manifests(repo_root: Path) -> list[str]:
     return problems
 
 
+# The exact set of files template/ is allowed to ship — intentionally a
+# strict subset of $HOME/.claude/templates/project-scaffold/ (that source
+# directory legitimately also contains its own .claude/ and README.md,
+# which the plugin-native design deliberately excludes from template/: see
+# Fix 2 in the 2026-08-20 marketplace-plugin final review). Each entry is
+# verified present in template/ and byte-identical to the corresponding
+# file in the source scaffold.
+TEMPLATE_WHITELIST = [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "PRODUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "check_placeholders.py",
+    ".gitignore",
+    "crew/CLAUDE_BATCH.md",
+    "crew/CLAUDE_CONTEXT/AGENTS.md",
+    "crew/CLAUDE_CONTEXT/HISTORIQUE.md",
+    "crew/CLAUDE_CONTEXT/TESTS_DONE/README.md",
+    "crew/CURRENT_TASKS/README.md",
+    "crew/ICEBOX/README.md",
+    "crew/PROBLEMS/README.md",
+    "crew/TESTS/README.md",
+    "crew/TESTS/IA/README.md",
+    "crew/TESTS/DEV/README.md",
+    "crew/TODO/README.md",
+]
+
+
 def check_template_matches_source(repo_root: Path) -> list[str]:
     problems = []
     template_dir = repo_root / "template"
@@ -57,27 +86,21 @@ def check_template_matches_source(repo_root: Path) -> list[str]:
         problems.append(f"missing {template_dir}")
         return problems
     if not source_dir.exists():
-        problems.append(f"source scaffold not found at {source_dir} — cannot verify drift")
+        print(f"info: source scaffold not found at {source_dir} — skipping drift check")
         return problems
 
-    comparison = filecmp.dircmp(source_dir, template_dir)
-    only_in_source = _collect_diffs(comparison, "only_in_source")
-    only_in_template = _collect_diffs(comparison, "only_in_template")
-    if only_in_source:
-        problems.append(f"files present in {source_dir} but missing from {template_dir}: {only_in_source}")
-    if only_in_template:
-        problems.append(f"files present in {template_dir} but not in source scaffold: {only_in_template}")
-    if comparison.diff_files:
-        problems.append(f"content differs from source scaffold: {comparison.diff_files}")
+    for rel in TEMPLATE_WHITELIST:
+        template_file = template_dir / rel
+        source_file = source_dir / rel
+        if not template_file.exists():
+            problems.append(f"missing {template_file}")
+            continue
+        if not source_file.exists():
+            problems.append(f"source missing {source_file} (cannot verify {template_file})")
+            continue
+        if not filecmp.cmp(source_file, template_file, shallow=False):
+            problems.append(f"content differs from source scaffold: {rel}")
     return problems
-
-
-def _collect_diffs(comparison, attr, prefix=""):
-    label = "left_only" if attr == "only_in_source" else "right_only"
-    found = [f"{prefix}{name}" for name in getattr(comparison, label)]
-    for sub_name, sub_comparison in comparison.subdirs.items():
-        found.extend(_collect_diffs(sub_comparison, attr, prefix=f"{prefix}{sub_name}/"))
-    return found
 
 
 ENGINE_FILE_PAIRS = [
@@ -93,8 +116,14 @@ ENGINE_FILE_PAIRS = [
     (".claude/agents/ceo.md", "agents/ceo.md"),
     (".claude/agents/comms.md", "agents/comms.md"),
     (".claude/agents/manager.md", "agents/manager.md"),
-    ("crew/crew_hook.py", "scripts/crew_hook.py"),
-    ("crew/spec_to_task_hook.py", "scripts/spec_to_task_hook.py"),
+    # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally
+    # excluded: the plugin-distributed copies under scripts/ must resolve
+    # the target project's directory via CLAUDE_PROJECT_DIR (see Fix 1 /
+    # check_scripts_resolve_project_dir), which this repo's own dogfood
+    # copies under crew/ do not need and must not gain (they stay
+    # byte-identical to before this branch, per repo policy). So the two
+    # copies diverge by design and are no longer compared byte-for-byte
+    # here.
 ]
 
 
@@ -112,6 +141,13 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
     return problems
 
 
+EVENT_EXPECTED_SCRIPT = {
+    "Stop": "scripts/crew_hook.py",
+    "SessionEnd": "scripts/crew_hook.py",
+    "PostToolUse": "scripts/spec_to_task_hook.py",
+}
+
+
 def check_hooks_json(repo_root: Path) -> list[str]:
     problems = []
     hooks_path = repo_root / "hooks" / "hooks.json"
@@ -119,21 +155,22 @@ def check_hooks_json(repo_root: Path) -> list[str]:
         problems.append(f"missing {hooks_path}")
         return problems
 
+    text = hooks_path.read_text(encoding="utf-8")
+
     try:
-        data = json.loads(hooks_path.read_text(encoding="utf-8"))
+        data = json.loads(text)
     except json.JSONDecodeError as e:
         problems.append(f"{hooks_path} is not valid JSON: {e}")
         return problems
 
     events = data.get("hooks", {})
-    for event_name in ("Stop", "SessionEnd", "PostToolUse"):
+    for event_name, script_rel in EVENT_EXPECTED_SCRIPT.items():
         if event_name not in events:
             problems.append(f"{hooks_path} missing event: {event_name}")
-
-    text = hooks_path.read_text(encoding="utf-8")
-    for script_rel in ("scripts/crew_hook.py", "scripts/spec_to_task_hook.py"):
-        if script_rel not in text:
-            problems.append(f"{hooks_path} does not reference {script_rel}")
+            continue
+        event_text = json.dumps(events[event_name])
+        if script_rel not in event_text:
+            problems.append(f"{hooks_path} event {event_name} does not wire up {script_rel}")
         if not (repo_root / script_rel).exists():
             problems.append(f"{hooks_path} references {script_rel} but it does not exist")
 
@@ -173,6 +210,19 @@ def check_readme_has_marketplace_install(repo_root: Path) -> list[str]:
     return problems
 
 
+def check_scripts_resolve_project_dir(repo_root: Path) -> list[str]:
+    problems = []
+    for script_rel in ("scripts/crew_hook.py", "scripts/spec_to_task_hook.py"):
+        script_path = repo_root / script_rel
+        if not script_path.exists():
+            problems.append(f"missing {script_path}")
+            continue
+        text = script_path.read_text(encoding="utf-8")
+        if "CLAUDE_PROJECT_DIR" not in text:
+            problems.append(f"{script_path} does not reference CLAUDE_PROJECT_DIR")
+    return problems
+
+
 CHECKS = [
     check_manifests,
     check_template_matches_source,
@@ -180,6 +230,7 @@ CHECKS = [
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,
+    check_scripts_resolve_project_dir,
 ]
 
 
