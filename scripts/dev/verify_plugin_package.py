@@ -80,7 +80,31 @@ def _collect_diffs(comparison, attr, prefix=""):
     return found
 
 
-CHECKS = [check_manifests, check_template_matches_source]
+ENGINE_FILE_PAIRS = [
+    (".claude/skills/crew-close-task/SKILL.md", "skills/crew-close-task/SKILL.md"),
+    (".claude/skills/crew-init/SKILL.md", "skills/crew-init/SKILL.md"),
+    (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
+    (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
+    (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
+    (".claude/agents/architect.md", "agents/architect.md"),
+    (".claude/agents/ceo.md", "agents/ceo.md"),
+    (".claude/agents/comms.md", "agents/comms.md"),
+    (".claude/agents/manager.md", "agents/manager.md"),
+    ("crew/crew_hook.py", "scripts/crew_hook.py"),
+    ("crew/spec_to_task_hook.py", "scripts/spec_to_task_hook.py"),
+]
+
+
+def check_engine_files_copied(repo_root: Path) -> list[str]:
+    problems = []
+    for _source_rel, target_rel in ENGINE_FILE_PAIRS:
+        target = repo_root / target_rel
+        if not target.exists():
+            problems.append(f"missing {target}")
+    return problems
+
+
+CHECKS = [check_manifests, check_template_matches_source, check_engine_files_copied]
 
 
 def main() -> int:
