@@ -18,3 +18,4 @@
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour marketplace-plugin.md
 - 2026-08-22 ✅ **terminée** : `worktree-batch-isolation.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour worktree-batch-isolation.md
+- 2026-08-22 ➕ **ajoutée au backlog** : `fix-worktree-gitmv-lock-registration-gap.md`
