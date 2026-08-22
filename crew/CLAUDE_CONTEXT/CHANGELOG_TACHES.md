@@ -10,3 +10,6 @@
 - 2026-08-17 ▶️ **démarrée** : `readme-github-discoverability.md`
 - 2026-08-17 ✅ **terminée** : `readme-github-discoverability.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour readme-github-discoverability.md
+- 2026-08-19 ➕ **ajoutée au backlog** : `hook-auto-commit-cloture-tache.md`
+- 2026-08-19 ➕ **ajoutée au backlog** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
+- 2026-08-20 ▶️ **démarrée** : `marketplace-plugin.md`

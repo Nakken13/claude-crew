@@ -17,6 +17,9 @@ graphify-out/*
 # État interne des hooks crew (régénéré, pas de valeur à versionner)
 crew/CLAUDE_CONTEXT/.task_state.json
 crew/CLAUDE_CONTEXT/.hook_debug_dump.json
+crew/CLAUDE_CONTEXT/.batch_locks.json
+crew/CLAUDE_CONTEXT/.batch_locks.mutex
+crew/CLAUDE_CONTEXT/BATCH_LOCKS.md
 
 # Build outputs courants
 dist/
