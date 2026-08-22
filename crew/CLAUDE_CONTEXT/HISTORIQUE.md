@@ -4,6 +4,62 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## hook-auto-commit-cloture-tache — 2026-08-22
+Quoi : `auto_commit_closure(finished, now_dt)` + helper `_closure_commit_scope`
+dans `crew/crew_hook.py` (+ `scripts/crew_hook.py` resync) — commit git
+**local uniquement** (jamais de push) scopé à `crew/`, déclenché par slug
+réellement clôturé : un slug de `finished` n'est retenu que s'il a une
+entrée correspondante dans le diff (non commit) de `HISTORIQUE.md` — pas
+juste « le fichier a bougé quelque part » (couvre 2 tâches finies le même
+tour dont une seule vraiment historisée). Scope explicite (`git add --
+<chemins>`, jamais `-A`/`.`) ; commit lui-même scopé au pathspec (`git
+commit -- <chemins>`) plutôt qu'un `git commit` nu, pour ne jamais embarquer
+un changement déjà stagé par l'utilisateur ailleurs dans le dépôt — exactement
+l'incident (ProjetA, config backend committée/poussée sans revue par une
+session jamais formellement close) qui motive cette tâche. Idempotence via
+`git diff --cached --quiet` restreint au scope calculé (pas de flag manuel).
+Échec (hook `pre-commit` qui rejette, chemin invalide, etc.) capturé et
+loggé sur stderr, jamais levé — même contrat que le reste du hook.
+- **2 bugs critiques trouvés en code review et corrigés avant clôture** :
+  (1) `crew/CLAUDE_CONTEXT/BATCH_LOCKS.md` est gitignoré et jamais suivi
+  mais régénéré sur disque à chaque tour — un `git add` explicite dessus
+  était refusé par git et faisait échouer TOUT le `git add` en une seule
+  commande, donc **aucun commit n'était jamais créé** dans le vrai dépôt
+  (silencieux, avalé par le `except Exception`). Corrigé en filtrant les
+  candidats via `git check-ignore` (`_git_ignored`), pas seulement
+  suivi-ou-absent. (2) `git commit -m msg` (sans pathspec) commite l'index
+  ENTIER, pas seulement ce qui vient d'être `git add`é — un fichier de
+  l'utilisateur déjà stagé ailleurs (hors `crew/`) au moment du hook aurait
+  été embarqué dans le commit de clôture, reproduisant exactement l'incident
+  ProjetA que la tâche visait à corriger. Corrigé via `git commit -- <chemins>`
+  (commit partiel scopé au pathspec, forme standard git). Les deux bugs ont
+  été reproduits en live par le reviewer avant correction, puis couverts par
+  2 nouveaux tests de régression.
+- Tests : `crew/test_crew_hook.py` créé (aucun n'existait), 8 tests pytest
+  (TDD : 5 initiaux avec RED confirmé sur `AttributeError` avant
+  implémentation, puis 3 ajoutés en régression post-review — gitignore
+  `BATCH_LOCKS.md`, fichier utilisateur déjà stagé non balayé, détection
+  par slug plutôt que globale). Dépôt git temporaire isolé par test
+  (`tmp_path` + monkeypatch des constantes module `crew_hook`), aucun mock
+  sur git/subprocess.
+- `crew/CLAUDE_CONTEXT/AGENTS.md` : nouvelle section documentant le
+  comportement (commit auto local à la clôture, jamais de push).
+- `.claude/settings.json` : vérifié inchangé, l'event Stop existant suffit.
+- Travaillé depuis le worktree `../claude-crew-batch-plugin-packaging`
+  (branche `crew/batch-plugin-packaging`), rebasé + fast-forward mergé dans
+  `main` à la clôture (worktree seule tâche active de ce batch — teardown
+  normal, le batch garde des tâches TODO non commencées).
+- **Gap découvert en dogfooding le flux worktree** (`/crew-start` Cas B
+  depuis un worktree fraîchement créé) : le `git mv` fait depuis le worktree
+  n'est jamais vu par la détection `started`/`finished` du hook Stop (elle
+  lit toujours `crew/TODO`/`crew/CURRENT_TASKS` du checkout PRINCIPAL, `ROOT`
+  étant résolu depuis `__file__` de `crew_hook.py` — toujours le checkout
+  principal, jamais le worktree) — donc `_register_task_lock` n'était jamais
+  déclenché automatiquement pour ce cas ; contourné manuellement via le
+  marqueur `crew-resume:` pour cette session. Tracké dans
+  `crew/TODO/fix-worktree-gitmv-lock-registration-gap.md` (même batch,
+  position 5), pas corrigé dans cette tâche (hors scope).
+
 ## worktree-batch-isolation — 2026-08-22
 Quoi : implémente la spec `docs/superpowers/specs/2026-08-22-worktree-batch-
 isolation-design.md` — remplace le verrouillage batch coopératif/rétroactif
