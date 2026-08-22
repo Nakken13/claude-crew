@@ -41,4 +41,12 @@ zone).
    `crew_hook.py`, `scripts/`, `.claude/skills/crew-*`, `hooks/hooks.json`,
    `.claude/settings.json` — même zone que (1)-(3), avait rejoint ce batch
    au lieu d'un batch parallèle.
+5. `fix-worktree-gitmv-lock-registration-gap.md` — bug de dogfooding sur
+   (4) : `gate_pretooluse` (`crew_hook.py`) n'enregistre pas le verrou live
+   au moment du `git mv` TODO→CURRENT_TASKS quand il est exécuté depuis un
+   worktree de batch (le Stop hook, ROOT-anchored, ne voit jamais ce
+   déplacement). Même fichier que (2)-(4), placée en dernier car (2)
+   `hook-auto-commit-cloture-tache.md` est actuellement EN COURS
+   (`crew/CURRENT_TASKS/`) sur ce même batch — séquencée après, pas de
+   conflit de zone (même batch, pas de nouveau batch parallèle).
 
