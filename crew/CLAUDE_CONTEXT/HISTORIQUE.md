@@ -4,6 +4,35 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## marketplace-plugin — 2026-08-22 (clôture)
+Quoi : clôture tardive de la tâche `marketplace-plugin.md` — le code était
+déjà fait depuis le 2026-08-20 (repackaging claude-crew en plugin Claude
+Code marketplace : `template/`, `skills/`, `agents/`, `scripts/`,
+`hooks/hooks.json`, `.claude-plugin/{plugin,marketplace}.json`, `crew-init`
+réécrit pour lire `${CLAUDE_PLUGIN_ROOT}/template/`), mais jamais fermée
+côté crew (cases jamais cochées, rien dans `HISTORIQUE.md`, tests jamais
+sortis) — découvert en voulant démarrer une tâche voisine du même batch
+(`worktree-batch-isolation.md`) qui touche les mêmes fichiers
+(`crew_hook.py`, `scripts/`, `.claude/skills/crew-*`) et devait être
+séquencée après. Vérification rétroactive de chaque item avant de cocher
+(pas de coche à l'aveugle) :
+- Trouvé + corrigé au passage : `skills/crew-new-task/SKILL.md` (racine
+  plugin + copie locale `.claude/skills/crew-new-task/SKILL.md`)
+  conditionnait le dispatch de la persona `manager` sur l'existence du
+  fichier local `.claude/agents/manager.md` — référence obsolète depuis que
+  le plugin fournit `agents/manager.md` directement. Reformulé pour couvrir
+  les deux sources (plugin ou local).
+- Item "diff `template/` vs export frais `~/.claude/templates/
+  project-scaffold/` → aucune dérive" : dérive massive constatée en
+  re-testant maintenant, mais lu comme une vérification ponctuelle à la
+  copie initiale (2026-08-20), pas un invariant permanent — la spec
+  (`docs/superpowers/specs/2026-08-20-marketplace-plugin-design.md`,
+  § "What moves where") documente explicitement que le repo devient source
+  de vérité et que la copie locale est censée devenir obsolète après coup.
+- Tests sortis : `crew/TESTS/IA/marketplace-plugin.md` (4 items 🤖/🔍, à
+  re-dérouler une session future) et `crew/TESTS/DEV/marketplace-plugin.md`
+  (3 items 🖱️, end-to-end marketplace install depuis un profil propre).
+
 ## batch-lock-hardening-quick-wins — 2026-08-22
 Quoi : suite à une remarque utilisateur listant 6 failles du verrouillage
 batch multi-session (blocage rétroactif pas préventif, `.batch_locks.json`
