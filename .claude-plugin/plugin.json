@@ -1,6 +1,6 @@
 {
   "name": "claude-crew",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "File-based task lifecycle + multi-agent collision prevention for Claude Code.",
   "author": {
     "name": "Nakken13",
