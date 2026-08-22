@@ -14,3 +14,7 @@
 - 2026-08-19 ➕ **ajoutée au backlog** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
 - 2026-08-20 ▶️ **démarrée** : `marketplace-plugin.md`
 - 2026-08-22 ▶️ **démarrée** : `worktree-batch-isolation.md`
+- 2026-08-22 ✅ **terminée** : `marketplace-plugin.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour marketplace-plugin.md
+- 2026-08-22 ✅ **terminée** : `worktree-batch-isolation.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour worktree-batch-isolation.md

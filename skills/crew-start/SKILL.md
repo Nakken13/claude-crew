@@ -35,6 +35,27 @@ tâche.
     conflit à l'utilisateur et s'arrêter (ou choisir une autre tâche d'un
     batch différent si le contexte le permet). Pas de blocage → poursuivre
     normalement.
+2A-ter. **Isolation physique par worktree** (Layer 1 du garde-fou
+    anti-collision, cf. `docs/superpowers/specs/2026-08-22-worktree-batch-
+    isolation-design.md`) : déterminer le batch de la tâche (section de
+    `crew/CLAUDE_BATCH.md` qui la référence), en dériver le nom de worktree
+    et de branche de façon déterministe — même algorithme que
+    `_batch_slug`/`_worktree_paths_for` dans `crew/crew_hook.py` : retirer le
+    préfixe `Batch` (+ ponctuation qui suit) de l'en-tête, remplacer toute
+    suite de caractères non alphanumériques par `-`, mettre en minuscules →
+    `<slug>` ; worktree = `../<nom-repo>-batch-<slug>/` (sibling du checkout
+    principal, `<nom-repo>` = nom du dossier racine courant), branche =
+    `crew/batch-<slug>`. Si le worktree n'existe pas encore :
+    `git worktree add -b crew/batch-<slug> ../<nom-repo>-batch-<slug> main`.
+    S'il existe déjà (reprise, ou 2e tâche du même batch) : le réutiliser tel
+    quel (`git worktree list` pour vérifier), ne pas le recréer. `cd` dans ce
+    worktree pour le reste du tour, et utiliser des chemins absolus pointant
+    dans cette copie (pas le checkout principal) pour tout `Read`/`Edit`/
+    `Write` qui suit. Aucune écriture manuelle dans `crew_lock.json` n'est
+    nécessaire ici : `crew/crew_hook.py` enregistre déjà cette session (batch,
+    tâche, worktree, branche) automatiquement à partir de `CLAUDE_BATCH.md`
+    (`_register_task_lock`, déclenché par le marqueur `crew-resume:` ci-dessus
+    ou par le `git mv` du Cas B).
 3A. Relire le fichier de la tâche choisie, reprendre les actions `- [ ]`
     non cochées dans l'ordre. Appliquer les skills normalement pertinents
     au travail lui-même (`test-driven-development`, `systematic-debugging`,
@@ -69,7 +90,16 @@ tâche.
     batch, pour confirmer que sa zone de fichiers ne chevauche aucun batch
     actif différent (cf. `CLAUDE.md` § Batching). Chevauchement détecté →
     ne pas démarrer, rapporter le conflit à l'utilisateur et s'arrêter.
-6B. Pas de conflit → `git mv crew/TODO/<slug>.md
+5B-bis. **Isolation physique par worktree** — même procédure que l'étape
+    2A-ter ci-dessus (créer ou réutiliser `../<nom-repo>-batch-<slug>/` sur
+    la branche `crew/batch-<slug>`, `cd` dedans). Le fait qu'un autre
+    `session_id` détienne déjà ce worktree/verrou pour ce batch est bloquant
+    (`exit 2`) au moment du `git mv` de l'étape 6B (même garde que
+    `_claim_resume_lock`/`check_batch_collisions` en Cas A) : ne pas
+    continuer sur cette tâche si ça se produit, rapporter le conflit à
+    l'utilisateur.
+6B. Pas de conflit → **depuis le worktree** (chemins du worktree, pas du
+    checkout principal), `git mv crew/TODO/<slug>.md
     crew/CURRENT_TASKS/<slug>.md`, mettre à jour les deux `INDEX.md`.
 7B. Poursuivre en Cas A à partir de l'étape 3A (implémentation, cases
     cochées au fur et à mesure, `crew-close-task` en fin de tâche).

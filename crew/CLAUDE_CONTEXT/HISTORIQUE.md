@@ -4,6 +4,63 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## worktree-batch-isolation — 2026-08-22
+Quoi : implémente la spec `docs/superpowers/specs/2026-08-22-worktree-batch-
+isolation-design.md` — remplace le verrouillage batch coopératif/rétroactif
+par une isolation à deux couches : Layer 1 (garantie physique) = chaque
+batch actif tourne dans son propre `git worktree` (`../<repo>-batch-<slug>/`
+sur branche `crew/batch-<slug>`, nommage déterministe via `_batch_slug`/
+`_worktree_paths_for`) ; Layer 2 (filet de sécurité) = gate `PreToolUse`
+durci de `Bash` seul à `Bash|Edit|Write|MultiEdit`, bloquant toute écriture
+(`Edit`/`Write`/`MultiEdit`) ou commande mutante (`rm`/`mv`/`cp`/
+redirection) touchant un chemin sous une `Zone:` verrouillée par une AUTRE
+session.
+- `crew/crew_hook.py` (+ copie plugin `scripts/crew_hook.py`, resync exact
+  sauf la divergence pré-existante `ROOT`/`CLAUDE_PROJECT_DIR`) : nouveau
+  schéma `crew_lock.json` (remplace `.batch_locks.json`) session→`{batch,
+  tasks, worktree, branch, since}` au lieu d'une map plate slug→session ;
+  `check_batch_collisions`/`check_zone_overlaps`/`_section_lock_sessions`/
+  `regen_batch_locks_md` dérivent désormais slug→session via
+  `_slug_session_map` ; nouveau `gate_pretooluse` avec `_gate_check_path`/
+  `_locked_zones_by_others`/`_path_locked_by_other`/`_extract_candidate_paths`.
+- **Bug critique trouvé en code review et corrigé avant clôture** : la
+  comparaison chemin-vs-zone comparait un `file_path` ABSOLU (toujours
+  fourni par `Edit`/`Write`/`MultiEdit`) à une `Zone:` relative sans
+  normalisation — le gate durci ne bloquait donc JAMAIS rien en pratique
+  (fail-open silencieux à 100%). Corrigé via `_repo_relative_path` (résout
+  `path` relatif à `ROOT` ou à la racine d'un worktree de batch connu) +
+  `_path_matches_zone` (ajoute le support `fnmatch` pour les `Zone:` à glob,
+  ex. `.claude/skills/crew-*` utilisé par ce dépôt lui-même — l'ancien
+  `_expand_brace_glob` ne gérait que `{a,b,c}`, pas `*`). Vérifié en live
+  (chemin absolu réel du dépôt + chemin sous un worktree simulé).
+- `.claude/skills/crew-start/SKILL.md`, `crew-close-task/SKILL.md`,
+  `crew-status/SKILL.md` (+ copies plugin `skills/`) : procédures de
+  création/réutilisation de worktree, rebase+merge+teardown à la clôture
+  (abort proprement sur conflit, jamais de résolution auto), détection de
+  worktree orphelin.
+- `hooks/hooks.json` (matcher élargi en place) + `.claude/settings.json`
+  (nouveau bloc `Edit|Write|MultiEdit` séparé du bloc `Bash` existant, pour
+  ne pas mélanger avec le hook graphify non lié).
+- `.gitignore`/`template/.gitignore` : `.batch_locks.json`/`.batch_locks.mutex`
+  → `crew_lock.json`/`.crew_lock.mutex`. Stale `.batch_locks.json` supprimé.
+- Tests sortis (non cochés) : `crew/TESTS/IA/worktree-batch-isolation.md`
+  (9 items 🤖/🔍, dont le test du gate explicitement renforcé pour exiger un
+  chemin ABSOLU suite au bug ci-dessus) et `crew/TESTS/DEV/
+  worktree-batch-isolation.md` (1 item 🖱️, run manuel 2 terminaux).
+- Passe `simplify` post-review : helper `_tokenize_command` partagé entre
+  `_extract_git_mv_task`/`_extract_candidate_paths` (dédup) ; `locks`/
+  `sections` chargés une fois et propagés dans `gate_pretooluse`/
+  `_gate_check_path`/`check_zone_overlaps` au lieu d'être relus par chemin
+  candidat ; `_register_task_lock` : un seul chemin de dérivation batch/
+  worktree/branch (au lieu de deux variantes dupliquées) + avertissement
+  stderr si une session enregistre une tâche d'un batch différent de celui
+  déjà détenu (incohérence, ne devrait jamais arriver). Piste de fond non
+  appliquée (hors scope, changerait l'interface) : exposer `_batch_slug`/
+  `_worktree_paths_for` via un mode CLI de `crew_hook.py` pour que les
+  SKILL.md l'appellent au lieu de re-dériver l'algorithme en prose —
+  actuellement dupliqué (Python + prose), risque de dérive silencieuse si
+  l'algo Python change sans mettre à jour les 3 skills × 2 copies.
+
 ## marketplace-plugin — 2026-08-22 (clôture)
 Quoi : clôture tardive de la tâche `marketplace-plugin.md` — le code était
 déjà fait depuis le 2026-08-20 (repackaging claude-crew en plugin Claude

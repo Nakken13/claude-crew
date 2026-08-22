@@ -6,18 +6,24 @@
      crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md,
   3. bloque la fin de tour si une tâche est à la fois dans TODO/ et CURRENT_TASKS/,
   4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée,
-  5. maintient des verrous live par batch (anti-collision multi-Claude, écriture
-     protégée par LocksMutex) et bloque le tour si une tâche démarrée a une
-     voisine de batch déjà verrouillée par une autre session, ou si deux batchs
-     actifs à zones chevauchantes sont verrouillés par des sessions différentes
-     (cf. crew/CLAUDE_CONTEXT/BATCH_LOCKS.md, régénéré à chaque tour).
-En PreToolUse (matcher Bash, cf. gate_pretooluse) : contrôle préventif avant
-exécution d'un `git mv` TODO->CURRENT_TASKS (tâche catégorisée + pas de
-collision), en complément — pas en remplacement — du contrôle Stop rétroactif.
+  5. maintient des verrous live PAR SESSION (crew_lock.json, anti-collision
+     multi-Claude, écriture protégée par LocksMutex) et bloque le tour si une
+     tâche démarrée a une voisine de batch déjà verrouillée par une autre
+     session, ou si deux batchs actifs à zones chevauchantes sont verrouillés
+     par des sessions différentes (cf. crew/CLAUDE_CONTEXT/BATCH_LOCKS.md,
+     régénéré à chaque tour).
+En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
+  - `Edit`/`Write`/`MultiEdit` : bloque avant écriture si `file_path` tombe
+    sous une `Zone:` de batch verrouillée par une AUTRE session.
+  - `Bash` : contrôle préventif avant exécution d'un `git mv` TODO->CURRENT_TASKS
+    (tâche catégorisée + pas de collision), plus un scan best-effort des
+    commandes mutantes (`rm`/`mv`/`cp`/redirection `>`) contre les mêmes zones
+    verrouillées — Layer 2, filet de sécurité en complément de l'isolation
+    physique par worktree (Layer 1, portée par `/crew-start`).
 Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux (sauf le
 blocage volontaire exit(2) de gate_pretooluse).
 """
-import json, os, re, sys, shlex, time, datetime, pathlib, shutil
+import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch
 
 ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet cible
 CREW = ROOT / "crew"
@@ -34,8 +40,8 @@ CTX = CREW / "CLAUDE_CONTEXT"
 SNAP = CTX / ".task_state.json"
 CHANGELOG = CTX / "CHANGELOG_TACHES.md"
 BATCH_FILE = CREW / "CLAUDE_BATCH.md"
-LOCKS_FILE = CTX / ".batch_locks.json"
-LOCKS_MUTEX = CTX / ".batch_locks.mutex"
+LOCKS_FILE = CTX / "crew_lock.json"  # remplace .batch_locks.json (schema session->{batch,tasks,worktree,branch,since})
+LOCKS_MUTEX = CTX / ".crew_lock.mutex"
 BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
 LOCK_TTL = datetime.timedelta(hours=6)
 MUTEX_TTL_SEC = 30  # mutex bloque plus longtemps -> session crashee en pleine ecriture, on le degage
@@ -144,7 +150,7 @@ def rotate_graphify_snapshots(keep=3):
 
 class LocksMutex:
     """Verrou fichier portable (Windows compris : pas de fcntl) autour de la
-    section critique read-modify-write de .batch_locks.json. Implemente via
+    section critique read-modify-write de crew_lock.json. Implemente via
     O_CREAT|O_EXCL sur un fichier marqueur a part (creation atomique garantie
     par l'OS des deux cotes). Best-effort : quelques tentatives courtes puis on
     continue sans le mutex plutot que de risquer de bloquer le tour (le hook ne
@@ -188,16 +194,22 @@ class LocksMutex:
 
 
 def load_locks():
+    """Charge crew_lock.json. Forme garantie en retour : {"sessions": {...}}
+    (une entree par session active, cf. module docstring) — un fichier absent,
+    corrompu, ou a l'ancien format plat (.batch_locks.json) retombe sur une
+    base vide plutot que de propager une forme inattendue aux appelants."""
     if LOCKS_FILE.exists():
         try:
-            return json.loads(LOCKS_FILE.read_text(encoding="utf-8"))
+            data = json.loads(LOCKS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("sessions"), dict):
+                return data
         except Exception:
-            return {}
-    return {}
+            pass
+    return {"sessions": {}}
 
 
 def save_locks(locks):
-    """Ecriture atomique (temp file + os.replace) : evite un .batch_locks.json
+    """Ecriture atomique (temp file + os.replace) : evite un crew_lock.json
     tronque si le process est tue en cours d'ecriture."""
     tmp = LOCKS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -205,10 +217,12 @@ def save_locks(locks):
 
 
 def purge_stale_locks(locks, now_dt):
-    """Retire les verrous plus vieux que LOCK_TTL (session probablement crashee).
-    Retourne la liste triee des slugs purges."""
+    """Retire les entrees SESSION plus vieilles que LOCK_TTL (session probablement
+    crashee) — tasks + worktree + branch partent ensemble, une session ne peut
+    pas etre a moitie purgee. Retourne la liste triee des session_id purgees."""
+    sessions = locks.setdefault("sessions", {})
     stale = []
-    for slug, info in list(locks.items()):
+    for sid, info in list(sessions.items()):
         since_raw = info.get("since") if isinstance(info, dict) else None
         try:
             since = datetime.datetime.fromisoformat(since_raw)
@@ -216,9 +230,79 @@ def purge_stale_locks(locks, now_dt):
         except Exception:
             expired = True  # entree corrompue -> on la degage aussi
         if expired:
-            stale.append(slug)
-            del locks[slug]
+            stale.append(sid)
+            del sessions[sid]
     return sorted(stale)
+
+
+def _slug_session_map(locks):
+    """Vue derivee slug -> session_id a partir de sessions[*].tasks — source
+    unique consommee par check_batch_collisions / _section_lock_sessions /
+    regen_batch_locks_md, pour eviter de dupliquer la logique de derivation.
+    Un slug ne devrait jamais appartenir a 2 sessions a la fois (violation
+    d'invariant plutot qu'un cas normal) ; si ca arrive quand meme (bug
+    ailleurs ou edit manuel de crew_lock.json), la derniere session iteree
+    gagne silencieusement sans ce warning — le signaler sur stderr plutot que
+    de laisser passer sans trace."""
+    out = {}
+    for sid, info in locks.get("sessions", {}).items():
+        for slug in info.get("tasks", []) or []:
+            if slug in out and out[slug] != sid:
+                sys.stderr.write(
+                    f"[crew_lock] incoherence : `{slug}` apparait dans les tasks de 2 sessions "
+                    f"(`{out[slug]}` et `{sid}`) — verrou probablement corrompu, "
+                    f"session `{sid}` retenue.\n"
+                )
+            out[slug] = sid
+    return out
+
+
+def _batch_slug(header):
+    """Slug filesystem/branch-safe derive du header de section batch (ex.
+    'Batch plugin-packaging' -> 'plugin-packaging'), utilise pour nommer le
+    worktree et la branche dediee de ce batch de facon deterministe."""
+    text = re.sub(r"^Batch\b\s*[:\-—]?\s*", "", header or "", flags=re.IGNORECASE).strip()
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+    return slug or "batch"
+
+
+def _worktree_paths_for(header):
+    """Chemin worktree (sibling du checkout principal) + nom de branche
+    deterministes pour un batch, derives de son header (cf. _batch_slug)."""
+    slug = _batch_slug(header)
+    return f"../{ROOT.name}-batch-{slug}", f"crew/batch-{slug}"
+
+
+def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
+    """Ajoute `slug` aux tasks de la session `session_id` dans `locks`
+    (cree l'entree session si absente, en derivant batch/worktree/branch
+    depuis CLAUDE_BATCH.md via find_section_for), rafraichit son `since`.
+    Idempotent : ne duplique pas `slug` si deja present. Une session est
+    supposee ne porter qu'un seul batch a la fois (regle produit de
+    /crew-start, § 'Ce que ce skill ne fait pas') ; si un slug d'un AUTRE
+    batch est enregistre sur une session qui en a deja un, le batch/worktree/
+    branch de l'entree ne sont PAS ecrases (garde la premiere source de
+    verite) mais l'incoherence est signalee sur stderr plutot que de rester
+    invisible (meme esprit que le warning de _slug_session_map). Retourne
+    l'entree session mise a jour."""
+    sections = sections if sections is not None else load_sections()
+    section = find_section_for(slug, sections)
+    sessions = locks.setdefault("sessions", {})
+    info = sessions.setdefault(session_id, {"batch": None, "tasks": [], "worktree": None,
+                                              "branch": None, "since": now_dt.isoformat()})
+    info["since"] = now_dt.isoformat()
+    if section and info.get("batch") is None:
+        info["batch"] = section["header"]
+        info["worktree"], info["branch"] = _worktree_paths_for(section["header"])
+    elif section and info.get("batch") != section["header"]:
+        sys.stderr.write(
+            f"[crew_lock] incoherence : session `{session_id}` enregistre `{slug}` "
+            f"(batch « {section['header']} ») alors qu'elle detient deja le batch "
+            f"« {info.get('batch')} » — une session ne devrait porter qu'un seul batch a la fois.\n"
+        )
+    if slug not in info["tasks"]:
+        info["tasks"].append(slug)
+    return info
 
 
 def slugs_by_batch_section(text):
@@ -259,18 +343,16 @@ def check_batch_collisions(started, sections, locks, session_id):
     """Pour chaque tache qui demarre, verifie que ses voisines de meme section
     de batch ne sont pas deja verrouillees par une AUTRE session. Retourne une
     raison de blocage combinee (ou None)."""
+    slug_sessions = _slug_session_map(locks)
     reasons = []
     for f in sorted(started):
         section = find_section_for(f, sections)
         if not section:
             continue
         for neighbor in sorted(section["slugs"] - {f}):
-            info = locks.get(neighbor)
-            if not info:
-                continue
-            other_session = info.get("session_id")
+            other_session = slug_sessions.get(neighbor)
             if other_session and other_session != session_id:
-                since = info.get("since", "?")
+                since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
                 reasons.append(
                     f"batch « {section['header']} » : `{f}` demarre alors que `{neighbor}` "
                     f"est deja verrouille par une autre session (depuis {since})"
@@ -281,27 +363,35 @@ def check_batch_collisions(started, sections, locks, session_id):
             ". Attendre la fin de l'autre session ou choisir une tache d'un autre batch.")
 
 
-def _extract_git_mv_task(command):
-    """Si `command` (une commande Bash, potentiellement composee : `a; b && c`)
-    contient un `git mv` deplacant un fichier depuis crew/TODO/ vers
-    crew/CURRENT_TASKS/, retourne son slug (nom de fichier). Sinon None.
-    Best-effort : ne parse pas un shell complexe, couvre seulement le cas
-    documente `git mv crew/TODO/x.md crew/CURRENT_TASKS/x.md` (avec eventuels
-    flags avant les deux chemins). Essaie TOUTES les occurrences de `mv` dans
-    la commande (pas seulement la premiere) : une commande composee peut avoir
-    un `mv` sans rapport avant le vrai `git mv` a surveiller. `posix=True` est
-    fige (pas `sys.platform`-dependant) : le tool Bash execute toujours du
-    shell POSIX (Git Bash), quel que soit l'OS hote — sinon les guillemets
-    autour d'un chemin restent dans le token sur Windows et le slug echoue
-    silencieusement le test `.endswith(".md")`."""
-    todo_name, current_name = DIRS["TODO"].name, DIRS["CURRENT_TASKS"].name
-    if "mv" not in command or todo_name not in command or current_name not in command:
-        return None
+def _tokenize_command(command):
+    """Tokenise best-effort une commande Bash (potentiellement composee :
+    `a; b && c`) en tokens normalises separateur POSIX (`/`). `posix=True`
+    est fige (pas `sys.platform`-dependant) : le tool Bash execute toujours
+    du shell POSIX (Git Bash), quel que soit l'OS hote — sinon les guillemets
+    autour d'un chemin restent dans le token sur Windows. Fallback sur un
+    simple `.split()` si `shlex` echoue (shell trop exotique pour lui) —
+    source unique partagee par `_extract_git_mv_task` et
+    `_extract_candidate_paths`, les deux scans best-effort du gate Bash."""
     try:
         tokens = shlex.split(command, posix=True)
     except Exception:
         tokens = command.split()
-    norm = [t.replace("\\", "/") for t in tokens]
+    return [t.replace("\\", "/") for t in tokens]
+
+
+def _extract_git_mv_task(command):
+    """Si `command` contient un `git mv` deplacant un fichier depuis
+    crew/TODO/ vers crew/CURRENT_TASKS/, retourne son slug (nom de fichier).
+    Sinon None. Best-effort : ne parse pas un shell complexe, couvre
+    seulement le cas documente `git mv crew/TODO/x.md crew/CURRENT_TASKS/x.md`
+    (avec eventuels flags avant les deux chemins). Essaie TOUTES les
+    occurrences de `mv` dans la commande (pas seulement la premiere) : une
+    commande composee peut avoir un `mv` sans rapport avant le vrai `git mv`
+    a surveiller."""
+    todo_name, current_name = DIRS["TODO"].name, DIRS["CURRENT_TASKS"].name
+    if "mv" not in command or todo_name not in command or current_name not in command:
+        return None
+    norm = _tokenize_command(command)
     for mv_i, tok in enumerate(norm):
         if tok != "mv":
             continue
@@ -341,60 +431,215 @@ def _claim_resume_lock(slug, session_id):
     commence a editer la tache), pas retroactif comme le controle Stop."""
     with LocksMutex():
         locks = load_locks()
-        purge_stale_locks(locks, datetime.datetime.now())
-        info = locks.get(slug)
-        other_session = info.get("session_id") if info else None
+        now_dt = datetime.datetime.now()
+        purge_stale_locks(locks, now_dt)
+        other_session = _slug_session_map(locks).get(slug)
         if other_session and other_session != session_id:
-            since = info.get("since", "?")
+            since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
             sys.stderr.write(
                 f"Verrou live — `{slug}` est deja repris par une autre session "
                 f"(depuis {since}). Attendre la fin de cette session avant de reprendre la meme tache "
                 "(ou choisir une autre tache).\n"
             )
             sys.exit(2)
-        locks[slug] = {"session_id": session_id, "since": datetime.datetime.now().isoformat()}
+        _register_task_lock(slug, session_id, locks, now_dt)
         save_locks(locks)
 
 
+def _locked_zones_by_others(sections, locks, session_id):
+    """Retourne [(zone_path, section_header, other_session_id, since), ...]
+    pour chaque `Zone:` d'un batch ACTIF (>=1 tache verrouillee) par une
+    session != session_id — la liste que le gate hardened doit bloquer."""
+    out = []
+    sessions = locks.get("sessions", {})
+    slug_sessions = _slug_session_map(locks)
+    for section in sections:
+        others = sorted(_section_lock_sessions(section, locks, slug_sessions) - {session_id})
+        if not others:
+            continue
+        other = others[0]
+        since = sessions.get(other, {}).get("since", "?")
+        for zp in section["zone_paths"]:
+            out.append((zp, section["header"], other, since))
+    return out
+
+
+def _repo_relative_path(path, locks=None):
+    """Normalise `path` (absolu ou relatif, separateurs Windows ou POSIX) en
+    chemin relatif POSIX au depot logique, pour comparaison avec les `Zone:`
+    de CLAUDE_BATCH.md (toujours exprimees relatives a la racine du depot).
+    `Edit`/`Write`/`MultiEdit` fournissent toujours un `file_path` ABSOLU :
+    sans cette normalisation la comparaison directe avec une Zone: relative
+    ne matche jamais (bug releve en code review de worktree-batch-isolation).
+    Un chemin sous le worktree d'un batch connu (crew_lock.json) est ramene
+    au meme chemin relatif logique que sous ROOT, puisqu'un `git worktree`
+    mirrore la structure du depot principal. Fail-open sur echec de
+    resolution (retombe sur un simple nettoyage de separateurs)."""
+    try:
+        p = pathlib.Path(str(path))
+    except Exception:
+        return str(path).replace("\\", "/").lstrip("./")
+    if not p.is_absolute():
+        return str(p).replace("\\", "/").lstrip("./")
+    try:
+        return p.resolve().relative_to(ROOT.resolve()).as_posix()
+    except Exception:
+        pass
+    locks = locks if locks is not None else load_locks()
+    for info in locks.get("sessions", {}).values():
+        wt = info.get("worktree")
+        if not wt:
+            continue
+        try:
+            wt_root = (ROOT / wt).resolve()
+            return p.resolve().relative_to(wt_root).as_posix()
+        except Exception:
+            continue
+    return str(p).replace("\\", "/").lstrip("./")
+
+
+def _path_matches_zone(norm, zdir):
+    """`norm` (chemin relatif POSIX, cf. _repo_relative_path) tombe-t-il sous
+    la zone `zdir` (un membre deja expanse par _expand_brace_glob) ? Gere le
+    cas prefixe simple (`crew/`) ET le cas glob `*` (ex. `.claude/skills/
+    crew-*`, utilise tel quel par ce depot dans CLAUDE_BATCH.md) via fnmatch
+    — best-effort, pas un moteur de glob complet."""
+    zdir = zdir.rstrip("/")
+    if any(ch in zdir for ch in "*?["):
+        return fnmatch.fnmatchcase(norm, zdir) or fnmatch.fnmatchcase(norm, zdir + "/*")
+    return norm == zdir or norm.startswith(zdir + "/")
+
+
+def _path_locked_by_other(path, zones, locks=None):
+    """`path` (chemin brut, absolu ou relatif, Windows ou POSIX) tombe-t-il
+    sous l'une des zones de `zones` (sortie de _locked_zones_by_others) ?
+    Renvoie (header, other_session, since) si oui, sinon None."""
+    norm = _repo_relative_path(path, locks)
+    for zp, header, other, since in zones:
+        for expanded in _expand_brace_glob(zp):
+            if _path_matches_zone(norm, expanded):
+                return header, other, since
+    return None
+
+
+def _gate_check_path(path, session_id, locks=None, sections=None):
+    """Bloque (exit 2) si `path` tombe sous une `Zone:` de batch verrouillee
+    par une AUTRE session. Fail-open (retourne silencieusement) si aucune
+    zone active n'est verrouillee par quelqu'un d'autre, ou si le chemin n'en
+    croise aucune — coherent avec le contrat 'ne casse jamais le tour sur
+    ambiguite' du reste du hook (Layer 2 = filet, pas la seule defense).
+    `locks`/`sections` optionnels : un appelant qui scanne plusieurs chemins
+    dans la meme invocation (ex. `gate_pretooluse` sur une commande Bash a
+    plusieurs candidats) les charge une seule fois et les passe ici plutot
+    que de relire/re-parser crew_lock.json/CLAUDE_BATCH.md a chaque chemin."""
+    if not path:
+        return
+    locks = locks if locks is not None else load_locks()
+    sections = sections if sections is not None else load_sections()
+    zones = _locked_zones_by_others(sections, locks, session_id)
+    if not zones:
+        return
+    hit = _path_locked_by_other(path, zones, locks)
+    if not hit:
+        return
+    header, other, since = hit
+    sys.stderr.write(
+        f"[worktree-gate] `{path}` est sous la Zone: du batch « {header} », deja "
+        f"verrouillee par une autre session (depuis {since}). Collision potentielle — "
+        "travaille depuis le worktree de ton propre batch (cf. /crew-start), ou attends "
+        "la fin de l'autre session.\n"
+    )
+    sys.exit(2)
+
+
+def _extract_candidate_paths(command):
+    """Scan best-effort (pas un parseur shell complet, meme esprit que
+    `_extract_git_mv_task`) : repere les tokens qui ressemblent a un chemin de
+    fichier apres `rm`/`mv`/`cp`, plus toute cible de redirection `>`/`>>`,
+    dans une commande Bash potentiellement composee. Fail-open sur le reste —
+    Layer 2 est un filet, pas la seule ligne de defense (cf. spec § Error
+    handling > 'Gate false positive')."""
+    norm = _tokenize_command(command)
+    paths = []
+    mutating = {"rm", "mv", "cp"}
+    for i, tok in enumerate(norm):
+        if tok.rsplit("/", 1)[-1] not in mutating:
+            continue
+        for arg in norm[i + 1:]:
+            if arg.startswith("-"):
+                continue
+            if "/" in arg or "." in arg:
+                paths.append(arg)
+    for m in re.finditer(r">>?\s*([^\s|&;><]+)", command):
+        paths.append(m.group(1).replace("\\", "/"))
+    return paths
+
+
 def gate_pretooluse(payload):
-    """Hook PreToolUse (matcher Bash) : bloque *avant* execution un `git mv`
-    TODO->CURRENT_TASKS si la tache n'est categorisee dans aucun batch de
-    CLAUDE_BATCH.md, ou si une voisine de son batch est deja verrouillee par
-    une AUTRE session (meme regle que check_batch_collisions au Stop). Gere
-    aussi le marqueur de reprise `crew-resume:<slug>` (cf. `_claim_resume_lock`)
-    pour le Cas A de `/crew-start` (tache deja en CURRENT_TASKS, pas de `git mv`
-    a intercepter). Preventif plutot que retroactif : contrairement au controle
-    Stop (qui se declenche apres que les edits du tour ont deja eu lieu),
-    celui-ci empeche l'action de s'executer. Bloque via exit(2) + stderr
-    (protocole hook standard). Seul le chemin `crew-resume:` ecrit dans
-    `.batch_locks.json` (sous mutex) ; le chemin `git mv` n'ecrit rien — la
-    mise a jour de ses verrous reste au Stop."""
+    """Hook PreToolUse (matcher Bash|Edit|Write|MultiEdit) : Layer 2 du design
+    worktree-batch-isolation (cf. docs/superpowers/specs/2026-08-22-worktree-
+    batch-isolation-design.md) — filet de securite pour tout ce qui contourne
+    l'isolation physique par worktree (Layer 1, portee par /crew-start).
+
+    - `Edit`/`Write`/`MultiEdit` : bloque avant ecriture si `tool_input.file_path`
+      tombe sous une `Zone:` verrouillee par une AUTRE session (`_gate_check_path`).
+    - `Bash` :
+        1. marqueur de reprise `crew-resume:<slug>` (Cas A de `/crew-start`,
+           cf. `_claim_resume_lock`) ;
+        2. `git mv` TODO->CURRENT_TASKS : bloque si la tache n'est categorisee
+           dans aucun batch, ou si une voisine de son batch est deja
+           verrouillee par une AUTRE session (meme regle que
+           check_batch_collisions au Stop) ;
+        3. scan generique best-effort (`_extract_candidate_paths`) contre les
+           memes zones verrouillees, pour `rm`/`mv`/`cp`/redirection.
+
+    Preventif plutot que retroactif : contrairement au controle Stop (qui se
+    declenche apres que les edits du tour ont deja eu lieu), celui-ci empeche
+    l'action de s'executer. Bloque via exit(2) + stderr (protocole hook
+    standard). Seul le chemin `crew-resume:` ecrit dans `crew_lock.json` (sous
+    mutex) ; les autres chemins ne font que lire — la mise a jour de leurs
+    verrous reste au Stop."""
+    tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input") or {}
-    command = str(tool_input.get("command") or "")
     session_id = payload.get("session_id")
+
+    if tool_name in ("Edit", "Write", "MultiEdit"):
+        _gate_check_path(tool_input.get("file_path"), session_id)
+        return
+
+    if tool_name != "Bash":
+        return
+
+    command = str(tool_input.get("command") or "")
 
     resume_slug = _extract_resume_claim(command)
     if resume_slug is not None:
         _claim_resume_lock(resume_slug, session_id)
         return
 
-    slug = _extract_git_mv_task(command)
-    if not slug:
-        return
+    # Charges une seule fois pour tout le reste de la commande (git mv +
+    # scan generique ci-dessous) plutot que relus/re-parses par candidat —
+    # une commande composee peut produire plusieurs chemins a verifier.
     sections = load_sections()
-    section = find_section_for(slug, sections)
-    if section is None:
-        sys.stderr.write(
-            f"[batch] `{slug}` n'est categorisee dans aucun batch de CLAUDE_BATCH.md. "
-            "Ajoute-la a un batch (avec sa Zone :) avant de la demarrer — voir CLAUDE.md § Batching, "
-            "ou dispatch le persona manager (/crew-start) qui le fait pour toi.\n"
-        )
-        sys.exit(2)
     locks = load_locks()
-    reason = check_batch_collisions({slug}, sections, locks, session_id)
-    if reason:
-        sys.stderr.write(reason + "\n")
-        sys.exit(2)
+
+    slug = _extract_git_mv_task(command)
+    if slug:
+        section = find_section_for(slug, sections)
+        if section is None:
+            sys.stderr.write(
+                f"[batch] `{slug}` n'est categorisee dans aucun batch de CLAUDE_BATCH.md. "
+                "Ajoute-la a un batch (avec sa Zone :) avant de la demarrer — voir CLAUDE.md § Batching, "
+                "ou dispatch le persona manager (/crew-start) qui le fait pour toi.\n"
+            )
+            sys.exit(2)
+        reason = check_batch_collisions({slug}, sections, locks, session_id)
+        if reason:
+            sys.stderr.write(reason + "\n")
+            sys.exit(2)
+
+    for p in _extract_candidate_paths(command):
+        _gate_check_path(p, session_id, locks, sections)
 
 
 def active_task_slugs():
@@ -430,11 +675,15 @@ def _path_overlaps(a, b):
     return False
 
 
-def _section_lock_sessions(section, locks):
+def _section_lock_sessions(section, locks, slug_sessions=None):
     """Sessions ayant actuellement un verrou live sur au moins une tache de la
-    section (cf. locks, alimente par le boucle `for f in started` de main())."""
-    return {locks[s]["session_id"] for s in section["slugs"]
-            if s in locks and locks[s].get("session_id")}
+    section (derive de sessions[*].tasks via _slug_session_map, alimente par
+    la boucle `for f in started` de main()). `slug_sessions` optionnel : un
+    appelant qui boucle sur plusieurs sections (check_zone_overlaps,
+    _locked_zones_by_others) le calcule une fois et le passe ici plutot que
+    de reconstruire la map complete a chaque section."""
+    slug_sessions = slug_sessions if slug_sessions is not None else _slug_session_map(locks)
+    return {slug_sessions[s] for s in section["slugs"] if s in slug_sessions}
 
 
 def check_zone_overlaps(sections, active, locks):
@@ -448,11 +697,12 @@ def check_zone_overlaps(sections, active, locks):
     complementaire a la verification manuelle du manager avant de demarrer."""
     warnings = []
     blocking = []
+    slug_sessions = _slug_session_map(locks)
     active_sections = [s for s in sections if s["slugs"] & active and s["zone_paths"]]
     for i, sec_a in enumerate(active_sections):
-        sessions_a = _section_lock_sessions(sec_a, locks)
+        sessions_a = _section_lock_sessions(sec_a, locks, slug_sessions)
         for sec_b in active_sections[i + 1:]:
-            sessions_b = _section_lock_sessions(sec_b, locks)
+            sessions_b = _section_lock_sessions(sec_b, locks, slug_sessions)
             cross_session = bool(sessions_a) and bool(sessions_b) and sessions_a != sessions_b
             for pa in sec_a["zone_paths"]:
                 for pb in sec_b["zone_paths"]:
@@ -471,10 +721,13 @@ def check_zone_overlaps(sections, active, locks):
 
 def regen_batch_locks_md(sections, locks, active):
     """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
-    batch ayant au moins une tache actuellement en TODO/ ou CURRENT_TASKS/."""
+    batch ayant au moins une tache actuellement en TODO/ ou CURRENT_TASKS/.
+    Colonne `worktree` affichee quand l'entree session en porte une."""
     lines = ["# Verrous batch (temps reel)\n\n",
               "> Regenere automatiquement par `crew/crew_hook.py` a chaque tour. "
               "Ne pas editer a la main.\n\n"]
+    slug_sessions = _slug_session_map(locks)
+    sessions = locks.get("sessions", {})
     any_section = False
     for section in sections:
         relevant = sorted(section["slugs"] & active)
@@ -483,13 +736,16 @@ def regen_batch_locks_md(sections, locks, active):
         any_section = True
         lines.append(f"## {section['header']}\n\n")
         for slug in relevant:
-            info = locks.get(slug)
-            if info:
+            sid = slug_sessions.get(slug)
+            if sid:
+                info = sessions.get(sid, {})
                 try:
                     since_fmt = datetime.datetime.fromisoformat(info.get("since", "")).strftime("%H:%M")
                 except Exception:
                     since_fmt = info.get("since", "?")
-                lines.append(f"- 🔒 `{slug}` — verrouille (session `{info.get('session_id')}`, depuis {since_fmt})\n")
+                worktree = info.get("worktree")
+                suffix = f", worktree `{worktree}`" if worktree else ""
+                lines.append(f"- 🔒 `{slug}` — verrouille (session `{sid}`, depuis {since_fmt}{suffix})\n")
             else:
                 lines.append(f"- 🔓 `{slug}` — libre\n")
         lines.append("\n")
@@ -554,7 +810,7 @@ def main():
         state["TESTS/IA"] = regen_index("TESTS/IA", DIRS["TESTS/IA"])
 
     # Verrous live par batch (anti-collision multi-Claude). Seule la section
-    # read-modify-write de .batch_locks.json (load -> mutate -> save) est
+    # read-modify-write de crew_lock.json (load -> mutate -> save) est
     # protégée par le mutex fichier (LocksMutex), pour éviter qu'une écriture
     # concurrente (deux sessions qui finissent leur tour à la même seconde)
     # n'en écrase une autre en silence, sans retenir le mutex plus longtemps
@@ -566,27 +822,32 @@ def main():
 
     with LocksMutex():
         locks = load_locks()
-        for slug in purge_stale_locks(locks, now_dt):
-            entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé** : `{slug}`")
+        for sid in purge_stale_locks(locks, now_dt):
+            entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé (session `{sid}`)**")
 
-        for f in finished:
-            locks.pop(f, None)
+        # Tache finie : sort des `tasks` de TOUTES les sessions qui la tenaient
+        # (normalement une seule). L'entree session elle-meme n'est PAS purgee
+        # ici meme si elle se retrouve sans aucune tache — elle peut enchainer
+        # sur une autre tache du meme batch/worktree ; seule purge_stale_locks
+        # (TTL) ou /crew-close-task retire une entree session entiere.
+        if finished:
+            for info in locks.get("sessions", {}).values():
+                info["tasks"] = [t for t in info.get("tasks", []) if t not in finished]
 
         if hook_event == "SessionEnd":
             if session_id:
-                for slug in [s for s, info in locks.items() if info.get("session_id") == session_id]:
-                    del locks[slug]
+                locks.get("sessions", {}).pop(session_id, None)
         else:
-            for f in started:
-                locks[f] = {"session_id": session_id, "since": now_dt.isoformat()}
-            # Rafraichit aussi les verrous deja detenus par CETTE session sur des
-            # taches encore actives (Cas A resume via _claim_resume_lock, ou
-            # simplement une session longue) : sans ca, purge_stale_locks finirait
-            # par liberer le verrou d'une session encore en train de travailler.
             if session_id:
-                for f in cur_c:
-                    if f in locks and locks[f].get("session_id") == session_id:
-                        locks[f]["since"] = now_dt.isoformat()
+                for f in started:
+                    _register_task_lock(f, session_id, locks, now_dt, sections)
+                # Rafraichit aussi le verrou deja detenu par CETTE session si elle
+                # a encore des taches actives (Cas A resume via _claim_resume_lock,
+                # ou simplement une session longue) : sans ca, purge_stale_locks
+                # finirait par liberer le verrou d'une session encore au travail.
+                info = locks.get("sessions", {}).get(session_id)
+                if info and any(f in cur_c for f in info.get("tasks", [])):
+                    info["since"] = now_dt.isoformat()
             collision_reason = check_batch_collisions(started, sections, locks, session_id)
 
         save_locks(locks)
