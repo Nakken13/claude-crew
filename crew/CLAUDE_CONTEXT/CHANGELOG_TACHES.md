@@ -13,3 +13,4 @@
 - 2026-08-19 ➕ **ajoutée au backlog** : `hook-auto-commit-cloture-tache.md`
 - 2026-08-19 ➕ **ajoutée au backlog** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
 - 2026-08-20 ▶️ **démarrée** : `marketplace-plugin.md`
+- 2026-08-22 ▶️ **démarrée** : `worktree-batch-isolation.md`

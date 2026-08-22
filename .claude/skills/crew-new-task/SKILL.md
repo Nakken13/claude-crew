@@ -16,9 +16,10 @@ l'appel.
    identifiables, dépendances cross-repo si ce projet en a — autre
    repo backend/frontend séparé, service partagé), et si la tâche démarre
    tout de suite (`CURRENT_TASKS/`) ou va au backlog (`TODO/`).
-2. Si `.claude/agents/manager.md` existe : dispatcher **un seul**
-   `Agent({subagent_type: "manager"})` avec un prompt qui couvre
-   explicitement, dans l'ordre :
+2. Si la persona `manager` est disponible (fournie par le plugin via
+   `agents/manager.md`, ou en local via `.claude/agents/manager.md`) :
+   dispatcher **un seul** `Agent({subagent_type: "manager"})` avec un
+   prompt qui couvre explicitement, dans l'ordre :
    - description de la feature/tâche + contexte (pourquoi, dépendances
      connues) ;
    - découpage en actions cochables `- [ ]` concrètes (pas vagues) ;
