@@ -11,7 +11,12 @@
      tâche démarrée a une voisine de batch déjà verrouillée par une autre
      session, ou si deux batchs actifs à zones chevauchantes sont verrouillés
      par des sessions différentes (cf. crew/CLAUDE_CONTEXT/BATCH_LOCKS.md,
-     régénéré à chaque tour).
+     régénéré à chaque tour),
+  6. commit git LOCAL UNIQUEMENT (jamais de push, cf. `auto_commit_closure`)
+     scopé à `crew/` quand une tâche vient d'être réellement clôturée dans ce
+     même tour (fichier disparu de `CURRENT_TASKS/` + `HISTORIQUE.md`
+     effectivement modifié) — trace git systématique de chaque clôture sans
+     rien pousser automatiquement, le push reste une décision humaine.
 En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
   - `Edit`/`Write`/`MultiEdit` : bloque avant écriture si `file_path` tombe
     sous une `Zone:` de batch verrouillée par une AUTRE session.
@@ -23,7 +28,7 @@ En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
 Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux (sauf le
 blocage volontaire exit(2) de gate_pretooluse).
 """
-import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch
+import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
 CREW = ROOT / "crew"
@@ -754,6 +759,119 @@ def regen_batch_locks_md(sections, locks, active):
     BATCH_LOCKS_MD.write_text("".join(lines), encoding="utf-8")
 
 
+def _git_tracked(rel):
+    r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel],
+                        cwd=str(ROOT), capture_output=True, text=True)
+    return r.returncode == 0
+
+
+def _git_ignored(rel):
+    r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=str(ROOT))
+    return r.returncode == 0
+
+
+def _closure_commit_scope(slug):
+    """Chemins crew/ (relatifs a ROOT, POSIX) a inclure dans le commit auto
+    de cloture pour `slug` (sans extension `.md`) : le fichier CURRENT_TASKS
+    disparu, HISTORIQUE.md, les tests sortis (IA/DEV, s'ils existent), et
+    tous les INDEX.md + CLAUDE_BATCH.md + BATCH_LOCKS.md + CHANGELOG_TACHES.md
+    regeneres par le hook dans la meme passe. Ne renvoie que des chemins que
+    `git add` acceptera reellement :
+    - deja suivi par git -> inclus systematiquement (couvre une suppression
+      a stager, meme si le fichier n'existe plus sur disque) ;
+    - jamais suivi mais absent -> exclu (un `git add` dessus echouerait avec
+      'did not match any files') ;
+    - jamais suivi, present sur disque, mais gitignore (ex.
+      `crew/CLAUDE_CONTEXT/BATCH_LOCKS.md`, regenere a chaque tour mais
+      jamais destine a etre commite — un `git add` explicite dessus est
+      refuse par git) -> exclu."""
+    candidates = [
+        DIRS["CURRENT_TASKS"] / f"{slug}.md",
+        CTX / "HISTORIQUE.md",
+        DIRS["TESTS/IA"] / f"{slug}.md",
+        DIRS["TESTS/DEV"] / f"{slug}.md",
+        BATCH_FILE,
+        CHANGELOG,
+        BATCH_LOCKS_MD,
+    ]
+    for d in DIRS.values():
+        candidates.append(d / "INDEX.md")
+    paths = []
+    for p in candidates:
+        rel = str(p.relative_to(ROOT)).replace("\\", "/")
+        if _git_tracked(rel):
+            paths.append(rel)
+            continue
+        if not p.exists():
+            continue
+        if _git_ignored(rel):
+            continue
+        paths.append(rel)
+    return sorted(set(paths))
+
+
+def auto_commit_closure(finished, now_dt):
+    """Commit git LOCAL UNIQUEMENT (jamais de push) scope a crew/, declenche
+    par slug reellement cloture : un slug de `finished` (disparu de
+    CURRENT_TASKS/ ce tour) n'est retenu QUE s'il a une entree correspondante
+    dans le diff (non commit) de HISTORIQUE.md — pas juste "le fichier a
+    bouge quelque part" (couvre le cas ou 2 taches finissent le meme tour
+    mais une seule a une vraie entree, et le cas ou `finished` est non vide
+    sans historisation reelle, ex. suppression manuelle du fichier).
+    Idempotent par construction : rien de NOUVEAU sur le scope calcule ->
+    aucun commit (verifie via `git diff --cached` restreint au scope, pas
+    l'index entier). Commit SCOPE au
+    pathspec (`git commit -- <paths>`) plutot qu'un `git commit` nu : ne
+    touche jamais un changement de l'utilisateur deja stage ailleurs dans le
+    depot au moment du hook, meme si `git add` l'a laisse dans l'index avant
+    ce commit-ci — c'est exactement l'incident (ProjetA) que cette tache
+    corrige. Ne casse jamais le tour : toute erreur (git absent, hook
+    pre-commit qui rejette, etc.) est loggee sur stderr et avalee, jamais
+    levee — meme contrat que le reste du hook."""
+    if not finished:
+        return
+    paths = []
+    try:
+        histo_rel = str((CTX / "HISTORIQUE.md").relative_to(ROOT)).replace("\\", "/")
+        diff_text = (
+            subprocess.run(["git", "diff", "--", histo_rel], cwd=str(ROOT),
+                            capture_output=True, text=True).stdout
+            + subprocess.run(["git", "diff", "--cached", "--", histo_rel], cwd=str(ROOT),
+                              capture_output=True, text=True).stdout
+        )
+        all_slugs = sorted(f[:-3] if f.endswith(".md") else f for f in finished)
+        # Ne retient que les slugs ayant reellement une entree correspondante
+        # dans le diff HISTORIQUE.md (pas juste "le fichier a bouge quelque
+        # part") : si 2 taches finissent le meme tour et qu'une seule a une
+        # vraie entree, l'autre n'est pas incluse dans ce commit.
+        slugs = [s for s in all_slugs if s in diff_text]
+        if not slugs:
+            return  # aucun slug fini n'a d'entree correspondante dans HISTORIQUE.md
+        paths = sorted({p for slug in slugs for p in _closure_commit_scope(slug)})
+        if not paths:
+            return
+        subprocess.run(["git", "add", "--"] + paths, cwd=str(ROOT), check=True,
+                        capture_output=True, text=True)
+        if subprocess.run(["git", "diff", "--cached", "--quiet", "--"] + paths,
+                           cwd=str(ROOT)).returncode == 0:
+            return  # rien de reellement nouveau sur CE scope -> deja commit (idempotence)
+        msg = "chore(crew): cloture tache " + ", ".join(slugs)
+        subprocess.run(["git", "commit", "-m", msg, "--"] + paths, cwd=str(ROOT),
+                        check=True, capture_output=True, text=True)
+    except Exception as e:
+        sys.stderr.write(f"[auto-commit] commit de cloture non effectue (non bloquant) : {e}\n")
+        # Best-effort : si `git add` a partiellement reussi avant l'echec
+        # (ex. un chemin du scope invalide plus loin dans la liste), ne pas
+        # laisser ces chemins staged pour l'utilisateur — desstage uniquement
+        # NOTRE scope, jamais le reste de l'index (memes garanties que le
+        # commit lui-meme).
+        if paths:
+            try:
+                subprocess.run(["git", "reset", "--"] + paths, cwd=str(ROOT), capture_output=True)
+            except Exception:
+                pass
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -862,6 +980,8 @@ def main():
                     "> Alimenté automatiquement par le hook Stop (`crew/crew_hook.py`).\n\n")
         with CHANGELOG.open("a", encoding="utf-8") as fh:
             fh.write(head + "\n".join(entries) + "\n")
+
+    auto_commit_closure(finished, now_dt)
 
     SNAP.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
