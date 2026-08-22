@@ -29,8 +29,9 @@ zone).
    rétroactive — voir `HISTORIQUE.md`), au passage fixé une réf. obsolète
    dans `crew-new-task/SKILL.md` (`.claude/agents/manager.md` → couvre
    aussi `agents/manager.md` fourni par le plugin).
-2. `hook-auto-commit-cloture-tache.md` — étend `crew_hook.py` **dans son
-   nouvel emplacement** `scripts/crew_hook.py` une fois (1) fusionné.
+2. ~~`hook-auto-commit-cloture-tache.md`~~ — étend `crew_hook.py` **dans son
+   nouvel emplacement** `scripts/crew_hook.py` une fois (1) fusionné. Clos
+   le 22/08/2026 — voir `HISTORIQUE.md`.
 3. `mecanisme-mise-a-jour-scaffold-multi-projets.md` — implémente le flux
    de mise à jour ; le packaging plugin de (1) est un prérequis naturel
    (update = `claude plugin update`), donc après (1). Peut être réordonné
