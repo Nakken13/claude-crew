@@ -151,11 +151,38 @@ Whichever option you pick, `/crew-init` detects your stack, resolves every
 (`check_placeholders.py`) until nothing is left unfilled. Full step-by-step
 in [`CLAUDE.md`](./CLAUDE.md).
 
-Once it's running, three commands drive day-to-day work:
+Once it's running, four commands drive day-to-day work:
 
 - ✨ `/crew-new-task` — create a task, auto-categorized into a batch
 - ✅ `/crew-close-task` — close a finished task: checks, history, tests moved out
 - 📊 `/crew-status` — read-only report: active batches, overlaps, orphaned tasks
+- 🔄 `/crew-update` — pull engine-file changes into an already-bootstrapped project
+
+<br>
+
+## 🔄 Updating an existing project
+
+Already bootstrapped? `/crew-update` pulls in engine-file changes (fixes,
+new rules, new skills) without ever touching your `crew/` task data.
+
+- **Plugin install (Option A/B)** — skills, agents, and hooks already run
+  from `${CLAUDE_PLUGIN_ROOT}`, so `/plugin update claude-crew` covers those;
+  `/crew-update` only checks `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/
+  `CONTRIBUTING.md`/`SECURITY.md`/`check_placeholders.py`.
+- **Manual clone (Option C)** — `/crew-update` also checks `crew_hook.py`,
+  `spec_to_task_hook.py`, and the local `.claude/skills/crew-*`/
+  `.claude/agents/*` copies.
+
+It never touches `crew/TODO/`, `crew/CURRENT_TASKS/`, `crew/PROBLEMS/`,
+`crew/ICEBOX/`, `crew/TESTS/`, or `crew/CLAUDE_CONTEXT/HISTORIQUE.md`, and it
+never silently overwrites a file you've personalized. Each engine file gets
+one of four statuses before anything is written:
+
+- `up_to_date` — nothing to do.
+- `new` — added upstream, missing locally → created.
+- `apply` — unchanged locally since the last update → safe to refresh.
+- `conflict` — you've edited it since → shown as a diff, never overwritten
+  without you saying so.
 
 <br>
 

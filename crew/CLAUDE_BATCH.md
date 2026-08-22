@@ -32,10 +32,11 @@ zone).
 2. ~~`hook-auto-commit-cloture-tache.md`~~ — étend `crew_hook.py` **dans son
    nouvel emplacement** `scripts/crew_hook.py` une fois (1) fusionné. Clos
    le 22/08/2026 — voir `HISTORIQUE.md`.
-3. `mecanisme-mise-a-jour-scaffold-multi-projets.md` — implémente le flux
-   de mise à jour ; le packaging plugin de (1) est un prérequis naturel
-   (update = `claude plugin update`), donc après (1). Peut être réordonné
-   avant (2) si (2) n'est pas encore prioritaire.
+3. ~~`mecanisme-mise-a-jour-scaffold-multi-projets.md`~~ — implémente le flux
+   de mise à jour (`/crew-update`). Clos le 23/08/2026 — voir
+   `HISTORIQUE.md`. Fichiers touchés : `crew/crew_update.py`,
+   `scripts/crew_update.py`, `crew/test_crew_update.py`,
+   `skills/crew-update/`, `.claude/skills/crew-update/`.
 4. ~~`worktree-batch-isolation.md`~~ — spec du 22/08/2026 (isolation par git
    worktree par batch + gate PreToolUse renforcé `Edit|Write|MultiEdit|
    Bash`). Clos le 22/08/2026 — voir `HISTORIQUE.md`. Zone chevauchait
@@ -46,8 +47,7 @@ zone).
    (4) : `gate_pretooluse` (`crew_hook.py`) n'enregistre pas le verrou live
    au moment du `git mv` TODO→CURRENT_TASKS quand il est exécuté depuis un
    worktree de batch (le Stop hook, ROOT-anchored, ne voit jamais ce
-   déplacement). Même fichier que (2)-(4), placée en dernier car (2)
-   `hook-auto-commit-cloture-tache.md` est actuellement EN COURS
-   (`crew/CURRENT_TASKS/`) sur ce même batch — séquencée après, pas de
-   conflit de zone (même batch, pas de nouveau batch parallèle).
+   déplacement). Même fichier que (2)-(4) ; (2) et (3) sont closes,
+   `CURRENT_TASKS/` est vide — pas de conflit de zone (même batch, pas de
+   nouveau batch parallèle).
 

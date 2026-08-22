@@ -12,7 +12,8 @@ placeholder non résolu par oubli.
 
 1. Le projet a déjà `CLAUDE.md` + `crew/` remplis (pas de `<...>` restant) →
    ne rien faire, dire à l'utilisateur que le scaffold est déjà initialisé et
-   proposer `/crew-status` à la place.
+   proposer `/crew-status` à la place, ou `/crew-update` si une version plus
+   récente du scaffold est disponible.
 2. Le projet a `CLAUDE.md` + `crew/` avec des placeholders `<...>` non
    résolus → reprendre directement à "Résolution des placeholders" ci-dessous
    (pas besoin de recopier les fichiers).
