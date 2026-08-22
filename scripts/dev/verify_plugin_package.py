@@ -124,6 +124,7 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
+    (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
     (".claude/agents/architect.md", "agents/architect.md"),
     (".claude/agents/ceo.md", "agents/ceo.md"),
     (".claude/agents/comms.md", "agents/comms.md"),
@@ -148,6 +149,28 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
             problems.append(f"missing {target}")
         elif not source.exists():
             problems.append(f"source missing {source}")
+        elif not _content_equal(source, target):
+            problems.append(f"content mismatch: {target} differs from {source}")
+    return problems
+
+
+# Unlike crew_hook.py/spec_to_task_hook.py (excluded above), crew_update.py
+# takes project_root/source_root as explicit CLI args — no CLAUDE_PROJECT_DIR
+# resolution needed — so the crew/ and scripts/ copies must stay byte-identical.
+CREW_SCRIPT_PAIRS = [
+    ("crew/crew_update.py", "scripts/crew_update.py"),
+]
+
+
+def check_crew_scripts_copied(repo_root: Path) -> list[str]:
+    problems = []
+    for source_rel, target_rel in CREW_SCRIPT_PAIRS:
+        source = repo_root / source_rel
+        target = repo_root / target_rel
+        if not source.exists():
+            problems.append(f"missing {source}")
+        elif not target.exists():
+            problems.append(f"missing {target}")
         elif not _content_equal(source, target):
             problems.append(f"content mismatch: {target} differs from {source}")
     return problems
@@ -239,6 +262,7 @@ CHECKS = [
     check_manifests,
     check_template_matches_source,
     check_engine_files_copied,
+    check_crew_scripts_copied,
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,

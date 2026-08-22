@@ -19,3 +19,8 @@
 - 2026-08-22 ✅ **terminée** : `worktree-batch-isolation.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour worktree-batch-isolation.md
 - 2026-08-22 ➕ **ajoutée au backlog** : `fix-worktree-gitmv-lock-registration-gap.md`
+- 2026-08-23 ▶️ **démarrée** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
+- 2026-08-23 ✅ **terminée** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour mecanisme-mise-a-jour-scaffold-multi-projets.md
+- 2026-08-23 ✅ **terminée** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour mecanisme-mise-a-jour-scaffold-multi-projets.md

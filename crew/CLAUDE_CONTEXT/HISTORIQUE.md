@@ -4,6 +4,80 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## mecanisme-mise-a-jour-scaffold-multi-projets — 2026-08-23
+Quoi : mécanisme de mise à jour (`/crew-update`) pour un projet déjà
+bootstrapé via `crew-init`, récupérant les évolutions ultérieures des
+fichiers "moteur" du scaffold sans jamais toucher aux données utilisateur
+(`crew/TODO/`, `CURRENT_TASKS/`, `PROBLEMS/`, `ICEBOX/`, `TESTS/`,
+`HISTORIQUE.md`) ni écraser silencieusement un fichier personnalisé.
+Moteur `crew/crew_update.py` (+ `scripts/crew_update.py` resync) :
+`classify(local_hash, recorded_hash, source_hash)` — fonction pure à 5
+statuts (`absent`/`new`/`removed`/`up_to_date`/`apply`/`conflict`), le hash
+de la dernière écriture connue étant stocké dans
+`crew/CLAUDE_CONTEXT/SCAFFOLD_VERSION.json` (écriture atomique temp+`os.replace`,
+même idiome que `crew_hook.save_locks()`) plutôt qu'un diff git contre
+l'historique du scaffold — décision `architect` : un projet cible n'est pas
+un clone du repo scaffold, un hash évite toute dépendance réseau/git.
+`plan()`/`apply()`/`record_version()`/`seed()`/`detect_mode()` autour de
+cette fonction. Liste blanche scindée `ENGINE_FILES_COMMON` (tout projet)
+vs `ENGINE_FILES_LEGACY` (skills/agents/hooks copiés localement — projets
+Option C / pré-plugin uniquement ; les projets plugin s'appuient sur
+`/plugin update claude-crew` pour ces fichiers-là), sélection auto-détectée
+via `detect_mode()` (présence de `.claude/skills/crew-init/SKILL.md`
+localement) plutôt que laissée à la seule prose du skill.
+Skill dédié `skills/crew-update/SKILL.md` (+ copie `.claude/skills/crew-update/`)
+plutôt qu'extension de `crew-init` (romprait sa garantie documentée "ne
+réécrit jamais un fichier déjà rempli sans demande explicite"). Confirmation
+`AskUserQuestion` obligatoire avant tout `apply()`, jamais d'application
+silencieuse.
+Déviation vs tâche initiale : pas de nouveau fichier `VERSION` racine — le
+champ `version` de `.claude-plugin/plugin.json` (déjà existant, `"0.1.1"`)
+sert de source de vérité unique, documenté dans `CONTRIBUTING.md` §
+"Versioning the scaffold" avec la convention de bump (patch/minor/major) et
+`CHANGELOG.md` (nouveau, entrée rétroactive 0.1.1 + `[Unreleased]`).
+Découverte au passage (non corrigée, hors scope) : `.claude/skills/crew-init/SKILL.md`
+a dérivé de `skills/crew-init/SKILL.md` (décrit encore l'ancien flux Option C
+copiant skills/agents/hooks, alors que la version plugin à jour ne copie
+plus que CLAUDE.md/AGENTS.md/PRODUCT.md/CONTRIBUTING.md/SECURITY.md/
+check_placeholders.py/crew/) — filée dans `crew/PROBLEMS/derive-crew-init-skill-init-vs-claude-skills.md`.
+- **2 problèmes trouvés en code review et corrigés avant clôture** :
+  (1) `classify()` renvoyait `apply` pour un fichier disparu de la source
+  (déplacé/supprimé en amont — ex. exactement ce qui est arrivé à
+  `crew_hook.py` lors du repackaging plugin), et `apply()` plantait ensuite
+  (`FileNotFoundError` sur `shutil.copyfile`) — reproduit en live par le
+  reviewer. Corrigé par un 5e statut `removed` (jamais appliqué
+  automatiquement, signalé pour décision manuelle). (2) gap pratique majeur :
+  sans `SCAFFOLD_VERSION.json` existant (tous les projets bootstrapés avant
+  ce mécanisme), le premier `/crew-update` classait *tout* fichier divergent
+  en `conflict` (aucun hash enregistré pour prouver l'absence de
+  personnalisation) et n'appliquait donc jamais rien automatiquement —
+  exactement le cas d'usage visé par la tâche. Corrigé par `seed()`
+  (`--seed`/`--source-version`, refuse par construction d'écraser un
+  historique déjà enregistré sauf `force=True`) qui accepte le contenu local
+  actuel comme baseline de confiance explicite.
+- Passe `simplify` (4 agents parallèles reuse/simplification/efficacité/
+  altitude) : écriture atomique reprise de `crew_hook.save_locks()` (au lieu
+  d'un `write_text` nu — `SCAFFOLD_VERSION.json` est relu à chaque run
+  suivant, une troncature en cas de crash casserait la détection de
+  personnalisation) ; dédoublonnage de 7 occurrences du pattern
+  `{rel: hash_file(...) for rel in WHITELIST}` + `save_scaffold_version` dans
+  les tests, remplacées par `seed()` ; `seed()` durci contre l'écrasement
+  silencieux d'un historique existant (`force=` explicite requis) ; détection
+  legacy/plugin extraite de la prose du skill vers `detect_mode()` (testable,
+  seule source de vérité, `--legacy` reste un override CLI). Angle
+  efficacité : rien d'actionnable (CLI manuelle, échelle de quelques
+  fichiers).
+- Tests : `crew/test_crew_update.py` créé (aucun n'existait), 23 tests
+  pytest (TDD strict : RED confirmé avant chaque implémentation/correctif,
+  y compris les 2 bugs de review et les 2 durcissements de la passe
+  simplify), fixtures `tmp_path` avec fichiers réels, aucun mock. Suite
+  complète `crew/` = 31 passed (`python -m pytest crew/ -q`).
+- Fichiers clés : `crew/crew_update.py`, `scripts/crew_update.py`,
+  `crew/test_crew_update.py`, `skills/crew-update/SKILL.md`,
+  `.claude/skills/crew-update/SKILL.md`, `skills/crew-init/SKILL.md`
+  (pointeur `/crew-update`), `CONTRIBUTING.md`, `README.md`, `CHANGELOG.md`,
+  `crew/PROBLEMS/derive-crew-init-skill-init-vs-claude-skills.md`.
+
 ## hook-auto-commit-cloture-tache — 2026-08-22
 Quoi : `auto_commit_closure(finished, now_dt)` + helper `_closure_commit_scope`
 dans `crew/crew_hook.py` (+ `scripts/crew_hook.py` resync) — commit git
