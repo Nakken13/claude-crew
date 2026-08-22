@@ -33,8 +33,29 @@ précis).
      la création — validation pour une session ultérieure.
    - Retirer la tâche de sa ligne dans `crew/CLAUDE_BATCH.md` (batch ou
      section « À classer »).
-5. Rapporter : ce qui a été historisé, fichiers de tests créés (IA/DEV),
-   batch mis à jour.
+5. **Intégration du worktree de batch**, si la session travaille depuis un
+   worktree `../<nom-repo>-batch-<slug>/` sur la branche `crew/batch-<slug>`
+   (isolation physique posée par `/crew-start`, cf.
+   `docs/superpowers/specs/2026-08-22-worktree-batch-isolation-design.md`) :
+   - Si **d'autres tâches du même batch** restent en `crew/CURRENT_TASKS/`
+     (batch pas encore entièrement terminé) → ne pas toucher au worktree,
+     il sert encore. S'arrêter là pour cette section.
+   - Sinon (batch entièrement terminé) : `git rebase main` sur la branche
+     `crew/batch-<slug>` (rebase strictement local — pas de `git fetch`,
+     aucun remote n'est supposé exister).
+     - Rebase propre → fusionner en fast-forward dans `main`, puis
+       `git worktree remove ../<nom-repo>-batch-<slug>` et
+       `git branch -d crew/batch-<slug>`. Revenir (`cd`) au checkout
+       principal avant de continuer.
+     - Conflit au rebase → `git rebase --abort`, garder le worktree et la
+       branche intacts, lister les fichiers en conflit à l'utilisateur pour
+       résolution manuelle. Ne pas tenter de retirer l'entrée session de
+       `crew_lock.json` à la main : `crew/crew_hook.py` la nettoie déjà tout
+       seul (Stop/SessionEnd) — le travail de code est fini même si
+       l'intégration ne l'est pas encore.
+6. Rapporter : ce qui a été historisé, fichiers de tests créés (IA/DEV),
+   batch mis à jour, et le sort du worktree de batch (conservé car batch pas
+   fini / fusionné et supprimé / conflit laissé pour résolution manuelle).
 
 ## Ce que ce skill ne fait pas
 
@@ -44,3 +65,7 @@ précis).
   quelle que soit la taille perçue de la tâche.
 - Ne décide pas qu'un test va en `IA/` par défaut — applique le vrai critère
   (l'IA a-t-elle de quoi l'exécuter elle-même ?), pas une facilité.
+- Ne supprime jamais un worktree/branche de batch tant qu'une autre tâche du
+  même batch est encore en `crew/CURRENT_TASKS/`.
+- Ne résout jamais un conflit de rebase automatiquement — l'abandonne
+  proprement et le signale, ne discard jamais le travail du worktree.

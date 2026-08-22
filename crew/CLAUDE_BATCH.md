@@ -35,11 +35,10 @@ zone).
    de mise à jour ; le packaging plugin de (1) est un prérequis naturel
    (update = `claude plugin update`), donc après (1). Peut être réordonné
    avant (2) si (2) n'est pas encore prioritaire.
-4. `worktree-batch-isolation.md` — spec du 22/08/2026 (isolation par git
+4. ~~`worktree-batch-isolation.md`~~ — spec du 22/08/2026 (isolation par git
    worktree par batch + gate PreToolUse renforcé `Edit|Write|MultiEdit|
-   Bash`). Zone chevauche `crew_hook.py`, `scripts/`, `.claude/skills/
-   crew-*`, `hooks/hooks.json`, `.claude/settings.json` — même zone que
-   (1)-(3), rejoint ce batch au lieu d'un batch parallèle. Séquencée après
-   (1) (clos) ; peut se lancer avant (2)/(3) si prioritaire, aucune
-   dépendance de code directe avec elles au-delà de la zone partagée.
+   Bash`). Clos le 22/08/2026 — voir `HISTORIQUE.md`. Zone chevauchait
+   `crew_hook.py`, `scripts/`, `.claude/skills/crew-*`, `hooks/hooks.json`,
+   `.claude/settings.json` — même zone que (1)-(3), avait rejoint ce batch
+   au lieu d'un batch parallèle.
 

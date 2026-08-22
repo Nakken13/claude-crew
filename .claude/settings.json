@@ -17,6 +17,17 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"$CLAUDE_PROJECT_DIR/crew/crew_hook.py\"",
+            "statusMessage": "Garde batch (zone verrouillee par une autre session)",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Read|Glob",
         "hooks": [
           {

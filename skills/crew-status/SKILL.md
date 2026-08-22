@@ -24,9 +24,19 @@ en session.
    lancer et inclure son résultat — des placeholders `<...>` restants
    signifient que le scaffold n'est pas encore totalement initialisé
    (renvoyer vers `/crew-init`).
+6. **Worktrees de batch orphelins** (`git worktree list`, filtrer les
+   entrées `../<nom-repo>-batch-*`) : pour chacun, vérifier qu'une session
+   dans `crew/CLAUDE_CONTEXT/crew_lock.json` porte bien ce chemin comme
+   `worktree`. Un worktree présent sur disque sans entrée session
+   correspondante = crash ou `/crew-close-task` jamais lancé pour ce batch —
+   le signaler nommément pour nettoyage manuel (`git worktree remove` /
+   `git branch -d` par l'utilisateur), ne jamais le supprimer soi-même
+   (pourrait contenir du travail non commité).
 
 ## Ce que ce skill ne fait pas
 
 - N'écrit, ne déplace, ne coche aucun fichier — pur reporting.
 - Ne remplace pas `/crew-new-task` ou `/crew-close-task` pour agir sur une
   tâche — sert seulement à avoir une vue avant de décider quoi faire.
+- Ne supprime jamais automatiquement un worktree orphelin — signale
+  seulement, le nettoyage reste une décision manuelle de l'utilisateur.

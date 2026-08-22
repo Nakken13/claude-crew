@@ -2,12 +2,12 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS)",
+            "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS + zone verrouillee par une autre session)",
             "timeout": 10
           }
         ]

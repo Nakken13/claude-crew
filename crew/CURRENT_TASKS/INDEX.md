@@ -2,5 +2,3 @@
 
 Tâches en cours. Finie → supprimer + entrée `crew/CLAUDE_CONTEXT/HISTORIQUE.md` + `crew/TESTS/<chantier>.md`.
 
-- [claude-crew as a Claude Code marketplace plugin](marketplace-plugin.md)
-- [Worktree isolation + hardened gate for batch anti-collision](worktree-batch-isolation.md)
