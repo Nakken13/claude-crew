@@ -317,21 +317,70 @@ def _extract_git_mv_task(command):
     return None
 
 
+def _extract_resume_claim(command):
+    """Reconnait le marqueur no-op `: "crew-resume:<slug>.md"` qu'un
+    `/crew-start` (Cas A : reprise d'une tache DEJA en CURRENT_TASKS, pas de
+    `git mv` donc rien pour `_extract_git_mv_task` a intercepter) doit executer
+    avant de reprendre le travail. `:` est le no-op Bash (aucun effet de bord)
+    — seul le texte de la commande transporte l'intention jusqu'au hook.
+    Retourne le slug si trouve, sinon None."""
+    m = re.search(r"crew-resume:([\w\-.]+\.md)", command)
+    return m.group(1) if m else None
+
+
+def _claim_resume_lock(slug, session_id):
+    """Reclame (ou rafraichit) le verrou live pour une tache DEJA presente en
+    CURRENT_TASKS qu'une session reprend (`/crew-start` Cas A). Ferme le trou
+    du mecanisme historique : le verrou n'etait pose qu'au moment du `git mv`
+    TODO->CURRENT_TASKS (cf. `_extract_git_mv_task`/`started` dans `main()`),
+    donc deux sessions qui reprenaient independamment la MEME tache deja
+    presente en CURRENT_TASKS (aucun `git mv`, donc aucun `started`) ne
+    declenchaient jamais aucune verification — ni verrou, ni collision. Bloque
+    (exit 2) si un AUTRE session_id detient deja le verrou ; sinon le
+    pose/rafraichit pour cette session. Preventif (avant que la session
+    commence a editer la tache), pas retroactif comme le controle Stop."""
+    with LocksMutex():
+        locks = load_locks()
+        purge_stale_locks(locks, datetime.datetime.now())
+        info = locks.get(slug)
+        other_session = info.get("session_id") if info else None
+        if other_session and other_session != session_id:
+            since = info.get("since", "?")
+            sys.stderr.write(
+                f"Verrou live — `{slug}` est deja repris par une autre session "
+                f"(depuis {since}). Attendre la fin de cette session avant de reprendre la meme tache "
+                "(ou choisir une autre tache).\n"
+            )
+            sys.exit(2)
+        locks[slug] = {"session_id": session_id, "since": datetime.datetime.now().isoformat()}
+        save_locks(locks)
+
+
 def gate_pretooluse(payload):
     """Hook PreToolUse (matcher Bash) : bloque *avant* execution un `git mv`
     TODO->CURRENT_TASKS si la tache n'est categorisee dans aucun batch de
     CLAUDE_BATCH.md, ou si une voisine de son batch est deja verrouillee par
-    une AUTRE session (meme regle que check_batch_collisions au Stop). Preventif
-    plutot que retroactif : contrairement au controle Stop (qui se declenche
-    apres que les edits du tour ont deja eu lieu), celui-ci empeche le git mv
-    de s'executer. Bloque via exit(2) + stderr (protocole hook standard),
-    n'ecrit ni ne modifie rien — la mise a jour des verrous reste au Stop."""
+    une AUTRE session (meme regle que check_batch_collisions au Stop). Gere
+    aussi le marqueur de reprise `crew-resume:<slug>` (cf. `_claim_resume_lock`)
+    pour le Cas A de `/crew-start` (tache deja en CURRENT_TASKS, pas de `git mv`
+    a intercepter). Preventif plutot que retroactif : contrairement au controle
+    Stop (qui se declenche apres que les edits du tour ont deja eu lieu),
+    celui-ci empeche l'action de s'executer. Bloque via exit(2) + stderr
+    (protocole hook standard). Seul le chemin `crew-resume:` ecrit dans
+    `.batch_locks.json` (sous mutex) ; le chemin `git mv` n'ecrit rien — la
+    mise a jour de ses verrous reste au Stop."""
     tool_input = payload.get("tool_input") or {}
     command = str(tool_input.get("command") or "")
+    session_id = payload.get("session_id")
+
+    resume_slug = _extract_resume_claim(command)
+    if resume_slug is not None:
+        _claim_resume_lock(resume_slug, session_id)
+        return
+
     slug = _extract_git_mv_task(command)
     if not slug:
         return
-    session_id = payload.get("session_id")
     sections = load_sections()
     section = find_section_for(slug, sections)
     if section is None:
@@ -530,6 +579,14 @@ def main():
         else:
             for f in started:
                 locks[f] = {"session_id": session_id, "since": now_dt.isoformat()}
+            # Rafraichit aussi les verrous deja detenus par CETTE session sur des
+            # taches encore actives (Cas A resume via _claim_resume_lock, ou
+            # simplement une session longue) : sans ca, purge_stale_locks finirait
+            # par liberer le verrou d'une session encore en train de travailler.
+            if session_id:
+                for f in cur_c:
+                    if f in locks and locks[f].get("session_id") == session_id:
+                        locks[f]["since"] = now_dt.isoformat()
             collision_reason = check_batch_collisions(started, sections, locks, session_id)
 
         save_locks(locks)

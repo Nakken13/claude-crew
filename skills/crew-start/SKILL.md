@@ -23,6 +23,18 @@ tâche.
     celle qui a le plus d'actions déjà cochées (la plus avancée) ; en cas
     d'égalité, demander à l'utilisateur laquelle prioriser plutôt que
     deviner.
+2A-bis. **Verrou live obligatoire avant de commencer à éditer** : exécuter
+    `Bash({command: ': "crew-resume:<slug>.md"'})` (no-op, aucun effet de
+    bord — sert uniquement à faire passer l'intention au hook `PreToolUse`).
+    Une tâche déjà en `CURRENT_TASKS/` n'a jamais transité par un `git mv`
+    pendant cette session : sans cette étape, une autre session qui reprend
+    la même tâche au même moment ne serait jamais détectée (le verrou
+    historique ne se pose qu'au moment du `git mv` TODO→CURRENT_TASKS, cf.
+    Cas B ci-dessous). Si le hook bloque (exit 2, message « déjà repris par
+    une autre session ») → NE PAS continuer sur cette tâche : rapporter le
+    conflit à l'utilisateur et s'arrêter (ou choisir une autre tâche d'un
+    batch différent si le contexte le permet). Pas de blocage → poursuivre
+    normalement.
 3A. Relire le fichier de la tâche choisie, reprendre les actions `- [ ]`
     non cochées dans l'ordre. Appliquer les skills normalement pertinents
     au travail lui-même (`test-driven-development`, `systematic-debugging`,
