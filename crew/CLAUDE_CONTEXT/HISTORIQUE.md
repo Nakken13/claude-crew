@@ -350,3 +350,39 @@ Fichiers/commits clés :
   `CONTRIBUTING.md` appliqué directement) et `simplify` (4 angles en
   parallèle : reuse/simplification/efficiency/altitude — aucun fix
   nécessaire, diff markdown propre et scopé).
+
+## fix-worktree-gitmv-lock-registration-gap — 2026-08-23
+Quoi : bug de dogfooding découvert sur `worktree-batch-isolation` — `git mv
+crew/TODO/<slug>.md crew/CURRENT_TASKS/<slug>.md` lancé depuis un worktree de
+batch n'enregistrait jamais le verrou live dans `crew_lock.json` avant le
+`Stop` suivant (le hook Stop est ROOT-anchored, il ne voit jamais un
+déplacement fait dans `../<repo>-batch-<slug>/`), laissant une fenêtre où une
+2e session pouvait démarrer une tâche voisine sans détection. Fix : la
+`git mv` branche de `gate_pretooluse` enregistre désormais le verrou de façon
+préventive (avant l'exécution réelle du `mv`), sous mutex, avec relecture
+fraîche (`load_locks`+`purge_stale_locks`+re-vérification) pour fermer le
+TOCTOU avec la lecture `locks` déjà faite plus haut dans la même invocation,
+et régénère `BATCH_LOCKS.md` dans la foulée. La boucle `started` du Stop hook
+est conservée en fallback documenté (git mv hors du tool Bash suivi, ou
+PreToolUse bypassé).
+Fichiers/commits clés :
+- `crew/crew_hook.py` (+ copie `scripts/crew_hook.py` resynchronisée) :
+  nouvelle primitive `_claim_lock` (extraite en `simplify`, partagée par
+  `_claim_resume_lock` et la nouvelle `_claim_git_mv_lock`), branche `git mv`
+  de `gate_pretooluse` mise à jour, commentaire de justification ajouté sur
+  la boucle `started` de `main()`.
+- `crew/test_crew_hook.py` : fixture `repo` étendue (monkeypatch
+  `LOCKS_FILE`/`LOCKS_MUTEX`, gap de test-isolation corrigé au passage) + 5
+  scénarios `test_gate_pretooluse_git_mv_*` (registration immédiate, regen
+  `BATCH_LOCKS.md` immédiate, blocage même-slug, blocage TOCTOU, idempotence
+  avec le fallback Stop). 13/13 tests passent.
+- Revue : `requesting-code-review` (verdict "With fixes" — un point Important
+  sur un timestamp `since` figé dans une fixture de test qui aurait fini par
+  dépasser le TTL de 6h et casser 2 tests en continu ; corrigé en le
+  dérivant de l'heure réelle) et `simplify` (4 angles en parallèle — reuse et
+  altitude ont tous deux signalé la duplication `_claim_resume_lock`/
+  `_claim_git_mv_lock`, extraite en `_claim_lock` ; efficiency a fait
+  remonter `active_task_slugs()` hors du mutex).
+- Travaillé depuis le worktree de batch `../claude-crew-batch-plugin-packaging`
+  (branche `crew/batch-plugin-packaging`) — dernière tâche de ce batch, qui
+  est désormais entièrement clos.

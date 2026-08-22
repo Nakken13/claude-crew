@@ -59,6 +59,8 @@ def repo(tmp_path, monkeypatch):
     changelog = ctx / "CHANGELOG_TACHES.md"
     changelog.write_text("# Changelog\n", encoding="utf-8")
     batch_locks_md = ctx / "BATCH_LOCKS.md"
+    locks_file = ctx / "crew_lock.json"
+    locks_mutex = ctx / ".crew_lock.mutex"
 
     _git(root, "init", "-q")
     _git(root, "config", "user.email", "test@test.local")
@@ -81,6 +83,8 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, "BATCH_FILE", batch_file)
     monkeypatch.setattr(h, "CHANGELOG", changelog)
     monkeypatch.setattr(h, "BATCH_LOCKS_MD", batch_locks_md)
+    monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
+    monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
     return root, dirs, ctx
 
 
@@ -217,6 +221,148 @@ def test_auto_commit_closure_no_op_when_finished_empty(repo):
 
     sha_after = _git(root, "rev-parse", "HEAD").stdout.strip()
     assert sha_before == sha_after
+
+
+def _git_mv_command(slug):
+    return f"git mv crew/TODO/{slug} crew/CURRENT_TASKS/{slug}"
+
+
+def _git_mv_payload(slug, session_id="S1"):
+    return {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "session_id": session_id,
+        "tool_input": {"command": _git_mv_command(slug)},
+    }
+
+
+def _write_single_task_batch(dirs, header="Batch Zone1", zone="zone1/", slugs=("ma-tache.md",)):
+    """Ecrit CLAUDE_BATCH.md avec une seule section de batch contenant
+    `slugs`, et cree le premier slug dans TODO/ (fichier source du `git mv`
+    que les tests de gate_pretooluse simulent)."""
+    refs = "\n".join(f"- `{s}`" for s in slugs)
+    h.BATCH_FILE.write_text(
+        f"# Batching\n\n## {header}\n\nZone : `{zone}`\n\n{refs}\n",
+        encoding="utf-8",
+    )
+    (dirs["TODO"] / slugs[0]).write_text(f"# {slugs[0]}\n", encoding="utf-8")
+
+
+def _write_other_session_lock(root, tasks, session_id="OTHER"):
+    """Pre-remplit crew_lock.json avec une session concurrente detenant deja
+    `tasks`, via l'ecriture canonique du module (`save_locks`) plutot qu'un
+    JSON ecrit a la main. `since` relatif a l'heure reelle (pas une date
+    figee) : purge_stale_locks purge tout ce qui depasse LOCK_TTL (6h) par
+    rapport a `datetime.datetime.now()` au moment du test, une date figee
+    finirait par depasser ce seuil et casser le test en continu."""
+    since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    h.save_locks({"sessions": {session_id: {
+        "batch": "Batch Zone1",
+        "tasks": list(tasks),
+        "worktree": f"../{root.name}-batch-zone1",
+        "branch": "crew/batch-zone1",
+        "since": since,
+    }}})
+
+
+def test_gate_pretooluse_git_mv_registers_lock_immediately_from_worktree(repo):
+    """Coeur du bug : depuis un worktree de batch, le `git mv` TODO->CURRENT_TASKS
+    ne doit plus attendre le prochain tour Stop pour verrouiller la tache —
+    gate_pretooluse doit ecrire crew_lock.json avant meme que le mv ne s'execute."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+
+    h.gate_pretooluse(_git_mv_payload(slug))  # ne doit pas lever SystemExit
+
+    info = h.load_locks()["sessions"]["S1"]
+    assert info["tasks"] == [slug]
+    assert info["batch"] == "Batch Zone1"
+    assert info["worktree"] == f"../{root.name}-batch-zone1"
+    assert info["branch"] == "crew/batch-zone1"
+
+
+def test_gate_pretooluse_git_mv_regenerates_batch_locks_md_immediately(repo):
+    """Meme scenario, mais verifie BATCH_LOCKS.md (doc humaine) reflete aussi
+    le verrou tout de suite, sans attendre un tour Stop supplementaire."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+
+    h.gate_pretooluse(_git_mv_payload(slug))
+
+    content = (ctx / "BATCH_LOCKS.md").read_text(encoding="utf-8")
+    assert f"🔒 `{slug}`" in content
+    assert "session `S1`" in content
+
+
+def test_gate_pretooluse_git_mv_blocks_when_same_slug_already_locked(repo):
+    """Une autre session detient deja EXACTEMENT ce slug (pas juste une
+    voisine de batch) -> doit bloquer, meme si check_batch_collisions (qui ne
+    regarde que les voisines) ne l'aurait pas vu tout seul."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+    _write_other_session_lock(root, [slug])
+
+    with pytest.raises(SystemExit) as exc:
+        h.gate_pretooluse(_git_mv_payload(slug))
+    assert exc.value.code == 2
+
+    locks = h.load_locks()
+    assert "S1" not in locks["sessions"], "la session bloquee ne doit pas etre enregistree"
+    assert locks["sessions"]["OTHER"]["tasks"] == [slug]
+
+
+def test_gate_pretooluse_git_mv_toctou_blocks_on_fresh_reload(repo, monkeypatch):
+    """Simule la course : la premiere lecture de `locks` dans gate_pretooluse
+    (avant le mutex) est perimee (vide), mais une AUTRE session a deja pose
+    son verrou sur la voisine de batch entre-temps. La re-verification fraiche
+    sous mutex doit quand meme bloquer."""
+    root, dirs, ctx = repo
+    slug_a, slug_b = "a.md", "b.md"
+    _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
+    _write_other_session_lock(root, [slug_b])
+
+    orig_load_locks = h.load_locks
+    calls = {"n": 0}
+
+    def stale_then_real_load_locks():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"sessions": {}}  # lecture perimee, avant l'ecriture concurrente
+        return orig_load_locks()
+
+    monkeypatch.setattr(h, "load_locks", stale_then_real_load_locks)
+
+    with pytest.raises(SystemExit) as exc:
+        h.gate_pretooluse(_git_mv_payload(slug_a))
+    assert exc.value.code == 2
+
+    locks = orig_load_locks()
+    assert "S1" not in locks["sessions"]
+
+
+def test_gate_pretooluse_git_mv_then_stop_started_loop_is_idempotent(repo):
+    """La boucle `started` du Stop (fallback documente, cf. main()) rejoue
+    l'enregistrement pour la meme tache/session apres coup : ne doit pas
+    dupliquer l'entree ni écraser batch/worktree/branch."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+    h.gate_pretooluse(_git_mv_payload(slug))
+
+    locks = h.load_locks()
+    sections = h.load_sections()
+    later = datetime.datetime(2026, 8, 22, 23, 30, 0)
+    h._register_task_lock(slug, "S1", locks, later, sections)
+    h.save_locks(locks)
+
+    locks = h.load_locks()
+    info = locks["sessions"]["S1"]
+    assert info["tasks"] == [slug]
+    assert info["batch"] == "Batch Zone1"
+    assert info["worktree"] == f"../{root.name}-batch-zone1"
 
 
 def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):

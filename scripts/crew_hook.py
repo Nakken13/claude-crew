@@ -30,7 +30,7 @@ blocage volontaire exit(2) de gate_pretooluse).
 """
 import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
-ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet cible
+ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
@@ -423,17 +423,16 @@ def _extract_resume_claim(command):
     return m.group(1) if m else None
 
 
-def _claim_resume_lock(slug, session_id):
-    """Reclame (ou rafraichit) le verrou live pour une tache DEJA presente en
-    CURRENT_TASKS qu'une session reprend (`/crew-start` Cas A). Ferme le trou
-    du mecanisme historique : le verrou n'etait pose qu'au moment du `git mv`
-    TODO->CURRENT_TASKS (cf. `_extract_git_mv_task`/`started` dans `main()`),
-    donc deux sessions qui reprenaient independamment la MEME tache deja
-    presente en CURRENT_TASKS (aucun `git mv`, donc aucun `started`) ne
-    declenchaient jamais aucune verification — ni verrou, ni collision. Bloque
-    (exit 2) si un AUTRE session_id detient deja le verrou ; sinon le
-    pose/rafraichit pour cette session. Preventif (avant que la session
-    commence a editer la tache), pas retroactif comme le controle Stop."""
+def _claim_lock(slug, session_id, action_verb, sections=None, extra_check=None, on_success=None):
+    """Primitive partagee par `_claim_resume_lock` et `_claim_git_mv_lock` :
+    sous mutex, reload + purge + verifie qu'aucune AUTRE session ne detient
+    deja ce slug exact (TOCTOU-safe vis-a-vis de toute lecture de `locks`
+    faite par l'appelant AVANT le mutex), puis un `extra_check(locks) ->
+    reason|None` optionnel (ex. `check_batch_collisions` pour les voisines de
+    batch), enregistre le verrou (`_register_task_lock`) et sauvegarde.
+    Bloque (exit 2 + stderr) sur toute collision — `action_verb` ('reprendre'/
+    'demarrer') humanise le message. `on_success(locks)` optionnel s'execute
+    juste apres `save_locks`, toujours sous mutex (ex. regen_batch_locks_md)."""
     with LocksMutex():
         locks = load_locks()
         now_dt = datetime.datetime.now()
@@ -443,12 +442,53 @@ def _claim_resume_lock(slug, session_id):
             since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
             sys.stderr.write(
                 f"Verrou live — `{slug}` est deja repris par une autre session "
-                f"(depuis {since}). Attendre la fin de cette session avant de reprendre la meme tache "
+                f"(depuis {since}). Attendre la fin de cette session avant de {action_verb} la meme tache "
                 "(ou choisir une autre tache).\n"
             )
             sys.exit(2)
-        _register_task_lock(slug, session_id, locks, now_dt)
+        if extra_check is not None:
+            reason = extra_check(locks)
+            if reason:
+                sys.stderr.write(reason + "\n")
+                sys.exit(2)
+        _register_task_lock(slug, session_id, locks, now_dt, sections)
         save_locks(locks)
+        if on_success is not None:
+            on_success(locks)
+
+
+def _claim_resume_lock(slug, session_id):
+    """Reclame (ou rafraichit) le verrou live pour une tache DEJA presente en
+    CURRENT_TASKS qu'une session reprend (`/crew-start` Cas A). Ferme le trou
+    du mecanisme historique : le verrou n'etait pose qu'au moment du `git mv`
+    TODO->CURRENT_TASKS (cf. `_extract_git_mv_task`/`started` dans `main()`),
+    donc deux sessions qui reprenaient independamment la MEME tache deja
+    presente en CURRENT_TASKS (aucun `git mv`, donc aucun `started`) ne
+    declenchaient jamais aucune verification — ni verrou, ni collision.
+    Preventif (avant que la session commence a editer la tache), pas
+    retroactif comme le controle Stop. Cf. `_claim_lock` pour le detail."""
+    _claim_lock(slug, session_id, "reprendre")
+
+
+def _claim_git_mv_lock(slug, session_id, sections):
+    """Enregistre le verrou live pour une tache demarree via `git mv`
+    TODO->CURRENT_TASKS (gate_pretooluse), AVANT que le mv ne s'execute reellement
+    — ferme le trou worktree (le hook Stop est ROOT-anchored, il ne voit jamais
+    un `git mv` fait depuis `../<repo>-batch-<slug>/`, cf. tache
+    fix-worktree-gitmv-lock-registration-gap). Ajoute a `_claim_lock` la
+    verification des voisines de batch (`check_batch_collisions`, fraiche sous
+    mutex — ferme le TOCTOU avec la lecture `locks` deja faite plus haut dans
+    gate_pretooluse pour le scan generique de la meme invocation) et la
+    regeneration de BATCH_LOCKS.md : sinon la doc humaine resterait en retard
+    sur crew_lock.json jusqu'au prochain tour Stop. `active` calcule HORS
+    mutex (I/O disque sans rapport avec crew_lock.json, meme raisonnement que
+    dans `main()`)."""
+    active = active_task_slugs()
+    _claim_lock(
+        slug, session_id, "demarrer", sections=sections,
+        extra_check=lambda locks: check_batch_collisions({slug}, sections, locks, session_id),
+        on_success=lambda locks: regen_batch_locks_md(sections, locks, active),
+    )
 
 
 def _locked_zones_by_others(sections, locks, session_id):
@@ -601,9 +641,12 @@ def gate_pretooluse(payload):
     Preventif plutot que retroactif : contrairement au controle Stop (qui se
     declenche apres que les edits du tour ont deja eu lieu), celui-ci empeche
     l'action de s'executer. Bloque via exit(2) + stderr (protocole hook
-    standard). Seul le chemin `crew-resume:` ecrit dans `crew_lock.json` (sous
-    mutex) ; les autres chemins ne font que lire — la mise a jour de leurs
-    verrous reste au Stop."""
+    standard). Les chemins `crew-resume:` ET `git mv` TODO->CURRENT_TASKS
+    ecrivent tous deux dans `crew_lock.json` (sous mutex, cf. `_claim_resume_lock`/
+    `_claim_git_mv_lock`) — necessaire pour le `git mv` car depuis un worktree de
+    batch le hook Stop (ROOT-anchored) ne voit jamais ce deplacement (cf. tache
+    fix-worktree-gitmv-lock-registration-gap) ; seul le scan generique
+    (`rm`/`mv`/`cp`/redirection) reste lecture seule."""
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input") or {}
     session_id = payload.get("session_id")
@@ -642,6 +685,8 @@ def gate_pretooluse(payload):
         if reason:
             sys.stderr.write(reason + "\n")
             sys.exit(2)
+        if session_id:
+            _claim_git_mv_lock(slug, session_id, sections)
 
     for p in _extract_candidate_paths(command):
         _gate_check_path(p, session_id, locks, sections)
@@ -957,6 +1002,14 @@ def main():
                 locks.get("sessions", {}).pop(session_id, None)
         else:
             if session_id:
+                # Fallback conserve deliberement (pas redondant) : couvre le
+                # `git mv` fait directement dans le checkout principal SANS passer
+                # par gate_pretooluse (ex. hook PreToolUse desactive/bypass, ou
+                # mutex non acquis en best-effort). Pour le flux worktree normal,
+                # `_claim_git_mv_lock` a deja enregistre le verrou en amont —
+                # `_register_task_lock` est idempotent (slug pas duplique, batch/
+                # worktree/branch deja poses pas ecrases), donc ce replay ne fait
+                # que rafraichir `since` sans effet de bord problematique.
                 for f in started:
                     _register_task_lock(f, session_id, locks, now_dt, sections)
                 # Rafraichit aussi le verrou deja detenu par CETTE session si elle
