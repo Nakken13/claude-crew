@@ -65,25 +65,47 @@ its entire history.
 
 Plenty of scaffolds give you a prompt template and a folder layout. What
 `claude-crew` adds is tracking *which files each task touches* (its "zone"),
-grouping tasks that share a zone into the same batch, and flagging it —
-before a task moves to `CURRENT_TASKS` — if its zone overlaps an **active**
-batch it doesn't belong to. A routing rule tells Claude Code to check this
-before starting any task, backed by a hook that re-checks and warns
-(non-blocking, stderr) on every turn.
+grouping tasks that share a zone into the same batch, and **preventing** —
+not just flagging — a collision when a batch's zone overlaps an **active**
+batch it doesn't belong to. Two layers, not one:
+
+- **Layer 1 — physical isolation.** Each active batch runs in its own `git
+  worktree` (`../<repo>-batch-<slug>/`, sibling of the main checkout) on its
+  own branch (`crew/batch-<slug>`). Two Claude Code instances on two
+  different batches are never pointed at the same working tree, so a raw
+  filesystem collision between them is structurally impossible, not just
+  discouraged.
+- **Layer 2 — a blocking gate.** A `PreToolUse` hook intercepts every
+  `Edit`/`Write`/`MultiEdit` call and every mutating `Bash` command
+  (`rm`/`mv`/`cp`/output redirection/`git mv`) and **rejects it (`exit 2`)
+  before it runs** if the path it touches falls under a `Zone:` already
+  locked by a *different* session. The lock itself is registered
+  preventively at the moment a task moves `TODO → CURRENT_TASKS` — including
+  when that `git mv` is run from inside a batch worktree rather than the
+  main checkout — written under a mutex with an atomic file replace, so two
+  sessions racing to claim the same batch can't both win.
+
+A `Stop` hook still regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks
+zone overlaps every turn, but now purely as a retroactive fallback (a
+`git mv` run outside a tracked `Bash` call, or the `PreToolUse` gate getting
+bypassed) — it's no longer the only thing standing between two agents and
+the same file.
 
 > [!IMPORTANT]
 > You catch the collision **before** you point a second Claude Code instance
-> at the same code, not after you've resolved the merge conflict.
+> at the same code — and if you somehow don't, the write itself gets
+> refused instead of silently landing.
 
 ```
-🟢 Batch A — Zone: frontend/checkout/**        [1 task in CURRENT_TASKS]
-🟢 Batch B — Zone: backend/payments/**         [1 task in CURRENT_TASKS]
-🔴 Batch C — Zone: frontend/checkout/**  <-- overlaps Batch A, flagged before start
+🟢 Batch A — Zone: frontend/checkout/**   [worktree ../repo-batch-a/, branch crew/batch-a]
+🟢 Batch B — Zone: backend/payments/**    [worktree ../repo-batch-b/, branch crew/batch-b]
+🔴 Batch C — Zone: frontend/checkout/**   <-- overlaps Batch A, write blocked (exit 2) before it happens
 ```
 
 This is the part that matters once you're running more than one agent — the
-folder lifecycle alone is a nice-to-have, the collision check is what keeps
-parallel Claude Code instances from stepping on each other.
+folder lifecycle alone is a nice-to-have, the worktree isolation + blocking
+gate is what actually keeps parallel Claude Code instances from stepping on
+each other's files.
 
 <br>
 
@@ -92,7 +114,8 @@ parallel Claude Code instances from stepping on each other.
 | Piece | What it does |
 |---|---|
 | 🗂️ `crew/` | The task lifecycle folders (`PROBLEMS`/`TODO`/`CURRENT_TASKS`/`TESTS`/`CLAUDE_CONTEXT`/`ICEBOX`) |
-| 🪝 `crew_hook.py` | Runs on `Stop` — regenerates `INDEX.md` files, warns (non-blocking, stderr) on zone overlaps and orphaned tasks |
+| 🌳 Per-batch `git worktree` | Physical isolation — each active batch gets its own checkout (`../<repo>-batch-<slug>/`) and branch (`crew/batch-<slug>`), so parallel Claude Code instances can never share a working tree |
+| 🪝 `crew_hook.py` | Two hooks in one file: `PreToolUse` blocks (`exit 2`) any `Edit`/`Write`/`MultiEdit`/mutating `Bash` into a zone locked by another session, and registers that lock preventively on `git mv`; `Stop` regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks overlaps as a fallback |
 | 🪝 `spec_to_task_hook.py` | Runs on file writes — keeps specs and tasks in sync |
 | ⚡ `/crew-init` | Bootstraps the whole scaffold onto a project, resolves every `<placeholder>`, fails loud if one is left unresolved |
 | ⚡ `/crew-new-task` `/crew-close-task` `/crew-status` | Run the lifecycle + batching instead of doing it by hand every time |
