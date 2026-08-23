@@ -24,3 +24,6 @@
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour mecanisme-mise-a-jour-scaffold-multi-projets.md
 - 2026-08-23 ✅ **terminée** : `mecanisme-mise-a-jour-scaffold-multi-projets.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour mecanisme-mise-a-jour-scaffold-multi-projets.md
+- 2026-08-23 ▶️ **démarrée** : `verif-fork-throwaway.md`
+- 2026-08-23 ✅ **terminée** : `verif-fork-throwaway.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour verif-fork-throwaway.md
