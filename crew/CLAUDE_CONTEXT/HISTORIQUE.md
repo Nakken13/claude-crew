@@ -386,3 +386,6 @@ Fichiers/commits clés :
 - Travaillé depuis le worktree de batch `../claude-crew-batch-plugin-packaging`
   (branche `crew/batch-plugin-packaging`) — dernière tâche de ce batch, qui
   est désormais entièrement clos.
+
+## verif-fork-throwaway
+Quoi : tache jetable de validation du commit auto de cloture (test IA). Rien de fonctionnel, supprimee juste apres.
