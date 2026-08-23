@@ -30,7 +30,7 @@ blocage volontaire exit(2) de gate_pretooluse).
 """
 import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
+ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
