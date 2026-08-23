@@ -9,7 +9,7 @@ même du `PreToolUse`, sans attendre le `Stop` suivant — voir
 
 ## 🤖 / 🔍 Auto (IA)
 
-- [ ] 🤖 `python -m pytest crew/test_crew_hook.py -v` → 13 passed, y compris
+- [x] 🤖 `python -m pytest crew/test_crew_hook.py -v` → 13 passed, y compris
       les 5 nouveaux scénarios `test_gate_pretooluse_git_mv_*` (registration
       immédiate, régénération `BATCH_LOCKS.md` immédiate, blocage même-slug
       déjà verrouillé, blocage TOCTOU sur relecture fraîche, idempotence avec
@@ -27,7 +27,7 @@ même du `PreToolUse`, sans attendre le `Stop` suivant — voir
       (ou une voisine du même batch) pendant que `sessX` le tient encore →
       exit code 2, message stderr explicite, `crew_lock.json` inchangé côté
       `sessY`.
-- [ ] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
+- [x] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
       crew_hook.py` et `scripts/crew_hook.py` restent synchronisés
       (`diff crew/crew_hook.py scripts/crew_hook.py` vide).
 - [ ] 🔍 Nettoyer le worktree/branche de test créés pour ce scénario

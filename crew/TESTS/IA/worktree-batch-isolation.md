@@ -57,7 +57,7 @@ Validation de l'isolation physique par `git worktree` par batch actif
 - [ ] 🔍 `crew/CLAUDE_CONTEXT/crew_lock.json` reste un JSON valide et de
       forme `{"sessions": {...}}` après une séquence Stop/PreToolUse/
       SessionEnd mêlée (pas de régression vers l'ancien format plat).
-- [ ] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
+- [x] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
       crew_hook.py` et `scripts/crew_hook.py` restent synchronisés.
 
 ## 🖱️ Voir aussi crew/TESTS/DEV/worktree-batch-isolation.md

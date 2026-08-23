@@ -27,3 +27,6 @@
 - 2026-08-23 ▶️ **démarrée** : `verif-fork-throwaway.md`
 - 2026-08-23 ✅ **terminée** : `verif-fork-throwaway.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour verif-fork-throwaway.md
+- 2026-08-23 🧪 **tests validés** : `hook-auto-commit-cloture-tache.md` (déplacé vers `TESTS_DONE/`)
+- 2026-08-23 🧪 **tests validés** : `marketplace-plugin.md` (déplacé vers `TESTS_DONE/`)
+- 2026-08-23 🧪 **tests validés** : `readme-github-discoverability.md` (déplacé vers `TESTS_DONE/`)

@@ -4,8 +4,5 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 
 - [batch-lock-hardening](batch-lock-hardening.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
-- [hook-auto-commit-cloture-tache](hook-auto-commit-cloture-tache.md)
-- [Plugin marketplace packaging](marketplace-plugin.md)
 - [mecanisme-mise-a-jour-scaffold-multi-projets](mecanisme-mise-a-jour-scaffold-multi-projets.md)
-- [readme-github-discoverability](readme-github-discoverability.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)

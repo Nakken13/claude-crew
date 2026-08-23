@@ -27,7 +27,7 @@ TODO->CURRENT_TASKS, `check_zone_overlaps` bloquant en cross-session.
       crew/crew_hook.py` toujours propre (exit 0, régénère
       `BATCH_LOCKS.md`/indices, aucun mutex orphelin
       `crew/CLAUDE_CONTEXT/.batch_locks.mutex` après coup).
-- [ ] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
+- [x] 🔍 `python scripts/dev/verify_plugin_package.py` → PASS, `crew/
       crew_hook.py` et `scripts/crew_hook.py` ne divergent que sur la
       résolution `ROOT`/`CLAUDE_PROJECT_DIR` (diff des deux fichiers).
 - [ ] 🔍 Stress concurrence : plusieurs threads/process appelant
