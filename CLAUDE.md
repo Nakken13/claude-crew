@@ -75,6 +75,10 @@ dérouler le protocole à la main à chaque fois :
 - `/crew-status` — rapport lecture seule : batchs actifs et chevauchements,
   avancement des tâches en cours, tests IA non cochés, tâches TODO
   orphelines.
+- `/crew-count` — rapport lecture seule : nombre de batchs lançables en
+  parallèle maintenant (un Claude par batch), distinct des batchs déjà
+  actifs et de ceux exclus pour chevauchement de zone — évite de deviner
+  à l'aveugle depuis `crew/CLAUDE_BATCH.md`.
 - `/crew-start` — reprend le travail sans préciser quoi : continue la
   tâche déjà en `CURRENT_TASKS/` s'il y en a une, sinon démarre un batch
   pas encore actif depuis `TODO/` (anti-collision via `manager`), code,
@@ -153,6 +157,8 @@ Avant de déplacer une tâche vers `crew/CURRENT_TASKS/` (§ Gestion des tâches
 Garde-fou automatisé (complémentaire, pas suffisant seul) : le hook `crew/crew_hook.py` (`check_zone_overlaps`) compare à chaque tour les `Zone :` de tous les batchs actifs et avertit (non bloquant, stderr) en cas de chevauchement de chemins entre deux batchs actifs différents. Pour une vue à la demande plutôt que d'attendre le prochain `Stop` → `/crew-status`.
 
 Tâche terminée → la retirer de son batch. Le hook `crew/crew_hook.py` avertit (non bloquant) si une tâche TODO/CURRENT n'apparaît nulle part dans `CLAUDE_BATCH.md`, ou si le fichier référence une tâche disparue.
+
+**Nettoyage automatique** : dès que **toutes** les tâches d'un batch sont barrées (`~~`slug.md`~~`), le hook `crew/crew_hook.py` (`prune_closed_batches`) retire la section batch entière de `CLAUDE_BATCH.md` au tour suivant — évite que le fichier grossisse indéfiniment. Aucune perte : l'historique complet de chaque tâche close reste dans `HISTORIQUE.md`. Rien à faire côté agent — ne pas supprimer une section manuellement en amont, le hook s'en charge une fois la dernière tâche du batch barrée par `/crew-close-task`. Sections vides/placeholder (jamais démarrées) non concernées.
 
 ## Efficience de contexte
 

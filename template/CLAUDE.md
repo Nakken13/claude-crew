@@ -154,6 +154,8 @@ Garde-fou automatisé (complémentaire, pas suffisant seul) : le hook `crew/crew
 
 Tâche terminée → la retirer de son batch. Le hook `crew/crew_hook.py` avertit (non bloquant) si une tâche TODO/CURRENT n'apparaît nulle part dans `CLAUDE_BATCH.md`, ou si le fichier référence une tâche disparue.
 
+**Nettoyage automatique** : dès que **toutes** les tâches d'un batch sont barrées (`~~`slug.md`~~`), le hook `crew/crew_hook.py` (`prune_closed_batches`) retire la section batch entière de `CLAUDE_BATCH.md` au tour suivant — évite que le fichier grossisse indéfiniment. Aucune perte : l'historique complet de chaque tâche close reste dans `HISTORIQUE.md`. Rien à faire côté agent — ne pas supprimer une section manuellement en amont, le hook s'en charge une fois la dernière tâche du batch barrée par `/crew-close-task`. Sections vides/placeholder (jamais démarrées) non concernées.
+
 ## Efficience de contexte
 
 Ces règles limitent le gaspillage de tokens et les coupures de session prématurées.

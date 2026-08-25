@@ -17,6 +17,12 @@
      même tour (fichier disparu de `CURRENT_TASKS/` + `HISTORIQUE.md`
      effectivement modifié) — trace git systématique de chaque clôture sans
      rien pousser automatiquement, le push reste une décision humaine.
+  7. retire de crew/CLAUDE_BATCH.md toute section `## Batch`/`### Batch`
+     dont TOUTES les tâches listées sont barrées (~~`slug.md`~~) — batch
+     entièrement clos (cf. `prune_closed_batches`) — pour empêcher le
+     fichier de grossir indéfiniment ; l'historique complet reste dans
+     HISTORIQUE.md, déjà écrit à la clôture de chaque tâche. Les sections
+     vides/placeholder (0 tâche référencée) ne sont jamais touchées.
 En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
   - `Edit`/`Write`/`MultiEdit` : bloque avant écriture si `file_path` tombe
     sous une `Zone:` de batch verrouillée par une AUTRE session.
@@ -139,6 +145,53 @@ def check_batches():
     for f in sorted(referenced - actual):
         warnings.append(f"[batch] CLAUDE_BATCH.md reference une tache inexistante : `{f}`")
     return warnings
+
+
+TASK_LINE_RE = re.compile(
+    r"^[ \t]*(?:\d+\.|[-*])\s*(~~)?`(?:[\w\-./]*/)?([\w\-.]+\.md)`(~~)?",
+    re.MULTILINE,
+)
+
+
+def _task_line_counts(body):
+    """Compte, sur les lignes de liste d'une section batch (`- `/`N. ` suivi
+    d'une ref `slug.md`), combien referencent une tache et combien sont
+    barrees (~~...~~). Ancre en tete de ligne pour ignorer les refs .md
+    incidentes en prose (ex. 'voir `HISTORIQUE.md`') ou dans la ligne Zone."""
+    total = closed = 0
+    for m in TASK_LINE_RE.finditer(body):
+        total += 1
+        if m.group(1) and m.group(3):
+            closed += 1
+    return total, closed
+
+
+def prune_closed_batches(text):
+    """Retire de CLAUDE_BATCH.md les sections '## Batch'/'### Batch' dont
+    TOUTES les taches listees sont barrees (batch entierement clos) — evite
+    que le fichier grossisse indefiniment avec des batchs termines (leur
+    historique complet reste dans HISTORIQUE.md, deja ecrit a la cloture de
+    chaque tache). Sections sans aucune tache referencee (batch vide/
+    placeholder, ex. 'Batch A' avec `<slug>.md`) sont laissees intactes.
+    Retourne (nouveau_texte, en-tetes_retires)."""
+    headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
+    removed = []
+    keep_spans = []
+    cursor = 0
+    for i, m in enumerate(headers):
+        body_start = m.end()
+        body_end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        total, closed = _task_line_counts(text[body_start:body_end])
+        if total and total == closed:
+            removed.append(m.group().lstrip("#").strip())
+            keep_spans.append((cursor, m.start()))
+            cursor = body_end
+    if not removed:
+        return text, []
+    keep_spans.append((cursor, len(text)))
+    new_text = "".join(text[a:b] for a, b in keep_spans)
+    new_text = re.sub(r"\n{3,}", "\n\n\n", new_text)
+    return new_text, removed
 
 
 def rotate_graphify_snapshots(keep=3):
@@ -971,6 +1024,16 @@ def main():
         entries.append(f"- {now} 🧪 **tests validés** : `{f}` (déplacé vers `TESTS_DONE/`)")
         # Forcer la regénération de l'index IA puisqu'on a déplacé un fichier
         state["TESTS/IA"] = regen_index("TESTS/IA", DIRS["TESTS/IA"])
+
+    pruned_headers = []
+    if BATCH_FILE.exists():
+        batch_text = BATCH_FILE.read_text(encoding="utf-8")
+        pruned_text, pruned_headers = prune_closed_batches(batch_text)
+        if pruned_headers:
+            BATCH_FILE.write_text(pruned_text, encoding="utf-8")
+            for h in pruned_headers:
+                entries.append(f"- {now} 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `{h}` "
+                               "(historique déjà dans HISTORIQUE.md)")
 
     # Verrous live par batch (anti-collision multi-Claude). Seule la section
     # read-modify-write de crew_lock.json (load -> mutate -> save) est
