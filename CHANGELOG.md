@@ -30,7 +30,7 @@ entry is a retroactive summary, not a per-task log. See
   preventive `PreToolUse` gate before starting an uncategorized task, and a
   blocking zone-overlap check between sessions — 2026-08-22.
 
-## [Unreleased]
+## [0.2.0] - 2026-08-25
 
 - **Added `/crew-update`** — updates engine files (`CLAUDE.md`/`AGENTS.md`/
   `PRODUCT.md`/`CONTRIBUTING.md`/`SECURITY.md`/`check_placeholders.py`, plus
@@ -47,3 +47,21 @@ entry is a retroactive summary, not a per-task log. See
   baseline unless `force=True`/`--force` is passed explicitly). Install mode
   (legacy vs. plugin) is auto-detected (`detect_mode()`) rather than left to
   prose in the skill; `--legacy` remains available to force it.
+- **Fixed** a worktree lock registration gap — a task's live lock is now
+  registered preventively at the moment its file is `git mv`'d into a
+  worktree, closing a race window where another session could start on the
+  same zone before the lock was written.
+- **Fixed** `CLAUDE_PROJECT_DIR` root resolution in `crew_hook.py`.
+- **Added `/crew-count`** — read-only report of how many batches are
+  launchable in parallel right now, distinct from batches already active or
+  excluded for zone overlap.
+- **Added the 150k-token context budget rule** — a `Stop`-hook check
+  (`check_context_budget`) estimates session context usage from the
+  transcript and warns (non-blocking) once the session looks past the
+  threshold; recommends `/clear` or a new session instead of silently
+  accumulating.
+- **Added auto-pruning of fully-closed batches** — once every task in a
+  batch in `CLAUDE_BATCH.md` is struck through, the hook removes the whole
+  batch section on the next turn so the file doesn't grow unbounded; full
+  history stays in `HISTORIQUE.md`.
+- **Documented** the two-layer locking mechanism in the README.
