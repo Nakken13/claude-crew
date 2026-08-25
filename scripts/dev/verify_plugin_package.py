@@ -258,6 +258,37 @@ def check_scripts_resolve_project_dir(repo_root: Path) -> list[str]:
     return problems
 
 
+def check_crew_hook_stays_in_sync(repo_root: Path) -> list[str]:
+    """crew/crew_hook.py et scripts/crew_hook.py divergent volontairement sur
+    UNE seule ligne (resolution de ROOT via CLAUDE_PROJECT_DIR, cf.
+    check_scripts_resolve_project_dir / ENGINE_FILE_PAIRS ci-dessus). Le
+    reste doit rester identique — sinon un correctif applique a une seule
+    copie (ex. check_context_budget, tache alerte-contexte-150k) peut
+    silencieusement ne jamais atteindre l'autre copie."""
+    problems = []
+    source = repo_root / "crew" / "crew_hook.py"
+    target = repo_root / "scripts" / "crew_hook.py"
+    if not source.exists() or not target.exists():
+        problems.append("crew/crew_hook.py or scripts/crew_hook.py missing — cannot verify sync")
+        return problems
+    source_lines = source.read_bytes().replace(b"\r\n", b"\n").split(b"\n")
+    target_lines = target.read_bytes().replace(b"\r\n", b"\n").split(b"\n")
+    if len(source_lines) != len(target_lines):
+        problems.append(
+            "crew/crew_hook.py and scripts/crew_hook.py have a different line "
+            "count — expected to diverge on exactly the ROOT-resolution line"
+        )
+        return problems
+    for i, (a, b) in enumerate(zip(source_lines, target_lines), start=1):
+        if a == b or (a.startswith(b"ROOT = ") and b.startswith(b"ROOT = ")):
+            continue
+        problems.append(
+            f"crew/crew_hook.py:{i} differs from scripts/crew_hook.py:{i} "
+            "outside the known ROOT-resolution line"
+        )
+    return problems
+
+
 CHECKS = [
     check_manifests,
     check_template_matches_source,
@@ -267,6 +298,7 @@ CHECKS = [
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,
     check_scripts_resolve_project_dir,
+    check_crew_hook_stays_in_sync,
 ]
 
 

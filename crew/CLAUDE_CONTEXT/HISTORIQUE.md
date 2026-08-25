@@ -421,3 +421,51 @@ Fichiers/commits clés :
   place dans `crew-status`, et la suggestion de fusionner `/crew-count`
   dans `/crew-status` plutôt qu'un skill séparé — hors scope, l'utilisateur
   a explicitement demandé une commande `/crew-count` dédiée).
+
+## alerte-contexte-150k — 2026-08-25
+Quoi : précise la règle "Efficience de contexte" (§ Reset de session,
+`CLAUDE.md` racine + `template/CLAUDE.md`) avec un seuil de tokens explicite
+(150k) à la place du repère approximatif "10-12 interactions", et ajoute un
+comportement dédié pour les subagents. Mécanisme technique : payload Stop
+expose `transcript_path` (JSONL) mais aucune API de comptage de tokens
+dédiée n'est exposée aux hooks Claude Code — approximé via le dernier
+message assistant du transcript (`usage.input_tokens` + tokens de cache),
+proxy raisonnable puisque chaque tour renvoie l'historique complet en
+entrée. Implémenté côté session principale (`check_context_budget`, hook
+Stop, avertissement stderr non bloquant) ; côté subagent, aucun mécanisme
+fiable n'existe (pas d'API de comptage pendant son propre tour) → reste une
+consigne textuelle (auto-arrêt, recap bullet points, relance d'un nouvel
+agent), documentée explicitement comme limitation plutôt que simulée.
+Fichiers/commits clés :
+- `crew/crew_hook.py` / `scripts/crew_hook.py` : `check_context_budget` +
+  `_iter_lines_reverse` (scan du transcript depuis la fin, coût
+  proportionnel à la distance jusqu'au dernier message assistant plutôt
+  qu'à la taille totale du transcript).
+- `crew/test_crew_hook.py` : 5 tests (TDD — rouge avant l'implémentation,
+  vert après), suite complète 22/22.
+- `CLAUDE.md` racine + `template/CLAUDE.md` : § Reset de session mis à
+  jour (seuil 150k + comportement subagent), synchronisés entre eux.
+  `crew/CLAUDE_CONTEXT/AGENTS.md` vérifié : pas de pointeur nécessaire
+  (scope produit/anti-patterns, lu seulement sur ambiguïté cross-stack ;
+  `CLAUDE.md` racine est toujours chargé et suffit).
+- `scripts/dev/verify_plugin_package.py` : nouveau
+  `check_crew_hook_stays_in_sync` — garde-fou de dérive entre
+  `crew/crew_hook.py` et `scripts/crew_hook.py` (jusqu'ici totalement
+  exclus du contrôle byte-à-byte à cause de leur seule ligne `ROOT`
+  divergente ; sans ce garde-fou un correctif comme celui-ci pouvait
+  n'atteindre qu'une seule des deux copies sans que rien ne le signale).
+- Revue : `requesting-code-review` (scope rescopé vers le worktree de
+  batch après un premier passage accidentel sur le main checkout sans
+  diff — 3 points remontés : perte d'une assertion dans un test
+  préexistant sans rapport lors d'un nettoyage manuel d'une ligne
+  orpheline, corrigée ; état de clôture pas encore appliqué au moment du
+  passage — normal, la clôture suit ce même tour ; le scan plein fichier
+  déjà signalé par `simplify`) et `simplify` (4 angles en parallèle —
+  reuse : rien à signaler, pas de duplication d'un helper existant ;
+  efficiency : scan intégral du transcript à chaque tour Stop → coût
+  O(n²) sur une session longue, corrigé par lecture depuis la fin
+  (`_iter_lines_reverse`) ; simplification : try/except imbriqués et
+  double `return []` aplatis, import local `json` du fichier de test
+  remonté en top-level ; altitude : duplication `crew/`↔`scripts/` sans
+  garde de synchronisation au-delà de la ligne `ROOT` connue, corrigée
+  par `check_crew_hook_stays_in_sync`).
