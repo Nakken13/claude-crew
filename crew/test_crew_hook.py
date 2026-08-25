@@ -381,3 +381,55 @@ def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
 
     sha_after = _git(root, "rev-parse", "HEAD").stdout.strip()
     assert sha_before == sha_after
+
+
+def test_prune_closed_batches_removes_fully_closed_section():
+    text = (
+        "# Batching\n\n"
+        "## A classer\n\nplaceholder\n\n"
+        "## Batch A\n\nZone : `fichiers/modules`\n\n- `<slug>.md`\n\n"
+        "## Batch demo\n\nZone : `src/`\n\n"
+        "1. ~~`task-one.md`~~ - fait. Voir `HISTORIQUE.md`.\n"
+        "2. ~~`task-two.md`~~ - fait aussi.\n\n"
+    )
+    new_text, removed = h.prune_closed_batches(text)
+    assert removed == ["Batch demo"]
+    assert "Batch demo" not in new_text
+    assert "task-one.md" not in new_text
+    # Sections non concernées intactes
+    assert "## Batch A" in new_text
+    assert "<slug>.md" in new_text
+    assert "## A classer" in new_text
+
+
+def test_prune_closed_batches_keeps_placeholder_batch_untouched():
+    """Un batch jamais rempli (0 tache reelle) n'est pas 'clos' : rien a retirer."""
+    text = "## Batch A\n\nZone : `fichiers/modules`\n\n- `<slug>.md`\n\n"
+    new_text, removed = h.prune_closed_batches(text)
+    assert removed == []
+    assert new_text == text
+
+
+def test_prune_closed_batches_keeps_partially_closed_batch():
+    text = (
+        "## Batch open\n\nZone : `other/`\n\n"
+        "1. ~~`closed-one.md`~~ - clos.\n"
+        "2. `still-open.md` - pas fini.\n\n"
+    )
+    new_text, removed = h.prune_closed_batches(text)
+    assert removed == []
+    assert new_text == text
+
+
+def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
+    """Des refs `*.md` dans la ligne Zone (ex. README.md, CHANGELOG.md) ou en
+    prose (ex. 'voir HISTORIQUE.md') ne doivent pas etre comptees comme des
+    taches ouvertes — seules les lignes de liste en tete (`- `/`N. `) comptent."""
+    text = (
+        "## Batch pkg\n\n"
+        "Zone : `README.md`, `CHANGELOG.md`, `scripts/`\n\n"
+        "1. ~~`only-task.md`~~ - fait, voir `HISTORIQUE.md` pour details.\n\n"
+    )
+    new_text, removed = h.prune_closed_batches(text)
+    assert removed == ["Batch pkg"]
+    assert new_text.strip() == ""
