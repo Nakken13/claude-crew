@@ -2,6 +2,7 @@
 
 Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source unique par chantier ; le pendant 🖱️ est dans `../DEV/`.
 
+- [alerte-contexte-150k](alerte-contexte-150k.md)
 - [batch-lock-hardening](batch-lock-hardening.md)
 - [crew-count-batches](crew-count-batches.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)

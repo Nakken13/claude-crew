@@ -37,3 +37,4 @@
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-count-batches.md
 - 2026-08-25 ✅ **terminée** : `crew-count-batches.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-count-batches.md
+- 2026-08-25 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch plugin-packaging` (historique déjà dans HISTORIQUE.md)
