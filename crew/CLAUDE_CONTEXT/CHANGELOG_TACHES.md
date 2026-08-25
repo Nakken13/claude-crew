@@ -30,3 +30,10 @@
 - 2026-08-23 🧪 **tests validés** : `hook-auto-commit-cloture-tache.md` (déplacé vers `TESTS_DONE/`)
 - 2026-08-23 🧪 **tests validés** : `marketplace-plugin.md` (déplacé vers `TESTS_DONE/`)
 - 2026-08-23 🧪 **tests validés** : `readme-github-discoverability.md` (déplacé vers `TESTS_DONE/`)
+- 2026-08-24 ⚠️ **verrou expiré (>6h) purgé (session `fork-test`)**
+- 2026-08-25 ▶️ **démarrée** : `crew-count-batches.md`
+- 2026-08-25 ➕ **ajoutée au backlog** : `alerte-contexte-150k.md`
+- 2026-08-25 ✅ **terminée** : `crew-count-batches.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-count-batches.md
+- 2026-08-25 ✅ **terminée** : `crew-count-batches.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-count-batches.md

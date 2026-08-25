@@ -389,3 +389,35 @@ Fichiers/commits clés :
 
 ## verif-fork-throwaway
 Quoi : tache jetable de validation du commit auto de cloture (test IA). Rien de fonctionnel, supprimee juste apres.
+
+## crew-count-batches — 2026-08-25
+Quoi : nouvelle skill `/crew-count`, lecture seule, sur le modèle de
+`crew-status`. Répond directement à « combien de batchs `crew/CLAUDE_BATCH.md`
+sont lançables en parallèle maintenant ? » au lieu de laisser l'utilisateur
+deviner à l'aveugle. Ignore la section « À classer » et les batchs encore à
+l'état placeholder `<...>` du gabarit initial (ex. `Batch A`) ; distingue
+batchs **actifs** (≥1 tâche déjà en `crew/CURRENT_TASKS/`) des batchs
+**lançables** (≥1 tâche restante, aucune démarrée) ; étend l'invariant de
+disjonction de zones de `crew-status`/`crew_hook.py` (qui ne compare
+qu'actif-contre-actif) à actifs+lançables, sinon le compte de parallélisme
+serait faux. Testé sur l'état réel du repo au moment de l'écriture : 0
+lançable, 1 actif (`plugin-packaging`), `Batch A` ignoré (placeholder).
+Fichiers/commits clés :
+- `.claude/skills/crew-count/SKILL.md` (nouveau)
+- `CLAUDE.md` racine : bullet de routage ajouté après `/crew-status` (§
+  Commandes dédiées crew).
+- Revue : `requesting-code-review` (verdict "With fixes" — 1 point Important
+  sur la parité de détail entre la liste des batchs lançables et celle des
+  batchs actifs dans la sortie, 1 Minor sur la détection de placeholder
+  limitée à une tâche unique ; les deux corrigés) et `simplify` (4 angles en
+  parallèle — reuse a fait remonter deux définitions redérivées au lieu de
+  citer `crew-status`/`CLAUDE.md` (corrigé), efficiency a fait remonter un
+  listing `crew/CURRENT_TASKS/` slug-par-slug au lieu d'un Glob unique
+  (corrigé) et l'absence de garde grep-first >100 lignes sur
+  `CLAUDE_BATCH.md` (corrigé), altitude a signalé que le step de
+  disjonction de zones restait vague sur son extension de scope par
+  rapport à `crew-status` (corrigé, scope explicité) ; skippés : trois
+  redites "lecture seule" jugées cohérentes avec la convention déjà en
+  place dans `crew-status`, et la suggestion de fusionner `/crew-count`
+  dans `/crew-status` plutôt qu'un skill séparé — hors scope, l'utilisateur
+  a explicitement demandé une commande `/crew-count` dédiée).

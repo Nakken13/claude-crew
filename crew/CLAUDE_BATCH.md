@@ -49,4 +49,15 @@ zone).
    worktree de batch (le Stop hook, ROOT-anchored, ne voit jamais ce
    déplacement). Clos le 23/08/2026 — voir `HISTORIQUE.md`. Toutes les
    tâches de ce batch sont désormais closes.
+6. ~~`crew-count-batches.md`~~ — nouvelle skill `/crew-count` (lecture
+   seule) : compte les batchs lançables en parallèle depuis
+   `crew/CLAUDE_BATCH.md`. Clos le 25/08/2026 — voir `HISTORIQUE.md`.
+7. `alerte-contexte-150k.md` — règle seuil 150k tokens (session principale
+   + auto-recap subagent) : doc dans `CLAUDE.md` racine + `template/CLAUDE.md`
+   + `AGENTS.md`, et mécanisme technique éventuel touchant potentiellement
+   `crew/crew_hook.py`/`scripts/crew_hook.py`, `.claude/agents/`, `agents/`,
+   `.claude/skills/crew-*` — zone qui chevauche celle déjà déclarée de ce
+   batch, rattachée ici plutôt qu'un nouveau batch. Pas encore démarrée
+   (reste en `crew/TODO/`) ; à son démarrage, vérifier l'anti-collision
+   habituelle si ce batch a encore une tâche active en `CURRENT_TASKS/`.
 
