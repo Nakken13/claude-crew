@@ -7,6 +7,7 @@ temporaire isole (jamais le vrai depot) et monkeypatch les constantes
 module-level de crew_hook pour y pointer, avant d'appeler la fonction
 reelle — pas de mock sur subprocess/git, comportement reel verifie."""
 import datetime
+import json
 import pathlib
 import subprocess
 import sys
@@ -433,3 +434,54 @@ def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
     new_text, removed = h.prune_closed_batches(text)
     assert removed == ["Batch pkg"]
     assert new_text.strip() == ""
+
+
+def _write_transcript(tmp_path, usages):
+    """Ecrit un transcript JSONL minimal : un message assistant par usage
+    donne (dans l'ordre), entrelace de lignes non-assistant/vides/corrompues
+    pour verifier que seule la DERNIERE entree assistant valide est retenue."""
+    path = tmp_path / "transcript.jsonl"
+    lines = []
+    for u in usages:
+        lines.append('{"message": {"role": "user", "content": "hi"}}')
+        lines.append("")  # ligne vide, doit etre ignoree
+        lines.append("not json")  # ligne corrompue, doit etre ignoree
+        lines.append(json.dumps({"message": {"role": "assistant", "usage": u}}))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(path)
+
+
+def test_check_context_budget_no_transcript_path_returns_empty():
+    assert h.check_context_budget({}) == []
+
+
+def test_check_context_budget_missing_file_returns_empty(tmp_path):
+    missing = str(tmp_path / "does-not-exist.jsonl")
+    assert h.check_context_budget({"transcript_path": missing}) == []
+
+
+def test_check_context_budget_under_threshold_no_warning(tmp_path):
+    transcript = _write_transcript(tmp_path, [{"input_tokens": 1000, "cache_read_input_tokens": 2000}])
+    assert h.check_context_budget({"transcript_path": transcript}) == []
+
+
+def test_check_context_budget_over_threshold_warns(tmp_path):
+    transcript = _write_transcript(tmp_path, [{
+        "input_tokens": 100_000,
+        "cache_read_input_tokens": 40_000,
+        "cache_creation_input_tokens": 20_000,
+    }])
+    warnings = h.check_context_budget({"transcript_path": transcript})
+    assert len(warnings) == 1
+    assert "160" in warnings[0].replace(",", "").replace(" ", "")
+    assert "contexte" in warnings[0]
+
+
+def test_check_context_budget_uses_last_assistant_usage_not_first(tmp_path):
+    """Contexte grandit tour apres tour : seule la derniere valeur compte,
+    meme si un tour precedent depassait deja le seuil puis /clear a eu lieu."""
+    transcript = _write_transcript(tmp_path, [
+        {"input_tokens": 200_000},
+        {"input_tokens": 1000},
+    ])
+    assert h.check_context_budget({"transcript_path": transcript}) == []

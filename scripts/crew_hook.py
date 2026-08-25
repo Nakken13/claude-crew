@@ -822,6 +822,78 @@ def check_zone_overlaps(sections, active, locks):
     return warnings, blocking
 
 
+CONTEXT_BUDGET_TOKENS = 150_000
+
+
+def _iter_lines_reverse(path, chunk_size=65536):
+    """Genere les lignes d'un fichier texte en partant de la fin, sans le
+    charger entierement en memoire. Le transcript grossit a chaque tour ;
+    ce qu'on cherche (dernier message assistant) est presque toujours tout
+    pres de la fin, donc lire depuis la fin garde le cout proportionnel a la
+    distance jusqu'a ce message, pas a la taille totale du transcript."""
+    with path.open("rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        carry = b""
+        while pos > 0:
+            read_size = min(chunk_size, pos)
+            pos -= read_size
+            fh.seek(pos)
+            chunk = fh.read(read_size) + carry
+            lines = chunk.split(b"\n")
+            carry = lines[0]
+            for line in reversed(lines[1:]):
+                yield line
+        if carry:
+            yield carry
+
+
+def check_context_budget(payload):
+    """Avertit (non bloquant) quand le contexte de la session principale
+    depasse ~150k tokens (cf. CLAUDE.md § Efficience de contexte / Reset de
+    session). Aucune API de comptage de tokens dediee n'est exposee aux hooks
+    Claude Code : approxime via le dernier message assistant du transcript
+    (`transcript_path` du payload Stop) — usage.input_tokens +
+    cache_read_input_tokens + cache_creation_input_tokens, proxy raisonnable
+    puisque chaque tour renvoie l'historique complet en entree. Best-effort :
+    toute erreur (transcript absent, format inattendu, ligne corrompue) ->
+    pas d'avertissement."""
+    transcript_path = payload.get("transcript_path")
+    if not transcript_path:
+        return []
+    path = pathlib.Path(transcript_path)
+    if not path.exists():
+        return []
+    try:
+        last_usage = None
+        for raw_line in _iter_lines_reverse(path):
+            line = raw_line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            msg = entry.get("message") or {}
+            if msg.get("role") == "assistant" and msg.get("usage"):
+                last_usage = msg["usage"]
+                break
+    except Exception:
+        return []
+    if not last_usage:
+        return []
+    total = (
+        (last_usage.get("input_tokens") or 0)
+        + (last_usage.get("cache_read_input_tokens") or 0)
+        + (last_usage.get("cache_creation_input_tokens") or 0)
+    )
+    if total <= CONTEXT_BUDGET_TOKENS:
+        return []
+    return [
+        f"[contexte] ~{total:,} tokens de contexte estimes (seuil "
+        f"{CONTEXT_BUDGET_TOKENS:,}) — /clear ou nouvelle session "
+        "recommande avant de continuer (cf. CLAUDE.md § Efficience de "
+        "contexte)."
+    ]
+
+
 def regen_batch_locks_md(sections, locks, active):
     """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
     batch ayant au moins une tache actuellement en TODO/ ou CURRENT_TASKS/.
@@ -1106,6 +1178,8 @@ def main():
     for w in check_batches():
         sys.stderr.write(w + "\n")
     for w in zone_warnings:
+        sys.stderr.write(w + "\n")
+    for w in check_context_budget(payload):
         sys.stderr.write(w + "\n")
 
     # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
