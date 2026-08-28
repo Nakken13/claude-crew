@@ -65,3 +65,11 @@ entry is a retroactive summary, not a per-task log. See
   batch section on the next turn so the file doesn't grow unbounded; full
   history stays in `HISTORIQUE.md`.
 - **Documented** the two-layer locking mechanism in the README.
+
+## [0.2.1] - 2026-08-28
+
+- **Fixed** `/crew-count` never shipping to installed plugins — the skill
+  only existed under `.claude/skills/crew-count/` (local dev copy), never
+  mirrored into the packaged `skills/crew-count/` that `plugin.json`
+  actually ships. Copied it over; the command is now installed on
+  update/reload like the other `/crew-*` skills.
