@@ -89,6 +89,13 @@ def repo(tmp_path, monkeypatch):
     # `.task_state.json` du projet au lieu du tmp_path isole (bug reel trouve
     # en ecrivant les tests PAUSED : `main()` avait clobber le snapshot reel).
     monkeypatch.setattr(h, "SNAP", ctx / ".task_state.json")
+    # Meme piege que SNAP : HISTORIQUE/HISTORIQUE_ARCHIVE sont calcules une
+    # fois a l'import depuis le vrai CTX. Sans ce monkeypatch,
+    # _closure_commit_scope (via HISTORIQUE_ARCHIVE) plante avec "not in the
+    # subpath" des que ROOT pointe vers tmp_path (bug reel trouve en ecrivant
+    # rotate_historique).
+    monkeypatch.setattr(h, "HISTORIQUE", ctx / "HISTORIQUE.md")
+    monkeypatch.setattr(h, "HISTORIQUE_ARCHIVE", ctx / "HISTORIQUE_ARCHIVE.md")
     monkeypatch.setattr(h, "BATCH_FILE", batch_file)
     monkeypatch.setattr(h, "CHANGELOG", changelog)
     monkeypatch.setattr(h, "BATCH_LOCKS_MD", batch_locks_md)
@@ -374,6 +381,68 @@ def test_gate_pretooluse_git_mv_then_stop_started_loop_is_idempotent(repo):
     assert info["worktree"] == f"../{root.name}-batch-zone1"
 
 
+def test_stop_started_fallback_does_not_steal_lock_from_other_session(repo, monkeypatch, capsys):
+    """Root cause du bug de "collisions multi-sessions" remonte par
+    l'utilisateur : `.task_state.json` (SNAP) est un fichier UNIQUE partage
+    par toutes les sessions travaillant dans le meme checkout (pas de
+    worktree dedie). Une session S2 qui tourne pour la premiere fois voit
+    donc `prev` vide, et TOUT fichier deja present dans CURRENT_TASKS/ (y
+    compris une tache demarree par une AUTRE session S1, deja proprement
+    verrouillee via gate_pretooluse) lui apparait comme "started". Le
+    fallback de main() ne doit PAS voler ce verrou : `_slug_session_map`
+    doit etre consulte avant `_register_task_lock` pour laisser la tache a
+    son proprietaire reel."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+    h.gate_pretooluse(_git_mv_payload(slug, session_id="S1"))  # S1 demarre proprement
+    (dirs["TODO"] / slug).unlink()
+    (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
+
+    _run_stop(monkeypatch, capsys, session_id="S2")  # 1er tour Stop de S2 : prev partage vide
+
+    locks = h.load_locks()
+    assert locks["sessions"]["S1"]["tasks"] == [slug], "S1 doit rester seul proprietaire du verrou"
+    assert slug not in locks["sessions"].get("S2", {}).get("tasks", []), (
+        "S2 ne doit pas s'approprier une tache deja verrouillee par une autre session active"
+    )
+
+
+def test_stop_started_fallback_mis_attribution_does_not_trigger_false_batch_collision(repo, monkeypatch, capsys):
+    """Meme mis-attribution que le test precedent, mais via un second
+    consommateur non filtre de `started` : `check_batch_collisions` ne
+    verifie PAS que `f` appartient a la session courante, seulement que les
+    VOISINES de batch de `f` ne sont pas verrouillees par une autre session.
+    Une session S2 dont le 1er tour Stop mis-attribue a tort `task-a.md`
+    (deja demarree par S1) se voit donc bloquee pour une "collision" avec
+    `task-b.md` (verrouillee par une 3e session) alors que S2 n'a jamais
+    rien demarre elle-meme."""
+    root, dirs, ctx = repo
+    slug_a, slug_b = "task-a.md", "task-b.md"
+    _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
+    h.gate_pretooluse(_git_mv_payload(slug_a, session_id="S1"))  # S1 demarre proprement task-a
+    (dirs["TODO"] / slug_a).unlink()
+    (dirs["CURRENT_TASKS"] / slug_a).write_text(f"# {slug_a}\n", encoding="utf-8")
+    # _write_other_session_lock() ECRASE tout crew_lock.json (save_locks remplace
+    # le fichier entier) : l'appeler ici effacerait le verrou de S1 pose juste
+    # au-dessus. On fusionne donc directement dans les locks existants pour
+    # ajouter la voisine de batch verrouillee par une 3e session.
+    locks = h.load_locks()
+    since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    locks["sessions"]["OTHER"] = {
+        "batch": "Batch Zone1", "tasks": [slug_b],
+        "worktree": f"../{root.name}-batch-zone1", "branch": "crew/batch-zone1", "since": since,
+    }
+    h.save_locks(locks)
+
+    decision = _run_stop(monkeypatch, capsys, session_id="S2")  # 1er tour Stop de S2 : n'a rien demarre
+
+    assert decision is None or decision.get("decision") != "block", (
+        "S2 ne doit pas etre bloquee pour une collision batch causee par une tache "
+        f"qu'elle n'a jamais demarree (mis-attribution shared SNAP) : {decision}"
+    )
+
+
 def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
     """finished non vide mais HISTORIQUE.md pas modifie (ex. suppression
     manuelle du fichier sans passer par la cloture crew) -> pas de commit."""
@@ -390,6 +459,80 @@ def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
 
     sha_after = _git(root, "rev-parse", "HEAD").stdout.strip()
     assert sha_before == sha_after
+
+
+def test_throttle_warnings_emits_new_warning_and_records_it():
+    locks = {"sessions": {}}
+    now = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    due = h._throttle_warnings("batch", ["[batch] warning A"], locks, now)
+    assert due == ["[batch] warning A"]
+    assert locks["warned"]["batch"]["[batch] warning A"] == now.isoformat()
+
+
+def test_throttle_warnings_suppresses_repeat_within_cooldown():
+    locks = {"sessions": {}}
+    t0 = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    h._throttle_warnings("batch", ["[batch] warning A"], locks, t0)
+    t1 = t0 + datetime.timedelta(minutes=5)
+    due = h._throttle_warnings("batch", ["[batch] warning A"], locks, t1)
+    assert due == []
+
+
+def test_throttle_warnings_re_emits_after_cooldown_elapsed():
+    locks = {"sessions": {}}
+    t0 = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    h._throttle_warnings("batch", ["[batch] warning A"], locks, t0)
+    t1 = t0 + datetime.timedelta(minutes=h.WARNING_COOLDOWN_MINUTES + 1)
+    due = h._throttle_warnings("batch", ["[batch] warning A"], locks, t1)
+    assert due == ["[batch] warning A"]
+
+
+def test_throttle_warnings_drops_state_for_resolved_warning():
+    """Une condition disparue (tache categorisee, chevauchement resolu) ne
+    doit pas laisser une entree morte grossir locks['warned'] indefiniment,
+    et si elle reapparait plus tard elle doit re-avertir immediatement."""
+    locks = {"sessions": {}}
+    t0 = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    h._throttle_warnings("batch", ["[batch] warning A"], locks, t0)
+    t1 = t0 + datetime.timedelta(minutes=5)
+    h._throttle_warnings("batch", [], locks, t1)  # condition resolue
+    assert locks["warned"]["batch"] == {}
+
+    t2 = t1 + datetime.timedelta(minutes=5)
+    due = h._throttle_warnings("batch", ["[batch] warning A"], locks, t2)
+    assert due == ["[batch] warning A"]  # reapparait -> pas de cooldown herite
+
+
+def test_throttle_warnings_categories_are_independent():
+    locks = {"sessions": {}}
+    now = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    h._throttle_warnings("batch", ["same text"], locks, now)
+    due = h._throttle_warnings("zone", ["same text"], locks, now)
+    assert due == ["same text"]
+
+
+def _run_stop_capture_err(monkeypatch, capsys, session_id="S1"):
+    """Comme _run_stop, mais renvoie stderr au lieu de le laisser draine sans
+    etre lu (capsys.readouterr() vide out ET err en un seul appel)."""
+    payload = {"hook_event_name": "Stop", "session_id": session_id}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    return capsys.readouterr().err
+
+
+def test_stop_hook_does_not_renag_same_batch_warning_next_turn(repo, monkeypatch, capsys):
+    """check_batches() se declenche a chaque tour tant qu'une tache reste non
+    categorisee dans CLAUDE_BATCH.md : sans throttle, le meme avertissement
+    stderr serait re-imprime a CHAQUE tour Stop (cout contexte proportionnel
+    au nombre de tours, pas a la realite du backlog)."""
+    root, dirs, ctx = repo
+    (dirs["TODO"] / "orpheline.md").write_text("# orpheline\n", encoding="utf-8")
+
+    first_err = _run_stop_capture_err(monkeypatch, capsys)
+    assert "orpheline.md" in first_err
+
+    second_err = _run_stop_capture_err(monkeypatch, capsys)
+    assert "orpheline.md" not in second_err
 
 
 def test_prune_closed_batches_removes_fully_closed_section():
@@ -582,3 +725,87 @@ def test_dup_paused_and_current_tasks_blocks(repo, monkeypatch, capsys):
     assert decision is not None
     assert decision["decision"] == "block"
     assert "PAUSED" in decision["reason"]
+
+
+def test_rotate_historique_entries_moves_old_entries_keeps_recent():
+    cutoff = datetime.date(2026, 3, 1)
+    text = (
+        "# Historique des tâches terminées\n\n"
+        "Intro.\n\n"
+        "## tache-vieille — 2025-01-10\n"
+        "Quoi : ancienne.\n\n"
+        "## tache-recente — 2026-08-20\n"
+        "Quoi : recente.\n\n"
+    )
+    kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
+    assert slugs == ["tache-vieille"]
+    assert "tache-vieille" not in kept
+    assert "tache-recente" in kept
+    assert "Intro." in kept  # préambule jamais archivé
+    assert "tache-vieille" in archived
+    assert "tache-recente" not in archived
+
+
+def test_rotate_historique_entries_ignores_undated_entries():
+    """En-tete sans date parseable (entree malformee) : jamais rotee a
+    l'aveugle, faute de pouvoir la comparer au cutoff."""
+    cutoff = datetime.date(2026, 3, 1)
+    text = "# Historique\n\n## verif-fork-throwaway\nQuoi : sans date.\n\n"
+    kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
+    assert slugs == []
+    assert kept == text
+    assert archived == ""
+
+
+def test_rotate_historique_entries_ignores_entries_inside_html_comment():
+    """L'exemple de format documente en commentaire HTML (cf. HISTORIQUE.md
+    reel : bloc <!-- Exemple : ## <slug> — AAAA-MM-JJ ... -->) ne doit
+    jamais etre confondu avec une vraie entree a archiver."""
+    cutoff = datetime.date(2026, 3, 1)
+    text = (
+        "# Historique\n\n"
+        "<!-- Exemple :\n"
+        "## <slug de la tâche> — AAAA-MM-JJ\n"
+        "Quoi : ...\n"
+        "-->\n\n"
+        "## tache-reelle — 2025-01-10\n"
+        "Quoi : reelle.\n\n"
+    )
+    kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
+    assert slugs == ["tache-reelle"]
+    assert "<!-- Exemple :" in kept  # le commentaire reste dans le fichier vivant
+    assert "<slug de la tâche>" in kept
+    assert "tache-reelle" not in kept
+    assert "tache-reelle" in archived
+
+
+def test_rotate_historique_entries_no_op_when_nothing_old():
+    cutoff = datetime.date(2020, 1, 1)
+    text = "# Historique\n\n## tache-recente — 2026-08-20\nQuoi : recente.\n\n"
+    kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
+    assert slugs == []
+    assert kept == text
+    assert archived == ""
+
+
+def test_rotate_historique_writes_archive_and_trims_live_file(repo, monkeypatch):
+    root, dirs, ctx = repo
+    histo = ctx / "HISTORIQUE.md"
+    histo.write_text(
+        "# Historique des tâches terminées\n\nIntro.\n\n"
+        "## tache-vieille — 2025-01-10\nQuoi : ancienne.\n\n"
+        "## tache-recente — 2026-08-20\nQuoi : recente.\n\n",
+        encoding="utf-8",
+    )
+    archive = ctx / "HISTORIQUE_ARCHIVE.md"
+    monkeypatch.setattr(h, "HISTORIQUE", histo)
+    monkeypatch.setattr(h, "HISTORIQUE_ARCHIVE", archive)
+
+    rotated = h.rotate_historique(datetime.datetime(2026, 8, 29))
+
+    assert rotated == ["tache-vieille"]
+    live = histo.read_text(encoding="utf-8")
+    assert "tache-vieille" not in live
+    assert "tache-recente" in live
+    assert archive.exists()
+    assert "tache-vieille" in archive.read_text(encoding="utf-8")

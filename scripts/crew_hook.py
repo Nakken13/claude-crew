@@ -56,6 +56,9 @@ BATCH_FILE = CREW / "CLAUDE_BATCH.md"
 LOCKS_FILE = CTX / "crew_lock.json"  # remplace .batch_locks.json (schema session->{batch,tasks,worktree,branch,since})
 LOCKS_MUTEX = CTX / ".crew_lock.mutex"
 BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
+HISTORIQUE = CTX / "HISTORIQUE.md"
+HISTORIQUE_ARCHIVE = CTX / "HISTORIQUE_ARCHIVE.md"
+HISTORIQUE_ROTATE_MONTHS = 6  # au-dela, une entree quitte le fichier vivant (cf. rotate_historique)
 LOCK_TTL = datetime.timedelta(hours=6)
 MUTEX_TTL_SEC = 30  # mutex bloque plus longtemps -> session crashee en pleine ecriture, on le degage
 MUTEX_WAIT_SEC = 2.0  # attente max avant de continuer sans le mutex (best-effort, ne bloque jamais le tour)
@@ -203,6 +206,79 @@ def rotate_graphify_snapshots(keep=3):
         shutil.rmtree(d, ignore_errors=True)
 
 
+_HISTORIQUE_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_HISTORIQUE_HEADER_RE = re.compile(r"^## (?P<rest>.+)$", re.MULTILINE)
+_HISTORIQUE_DATE_RE = re.compile(r"^(?P<title>.+?) — (?P<date>\d{4}-\d{2}-\d{2})(?:\s.*)?$")
+
+
+def rotate_historique_entries(text, cutoff):
+    """Separe HISTORIQUE.md en (texte a garder, texte a archiver, slugs
+    archives) : une entree `## <slug> — AAAA-MM-JJ` dont la date est
+    anterieure a `cutoff` (date) part dans le second. Sans rotation le
+    fichier grossit sans fin — chaque future lecture complete (agent,
+    skill) devient plus couteuse en tokens meme en respectant la regle
+    'lire par tranches' (CLAUDE.md § Efficience de contexte), puisque
+    trouver la bonne tranche suppose deja savoir ou chercher. Une entete
+    sans date parseable (entree malformee, ex. `## verif-fork-throwaway`)
+    n'est JAMAIS rotee a l'aveugle — faute de pouvoir la comparer au cutoff,
+    elle reste dans le fichier vivant. Un en-tete a l'interieur d'un bloc de
+    commentaire HTML `<!-- ... -->` (ex. l'exemple de format documente dans
+    HISTORIQUE.md) est ignore : ce n'est pas une vraie entree."""
+    comment_spans = [m.span() for m in _HISTORIQUE_COMMENT_RE.finditer(text)]
+
+    def _in_comment(pos):
+        return any(start <= pos < end for start, end in comment_spans)
+
+    headers = [m for m in _HISTORIQUE_HEADER_RE.finditer(text) if not _in_comment(m.start())]
+    if not headers:
+        return text, "", []
+
+    bounds = [m.start() for m in headers] + [len(text)]
+    kept = [text[:headers[0].start()]]  # préambule (intro du fichier) toujours gardé
+    archived = []
+    slugs = []
+    for i, m in enumerate(headers):
+        entry = text[bounds[i]:bounds[i + 1]]
+        dm = _HISTORIQUE_DATE_RE.match(m.group("rest"))
+        entry_date = None
+        if dm:
+            try:
+                entry_date = datetime.date.fromisoformat(dm.group("date"))
+            except ValueError:
+                entry_date = None
+        if entry_date and entry_date < cutoff:
+            archived.append(entry)
+            slugs.append(dm.group("title"))
+        else:
+            kept.append(entry)
+    return "".join(kept), "".join(archived), slugs
+
+
+def rotate_historique(now_dt, months=HISTORIQUE_ROTATE_MONTHS):
+    """Applique rotate_historique_entries à HISTORIQUE.md sur disque : les
+    entrées archivées sont retirées du fichier vivant et ajoutées (append)
+    à HISTORIQUE_ARCHIVE.md, jamais perdues. Retourne les slugs archivés
+    (liste vide = rien à faire, cas normal la plupart des tours)."""
+    if not HISTORIQUE.exists():
+        return []
+    text = HISTORIQUE.read_text(encoding="utf-8")
+    cutoff = now_dt.date() - datetime.timedelta(days=30 * months)
+    kept, archived, slugs = rotate_historique_entries(text, cutoff)
+    if not slugs:
+        return []
+    HISTORIQUE.write_text(kept, encoding="utf-8")
+    head = ""
+    if not HISTORIQUE_ARCHIVE.exists():
+        head = ("# Historique archivé\n\n"
+                f"> Entrées de plus de {months} mois, déplacées automatiquement "
+                "depuis `HISTORIQUE.md` par le hook Stop (`rotate_historique`). "
+                "Même contenu, juste hors de la lecture par défaut — grep ici "
+                "si une entrée ancienne semble manquante.\n\n")
+    with HISTORIQUE_ARCHIVE.open("a", encoding="utf-8") as fh:
+        fh.write(head + archived)
+    return slugs
+
+
 class LocksMutex:
     """Verrou fichier portable (Windows compris : pas de fcntl) autour de la
     section critique read-modify-write de crew_lock.json. Implemente via
@@ -269,6 +345,39 @@ def save_locks(locks):
     tmp = LOCKS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(str(tmp), str(LOCKS_FILE))
+
+
+WARNING_COOLDOWN_MINUTES = 30
+
+
+def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNING_COOLDOWN_MINUTES):
+    """Ne remonte un avertissement non bloquant (check_batches/check_zone_overlaps)
+    qu'une fois, puis au plus une fois par `cooldown_minutes` tant que la
+    condition qui l'a declenche reste vraie — sans ca la meme ligne est
+    re-imprimee sur stderr a CHAQUE tour Stop (cout contexte proportionnel au
+    nombre de tours, pas au nombre de conditions reelles a corriger). Etat
+    persiste dans locks["warned"][category] : {texte -> dernier horodatage
+    ISO emis}, sauvegarde par le meme save_locks(locks) que le reste du
+    fichier verrous. Une cle dont la condition a disparu est purgee (pas de
+    fuite memoire) et re-avertit immediatement si elle reapparait plus tard
+    plutot que d'heriter un cooldown perime."""
+    bucket = locks.setdefault("warned", {}).setdefault(category, {})
+    current = set(warnings)
+    for stale in set(bucket) - current:
+        del bucket[stale]
+    due = []
+    for w in warnings:
+        last = bucket.get(w)
+        if last is not None:
+            try:
+                elapsed_min = (now_dt - datetime.datetime.fromisoformat(last)).total_seconds() / 60
+            except Exception:
+                elapsed_min = cooldown_minutes + 1
+            if elapsed_min < cooldown_minutes:
+                continue
+        bucket[w] = now_dt.isoformat()
+        due.append(w)
+    return due
 
 
 def purge_stale_locks(locks, now_dt):
@@ -965,6 +1074,7 @@ def _closure_commit_scope(slug):
     candidates = [
         DIRS["CURRENT_TASKS"] / f"{slug}.md",
         CTX / "HISTORIQUE.md",
+        HISTORIQUE_ARCHIVE,
         DIRS["TESTS/IA"] / f"{slug}.md",
         DIRS["TESTS/DEV"] / f"{slug}.md",
         BATCH_FILE,
@@ -1116,6 +1226,11 @@ def main():
         # Forcer la regénération de l'index IA puisqu'on a déplacé un fichier
         state["TESTS/IA"] = regen_index("TESTS/IA", DIRS["TESTS/IA"])
 
+    rotated_historique = rotate_historique(now_dt)
+    for slug in rotated_historique:
+        entries.append(f"- {now} 🗄️ **historique archivé** : `{slug}` → `HISTORIQUE_ARCHIVE.md` "
+                       f"(> {HISTORIQUE_ROTATE_MONTHS} mois)")
+
     pruned_headers = []
     if BATCH_FILE.exists():
         batch_text = BATCH_FILE.read_text(encoding="utf-8")
@@ -1143,28 +1258,61 @@ def main():
             entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé (session `{sid}`)**")
 
         # Tache finie : sort des `tasks` de TOUTES les sessions qui la tenaient
-        # (normalement une seule). L'entree session elle-meme n'est PAS purgee
-        # ici meme si elle se retrouve sans aucune tache — elle peut enchainer
-        # sur une autre tache du meme batch/worktree ; seule purge_stale_locks
-        # (TTL) ou /crew-close-task retire une entree session entiere.
+        # (normalement une seule). Si une session se retrouve sans aucune tache,
+        # son entree entiere (batch/worktree/branch) est purgee immediatement —
+        # pas d'enchainement implicite sur une autre tache du meme batch (ca
+        # causait des assignations batch/worktree perimees quand la session
+        # redemarrait ensuite sur un batch different, cf. bug remonte par
+        # d'autres sessions). Redemarrer une tache re-enregistre une entree
+        # fraiche via _register_task_lock.
         if finished:
-            for info in locks.get("sessions", {}).values():
+            sessions = locks.get("sessions", {})
+            for sid, info in list(sessions.items()):
                 info["tasks"] = [t for t in info.get("tasks", []) if t not in finished]
+                if not info["tasks"]:
+                    del sessions[sid]
 
         if hook_event == "SessionEnd":
             if session_id:
                 locks.get("sessions", {}).pop(session_id, None)
         else:
+            # `started_for_collision` est la sous-partie de `started` que CETTE
+            # session possede reellement (ou que personne ne possede encore) —
+            # calculee une fois et partagee par TOUS les consommateurs qui
+            # attribuent une action a `session_id` (boucle d'enregistrement +
+            # check_batch_collisions juste en dessous). Necessaire car `SNAP`
+            # (.task_state.json) est un fichier UNIQUE partage par toutes les
+            # sessions du meme checkout (pas de worktree dedie) : le premier
+            # tour Stop d'une session B avec `prev` encore vide voit TOUTE
+            # tache deja presente dans CURRENT_TASKS/ comme "started", y
+            # compris une tache deja verrouillee par une session A differente.
+            # Sans ce filtrage en amont, B se l'attribuerait a tort au moment
+            # de l'enregistrement ET declencherait une fausse collision de
+            # batch si une voisine de cette tache est verrouillee par une 3e
+            # session (bug remonte : de fausses "collisions multi-sessions"
+            # qui etaient en realite cette mis-attribution silencieuse).
+            started_for_collision = started
             if session_id:
+                slug_sessions = _slug_session_map(locks)
+                started_for_collision = {
+                    f for f in started
+                    if not slug_sessions.get(f) or slug_sessions.get(f) == session_id
+                }
+                for f in started - started_for_collision:
+                    sys.stderr.write(
+                        f"[crew_lock] `{f}` detectee comme demarree par la session "
+                        f"`{session_id}` mais deja verrouillee par `{slug_sessions[f]}` — "
+                        "verrou NON vole, proprietaire existant conserve.\n"
+                    )
                 # Fallback conserve deliberement (pas redondant) : couvre le
-                # `git mv` fait directement dans le checkout principal SANS passer
-                # par gate_pretooluse (ex. hook PreToolUse desactive/bypass, ou
-                # mutex non acquis en best-effort). Pour le flux worktree normal,
-                # `_claim_git_mv_lock` a deja enregistre le verrou en amont —
-                # `_register_task_lock` est idempotent (slug pas duplique, batch/
-                # worktree/branch deja poses pas ecrases), donc ce replay ne fait
-                # que rafraichir `since` sans effet de bord problematique.
-                for f in started:
+                # `git mv` fait directement dans le checkout principal SANS
+                # passer par gate_pretooluse (ex. hook PreToolUse desactive/
+                # bypass, ou mutex non acquis en best-effort). Pour le flux
+                # worktree normal, `_claim_git_mv_lock` a deja enregistre le
+                # verrou en amont — `_register_task_lock` est idempotent (slug
+                # pas duplique, batch/worktree/branch deja poses pas ecrases),
+                # donc ce replay ne fait que rafraichir `since`.
+                for f in started_for_collision:
                     _register_task_lock(f, session_id, locks, now_dt, sections)
                 # Rafraichit aussi le verrou deja detenu par CETTE session si elle
                 # a encore des taches actives (Cas A resume via _claim_resume_lock,
@@ -1173,12 +1321,23 @@ def main():
                 info = locks.get("sessions", {}).get(session_id)
                 if info and any(f in cur_c for f in info.get("tasks", [])):
                     info["since"] = now_dt.isoformat()
-            collision_reason = check_batch_collisions(started, sections, locks, session_id)
+            collision_reason = check_batch_collisions(started_for_collision, sections, locks, session_id)
 
         save_locks(locks)
         regen_batch_locks_md(sections, locks, active)
 
     zone_warnings, zone_blocking = check_zone_overlaps(sections, active, locks)
+
+    # Throttle des avertissements non bloquants (cf. _throttle_warnings) : mute
+    # locks["warned"], donc re-sauvegarde derriere le mutex comme toute autre
+    # mutation de crew_lock.json. Best-effort si deux sessions terminent leur
+    # tour a la meme seconde (pire cas : une ligne re-emise une fois de trop,
+    # pas une incoherence de verrou) — pas besoin de retenir le mutex plus
+    # longtemps pour ca.
+    due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
+    due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
+    with LocksMutex():
+        save_locks(locks)
 
     if entries and prev:  # ne pas journaliser le premier snapshot de référence
         head = ""
@@ -1193,10 +1352,14 @@ def main():
     SNAP.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
     # Batching : avertissements non bloquants (stderr) — n'interfère pas avec le
-    # JSON de décision émis sur stdout.
-    for w in check_batches():
+    # JSON de décision émis sur stdout. Throttlés (cf. _throttle_warnings) pour
+    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé ;
+    # check_context_budget n'est PAS throttlé (le rappel doit persister tant
+    # que le contexte reste au-dessus du seuil, l'action attendue est un
+    # /clear, pas un simple accusé de réception).
+    for w in due_batch_warnings:
         sys.stderr.write(w + "\n")
-    for w in zone_warnings:
+    for w in due_zone_warnings:
         sys.stderr.write(w + "\n")
     for w in check_context_budget(payload):
         sys.stderr.write(w + "\n")
