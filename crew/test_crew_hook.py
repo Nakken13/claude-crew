@@ -7,6 +7,7 @@ temporaire isole (jamais le vrai depot) et monkeypatch les constantes
 module-level de crew_hook pour y pointer, avant d'appeler la fonction
 reelle — pas de mock sur subprocess/git, comportement reel verifie."""
 import datetime
+import io
 import json
 import pathlib
 import subprocess
@@ -45,6 +46,7 @@ def repo(tmp_path, monkeypatch):
         "TODO": crew / "TODO",
         "ICEBOX": crew / "ICEBOX",
         "CURRENT_TASKS": crew / "CURRENT_TASKS",
+        "PAUSED": crew / "PAUSED",
         "TESTS": crew / "TESTS",
         "TESTS/IA": crew / "TESTS" / "IA",
         "TESTS/DEV": crew / "TESTS" / "DEV",
@@ -81,6 +83,12 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, "CREW", crew)
     monkeypatch.setattr(h, "DIRS", dirs)
     monkeypatch.setattr(h, "CTX", ctx)
+    # SNAP est calcule UNE FOIS a l'import (`SNAP = CTX / ".task_state.json"`
+    # avec le CTX reel) : repatcher `h.CTX` seul ne le recalcule pas. Sans ce
+    # monkeypatch, tout test appelant `h.main()` lit/ecrit le vrai
+    # `.task_state.json` du projet au lieu du tmp_path isole (bug reel trouve
+    # en ecrivant les tests PAUSED : `main()` avait clobber le snapshot reel).
+    monkeypatch.setattr(h, "SNAP", ctx / ".task_state.json")
     monkeypatch.setattr(h, "BATCH_FILE", batch_file)
     monkeypatch.setattr(h, "CHANGELOG", changelog)
     monkeypatch.setattr(h, "BATCH_LOCKS_MD", batch_locks_md)
@@ -485,3 +493,92 @@ def test_check_context_budget_uses_last_assistant_usage_not_first(tmp_path):
         {"input_tokens": 1000},
     ])
     assert h.check_context_budget({"transcript_path": transcript}) == []
+
+
+def _run_stop(monkeypatch, capsys, session_id="S1"):
+    """Invoque h.main() comme le vrai hook Stop : stdin = payload JSON,
+    stdout capture (decision JSON eventuelle si le tour est bloque).
+    Pas de transcript_path -> check_context_budget no-op."""
+    payload = {"hook_event_name": "Stop", "session_id": session_id}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    out = capsys.readouterr().out.strip()
+    return json.loads(out) if out else None
+
+
+def test_pause_move_not_reported_finished_keeps_lock(repo, monkeypatch, capsys):
+    """CURRENT_TASKS -> PAUSED n'est pas une cloture : pas de 'terminee' au
+    changelog, pas de purge du verrou live (cf. tache
+    add-paused-lifecycle-state, code review)."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    _write_single_task_batch(dirs, slugs=(slug,))
+    (dirs["TODO"] / slug).unlink()
+    (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
+
+    sections = h.load_sections()
+    locks = h.load_locks()
+    h._register_task_lock(slug, "S1", locks, datetime.datetime.now(), sections)
+    h.save_locks(locks)
+
+    _run_stop(monkeypatch, capsys)  # etablit le snapshot de reference (prev vide)
+
+    (dirs["CURRENT_TASKS"] / slug).replace(dirs["PAUSED"] / slug)  # simule le git mv de pause
+
+    _run_stop(monkeypatch, capsys)
+
+    changelog = (ctx / "CHANGELOG_TACHES.md").read_text(encoding="utf-8")
+    assert f"**mise en pause** : `{slug}`" in changelog
+    assert "terminée" not in changelog
+    assert slug in h.load_locks()["sessions"]["S1"]["tasks"]
+
+
+def test_resumed_task_relabeled_and_rechecked_for_batch_collision(repo, monkeypatch, capsys):
+    """PAUSED -> CURRENT_TASKS est une reprise ('reprise (post-pause)'), pas
+    un premier demarrage, ET doit repasser sous check_batch_collisions comme
+    un vrai demarrage. Avant fix (code review) : `started` etait mute pour
+    exclure les taches reprises, donc jamais revalidees -> ce test bloquerait
+    a tort sur du code non fixe (pas de collision detectee) et confirme le
+    fix (collision bien detectee)."""
+    root, dirs, ctx = repo
+    slug_a, slug_b = "task-a.md", "task-b.md"
+    _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
+    (dirs["TODO"] / slug_a).unlink()
+    (dirs["PAUSED"] / slug_a).write_text(f"# {slug_a}\n", encoding="utf-8")
+    (dirs["CURRENT_TASKS"] / slug_b).write_text(f"# {slug_b}\n", encoding="utf-8")
+
+    sections = h.load_sections()
+    locks = h.load_locks()
+    h._register_task_lock(slug_a, "S1", locks, datetime.datetime.now(), sections)
+    h._register_task_lock(slug_b, "OTHER", locks, datetime.datetime.now(), sections)
+    h.save_locks(locks)
+
+    _run_stop(monkeypatch, capsys, session_id="S1")  # baseline : task-a en PAUSED, task-b en CURRENT_TASKS
+
+    (dirs["PAUSED"] / slug_a).replace(dirs["CURRENT_TASKS"] / slug_a)  # reprise post-pause
+
+    decision = _run_stop(monkeypatch, capsys, session_id="S1")
+
+    changelog = (ctx / "CHANGELOG_TACHES.md").read_text(encoding="utf-8")
+    assert f"**reprise (post-pause)** : `{slug_a}`" in changelog
+    assert f"**démarrée** : `{slug_a}`" not in changelog
+
+    assert decision is not None
+    assert decision["decision"] == "block"
+    assert "collision" in decision["reason"].lower()
+
+
+def test_dup_paused_and_current_tasks_blocks(repo, monkeypatch, capsys):
+    """Reutilise l'invariant existant (jamais deux dossiers a la fois) pour
+    PAUSED : un slug present a la fois dans PAUSED/ et CURRENT_TASKS/ doit
+    bloquer le tour."""
+    root, dirs, ctx = repo
+    slug = "ma-tache.md"
+    (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
+    (dirs["PAUSED"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
+
+    decision = _run_stop(monkeypatch, capsys)
+
+    assert decision is not None
+    assert decision["decision"] == "block"
+    assert "PAUSED" in decision["reason"]

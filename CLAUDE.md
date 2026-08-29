@@ -93,6 +93,8 @@ Problème brut    →  crew/PROBLEMS/<slug>.md
 Pas commencée    →  crew/TODO/<slug>.md
 Parkée (choix)   →  crew/ICEBOX/<slug>.md   (depuis TODO, dépriorisation explicite ; pour la reprendre, revenir dans TODO d'abord)
 Commencée        →  déplacer le fichier vers crew/CURRENT_TASKS/<slug>.md   (mv, plus dans crew/TODO)
+Bloquée (dev)    →  crew/PAUSED/<slug>.md   (depuis CURRENT_TASKS, attente validation visuelle/dev ;
+                    retour dans CURRENT_TASKS une fois validée)
 Code fini        →  crew/CLAUDE_CONTEXT/HISTORIQUE.md  +  crew/TESTS/<chantier>.md
                     (fichier crew/CURRENT_TASKS supprimé)
 Validée (testée) →  cases cochées dans crew/TESTS/<chantier>.md
@@ -119,6 +121,12 @@ Source unique = les dossiers `crew/`. (Un `PROBLEMS.md`/`TODO.md` racine, s'il e
 - Si la tâche naît directement en cours (pas passée par le backlog), créer le fichier dans `crew/CURRENT_TASKS/`.
 - Tant que des actions restent à faire, garder le fichier à jour (cases cochées/non cochées).
 
+### 2bis. `crew/PAUSED/<slug>.md` — tâche bloquée, en attente de validation dev
+- Tâche **déjà démarrée** (était en `crew/CURRENT_TASKS/`), **pas finie** (cases `- [ ]` restantes), mais dont la suite dépend d'une action humaine que l'IA ne peut pas faire elle-même (validation visuelle d'un rendu, test device réel, confirmation d'une réponse externe).
+- `git mv crew/CURRENT_TASKS/<slug>.md crew/PAUSED/<slug>.md` pendant le blocage. Retour `git mv` inverse vers `crew/CURRENT_TASKS/` une fois la validation dev faite, puis le code reprend normalement.
+- Ne pas confondre avec `crew/ICEBOX/` (dépriorisation volontaire, aucun blocage technique, tâche pas démarrée) ni avec `crew/TESTS/DEV/` (checklist de validation d'une tâche **déjà finie et historisée**, pas une tâche en cours).
+- Une tâche en `PAUSED/` compte toujours comme active pour l'anti-collision de batch (§ Batching) — elle garde sa zone de fichiers, elle est bloquée, pas abandonnée.
+
 ### 3. Quand le code d'une tâche est terminé (toutes les actions cochées)
 - **Supprimer** le fichier `crew/CURRENT_TASKS/<slug>.md`.
 - **Historiser** : ajouter une entrée dans `crew/CLAUDE_CONTEXT/HISTORIQUE.md` (quoi, quand, fichiers/commits clés) — mémoire de contexte du projet.
@@ -132,7 +140,7 @@ Source unique = les dossiers `crew/`. (Un `PROBLEMS.md`/`TODO.md` racine, s'il e
 - `INDEX.md` (racine + dans chaque sous-dossier) est régénéré par le hook `crew/crew_hook.py`.
 - Cocher les tests quand ils passent ; tous cochés des deux côtés = feature validée. Lorsqu'un fichier de test de `IA/` est entièrement coché/terminé, il est déplacé vers `crew/CLAUDE_CONTEXT/TESTS_DONE/` (et supprimé de `IA/`).
 
-**Règle d'or :** une tâche n'est jamais dans deux dossiers à la fois. Pas commencée → `crew/TODO/` ; commencée → `crew/CURRENT_TASKS/` ; finie → `HISTORIQUE.md` + `crew/TESTS/` (ou `TESTS_DONE/` pour les tests IA validés).
+**Règle d'or :** une tâche n'est jamais dans deux dossiers à la fois. Pas commencée → `crew/TODO/` ; commencée → `crew/CURRENT_TASKS/` ; bloquée sur validation dev → `crew/PAUSED/` ; finie → `HISTORIQUE.md` + `crew/TESTS/` (ou `TESTS_DONE/` pour les tests IA validés).
 
 ## Batching — parallélisation des tâches (`crew/CLAUDE_BATCH.md`)
 

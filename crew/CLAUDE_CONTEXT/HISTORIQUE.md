@@ -469,3 +469,49 @@ Fichiers/commits clés :
   remonté en top-level ; altitude : duplication `crew/`↔`scripts/` sans
   garde de synchronisation au-delà de la ligne `ROOT` connue, corrigée
   par `check_crew_hook_stays_in_sync`).
+
+## add-paused-lifecycle-state — 2026-08-29
+Quoi : nouvel état de cycle de vie `crew/PAUSED/` — une tâche démarrée
+(`crew/CURRENT_TASKS/`) dont le code n'est pas fini mais dont la suite
+dépend d'une validation visuelle/dev que l'IA ne peut pas faire seule (rendu
+UI, device réel, réponse d'un service externe). `git mv` vers `crew/PAUSED/`
+pendant le blocage, retour vers `crew/CURRENT_TASKS/` une fois la validation
+faite. Distinct de `crew/ICEBOX/` (dépriorisation volontaire, pas de
+blocage technique) et de `crew/TESTS/DEV/` (validation d'une tâche déjà
+finie et historisée).
+Câblage `crew/crew_hook.py` (+ `scripts/crew_hook.py`, copie identique hors
+la ligne `ROOT`) : `DIRS`/`INTRO` gagnent `PAUSED` ; `active_task_slugs()`
+inclut `PAUSED` (une tâche en pause garde sa zone de fichiers pour
+l'anti-collision batch) ; `check_batches()` réutilise `active_task_slugs()`
+au lieu de re-scanner le disque ; `main()` distingue une tâche mise en pause
+(`finished = prev_c - cur_c - cur_p`, changelog `⏸️ mise en pause`) d'une
+reprise post-pause (`resumed`, changelog `▶️ reprise (post-pause)`, toujours
+revalidée par `check_batch_collisions` — bug trouvé et corrigé en code
+review : `started` était muté pour exclure les tâches reprises, ce qui
+sautait la vérification anti-collision batch pour une reprise) ; nouvel
+invariant bloquant `dup_p` (un slug ne peut pas être à la fois dans
+`PAUSED/` et `TODO/`/`CURRENT_TASKS/`) ; `_extract_git_mv_task()` reconnaît
+aussi `git mv crew/PAUSED/x.md crew/CURRENT_TASKS/x.md` (pas seulement
+depuis `TODO/`) pour que la garde préventive PreToolUse s'applique aussi à
+une reprise.
+Doc : `CLAUDE.md` racine (diagramme ASCII + § 2bis + règle d'or),
+`crew/CURRENT_TASKS/README.md`, `crew/PAUSED/README.md`+`INDEX.md`.
+Skills : `.claude/skills/crew-start/SKILL.md` (signale les tâches PAUSED
+sans jamais les reprendre automatiquement) et `.claude/skills/crew-status/SKILL.md`
+(les liste dans le rapport), + copies packagées `skills/crew-start/SKILL.md`
+et `skills/crew-status/SKILL.md`.
+Tests : `crew/test_crew_hook.py` — fixture `repo` corrigée pour monkeypatcher
+aussi `h.SNAP` (bug pré-existant trouvé en écrivant ces tests : `SNAP` est
+calculé une fois à l'import à partir du vrai `CTX`, le repatcher seul ne le
+recalculait pas — un test appelant `h.main()` lisait/écrivait le vrai
+`.task_state.json` du projet au lieu du tmp_path isolé), + 3 tests bout-en-
+bout sur `h.main()` (aucun test n'invoquait `main()` avant celui-ci) :
+pause ≠ terminée + verrou conservé, reprise revalidée pour collision batch,
+invariant `dup_p` bloquant. Revue : `requesting-code-review` (2 points
+importants trouvés et corrigés : bug `started`/collision ci-dessus, absence
+de couverture de test sur la logique PAUSED) et `simplify` (4 angles en
+parallèle — convergence sur `check_batches()` qui re-scannait le disque au
+lieu de réutiliser `active_task_slugs()`, et `dup_p` qui calculait deux fois
+le même set de stems ; corrigés. Généralisations "pour de futurs états de
+cycle de vie" jugées mineures/pas urgentes par l'agent lui-même, non
+appliquées).
