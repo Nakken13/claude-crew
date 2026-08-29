@@ -162,11 +162,11 @@ Avant de déplacer une tâche vers `crew/CURRENT_TASKS/` (§ Gestion des tâches
 3. Si la zone de la tâche chevauche celle d'un batch actif **autre que le sien** → ne pas démarrer : soit la tâche rejoint ce batch (séquencée après), soit on attend que l'autre batch libère les fichiers concernés. Signaler le conflit au user plutôt que de lancer en silence.
 4. Si aucun chevauchement → démarrer normalement.
 
-Garde-fou automatisé (complémentaire, pas suffisant seul) : le hook `crew/crew_hook.py` (`check_zone_overlaps`) compare à chaque tour les `Zone :` de tous les batchs actifs et avertit (non bloquant, stderr) en cas de chevauchement de chemins entre deux batchs actifs différents. Pour une vue à la demande plutôt que d'attendre le prochain `Stop` → `/crew-status`.
+Garde-fou automatisé complémentaire (hook Stop, non bloquant) : avertit sur un chevauchement de zones entre batchs actifs manqué par la vérification manuelle. `/crew-status` pour une vue à la demande.
 
 Tâche terminée → la retirer de son batch. Le hook `crew/crew_hook.py` avertit (non bloquant) si une tâche TODO/CURRENT n'apparaît nulle part dans `CLAUDE_BATCH.md`, ou si le fichier référence une tâche disparue.
 
-**Nettoyage automatique** : dès que **toutes** les tâches d'un batch sont barrées (`~~`slug.md`~~`), le hook `crew/crew_hook.py` (`prune_closed_batches`) retire la section batch entière de `CLAUDE_BATCH.md` au tour suivant — évite que le fichier grossisse indéfiniment. Aucune perte : l'historique complet de chaque tâche close reste dans `HISTORIQUE.md`. Rien à faire côté agent — ne pas supprimer une section manuellement en amont, le hook s'en charge une fois la dernière tâche du batch barrée par `/crew-close-task`. Sections vides/placeholder (jamais démarrées) non concernées.
+**Nettoyage automatique** : un batch dont **toutes** les tâches sont barrées (`~~`slug.md`~~`) est retiré de `CLAUDE_BATCH.md` automatiquement au tour suivant — ne jamais le supprimer manuellement, l'historique complet reste de toute façon dans `HISTORIQUE.md`. Sections vides/placeholder (jamais démarrées) non concernées.
 
 ## Efficience de contexte
 
@@ -178,10 +178,9 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
 - Ne jamais coller dans le contexte la sortie complète d'une commande longue (ex. build) : extraire seulement les lignes d'erreur/warning utiles.
 
 ### Reset de session
-- Seuil de contexte : **~150k tokens** (session principale), à la place du repère approximatif "10-12 interactions" — un seuil de tokens reste correct quand les tours varient beaucoup en taille (gros diff vs question courte), pas un compte d'échanges. Au-delà, **recommander un `/clear` ou une nouvelle session** à l'utilisateur pour libérer la fenêtre de contexte ; ne pas continuer à accumuler silencieusement.
-- Le hook `Stop` (`crew/crew_hook.py` / `scripts/crew_hook.py`, fonction `check_context_budget`) estime ce seuil automatiquement à chaque tour à partir du transcript (proxy `usage.input_tokens` + tokens de cache du dernier message assistant — aucune API de comptage de tokens dédiée n'est exposée aux hooks Claude Code) et émet un avertissement non bloquant (stderr) en cas de dépassement. Reste un filet best-effort, pas une preuve exacte : la recommandation ci-dessus s'applique dès que la conversation *semble* volumineuse (gros diffs relus, plusieurs allers-retours d'outils), même sans avertissement.
+- Seuil de contexte : **~150k tokens** (session principale) — au-delà, **recommander un `/clear` ou une nouvelle session** plutôt que d'accumuler silencieusement. Un hook Stop best-effort avertit automatiquement (stderr) en cas de dépassement, mais la recommandation s'applique dès que la conversation *semble* volumineuse même sans cet avertissement.
 - Si la session approche de la limite et que la tâche n'est pas finie : commit ce qui est fait, noter l'état dans HISTORIQUE ou CURRENT_TASKS, puis suggérer de relancer.
-- **Subagents** (`Agent` tool, personas `.claude/agents/*.md` et `agents/*.md` côté scaffold) : même seuil ~150k appliqué à leur propre contexte d'exécution. Aucun mécanisme technique fiable n'existe pour l'appliquer automatiquement depuis l'intérieur d'un subagent (pas d'API de comptage de tokens exposée pendant son propre tour) — reste une consigne textuelle que le subagent applique lui-même : au-delà de ce seuil, il doit s'auto-arrêter plutôt que de continuer à grossir son contexte, produire un **recap** (bullet points : travail fait, état courant, fichiers touchés, découvertes clés bloquantes pour la suite — pas un résumé narratif), puis relancer un nouvel agent avec ce recap + les consignes d'origine plutôt que de poursuivre dans le même contexte.
+- **Subagents** : même seuil ~150k, mais aucun mécanisme automatique ne l'applique pour eux — consigne textuelle que le subagent doit s'auto-imposer : au-delà, s'auto-arrêter, produire un **recap** (bullet points : travail fait, état courant, fichiers touchés, blocages pour la suite — pas un résumé narratif), puis relancer un nouvel agent avec ce recap plutôt que de continuer dans le même contexte.
 
 ### Guides AGENTS.md segmentés
 - Guide global (invariants produit + anti-patterns) : `crew/CLAUDE_CONTEXT/AGENTS.md`
