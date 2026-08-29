@@ -4,7 +4,8 @@
   1. régénère crew/<dir>/INDEX.md (titres + liens),
   2. journalise les transitions (démarrée / terminée / ajoutée) dans
      crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md,
-  3. bloque la fin de tour si une tâche est à la fois dans TODO/ et CURRENT_TASKS/,
+  3. bloque la fin de tour si une tâche est à la fois dans TODO/, CURRENT_TASKS/
+     et/ou PAUSED/ (jamais deux dossiers a la fois),
   4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée,
   5. maintient des verrous live PAR SESSION (crew_lock.json, anti-collision
      multi-Claude, écriture protégée par LocksMutex) et bloque le tour si une
@@ -43,6 +44,7 @@ DIRS = {
     "TODO": CREW / "TODO",
     "ICEBOX": CREW / "ICEBOX",
     "CURRENT_TASKS": CREW / "CURRENT_TASKS",
+    "PAUSED": CREW / "PAUSED",
     "TESTS": CREW / "TESTS",
     "TESTS/IA": CREW / "TESTS" / "IA",
     "TESTS/DEV": CREW / "TESTS" / "DEV",
@@ -63,6 +65,7 @@ INTRO = {
     "TODO": "Tâches pas commencées. Démarrer = déplacer le fichier vers `crew/CURRENT_TASKS/` (cf. `CLAUDE.md`).\n\n",
     "ICEBOX": "Idées/tâches parkées volontairement (distinct de TODO). Pour reprendre : déplacer vers `crew/TODO/` d'abord.\n\n",
     "CURRENT_TASKS": "Tâches en cours. Finie → supprimer + entrée `crew/CLAUDE_CONTEXT/HISTORIQUE.md` + `crew/TESTS/<chantier>.md`.\n\n",
+    "PAUSED": "Tâches démarrées mais bloquées sur une validation visuelle/dev que l'IA ne peut pas faire seule. Pour reprendre : déplacer vers `crew/CURRENT_TASKS/` une fois la validation faite.\n\n",
     "TESTS": ("Checklists de validation des features finies (cf. `README.md`). "
               "Triées par exécutant :\n"
               "- [IA](IA/INDEX.md) — tests que l'IA peut dérouler seule (🤖 auto + 🔍 config/curl/DB/logs)\n"
@@ -122,8 +125,8 @@ def process_completed_tests():
 
 
 def check_batches():
-    """Avertit (non bloquant) si une tâche TODO/CURRENT n'est pas catégorisée dans
-    CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
+    """Avertit (non bloquant) si une tâche TODO/CURRENT/PAUSED n'est pas catégorisée
+    dans CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
     entre backticks (`slug.md`) → les placeholders `<...>.md` sont ignorés. Les
     refs barrées (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par
     convention du projet : leur fichier a normalement été supprimé, donc elles
@@ -133,13 +136,7 @@ def check_batches():
         return warnings
     text = re.sub(r"~~.*?~~", "", BATCH_FILE.read_text(encoding="utf-8"), flags=re.DOTALL)
     referenced = set(re.findall(r"`([\w\-.]+\.md)`", text))
-    actual = set()
-    for d in (DIRS["TODO"], DIRS["CURRENT_TASKS"]):
-        if d.exists():
-            for f in d.glob("*.md"):
-                if f.name in ("INDEX.md", "README.md") or f.name.startswith("_"):
-                    continue
-                actual.add(f.name)
+    actual = active_task_slugs()  # meme scan TODO/CURRENT_TASKS/PAUSED, source unique
     for f in sorted(actual - referenced):
         warnings.append(f"[batch] Tache non categorisee dans CLAUDE_BATCH.md : `{f}`")
     for f in sorted(referenced - actual):
@@ -439,15 +436,21 @@ def _tokenize_command(command):
 
 def _extract_git_mv_task(command):
     """Si `command` contient un `git mv` deplacant un fichier depuis
-    crew/TODO/ vers crew/CURRENT_TASKS/, retourne son slug (nom de fichier).
-    Sinon None. Best-effort : ne parse pas un shell complexe, couvre
-    seulement le cas documente `git mv crew/TODO/x.md crew/CURRENT_TASKS/x.md`
-    (avec eventuels flags avant les deux chemins). Essaie TOUTES les
-    occurrences de `mv` dans la commande (pas seulement la premiere) : une
-    commande composee peut avoir un `mv` sans rapport avant le vrai `git mv`
-    a surveiller."""
+    crew/TODO/ OU crew/PAUSED/ vers crew/CURRENT_TASKS/, retourne son slug
+    (nom de fichier). Sinon None. Best-effort : ne parse pas un shell
+    complexe, couvre seulement le cas documente `git mv crew/{TODO,PAUSED}/
+    x.md crew/CURRENT_TASKS/x.md` (avec eventuels flags avant les deux
+    chemins). PAUSED est traite comme TODO ici : une reprise post-pause doit
+    retomber sous la meme verification anti-collision batch preventive
+    (`_claim_git_mv_lock`/`check_batch_collisions`) qu'un premier demarrage,
+    cf. code review. Essaie TOUTES les occurrences de `mv` dans la commande
+    (pas seulement la premiere) : une commande composee peut avoir un `mv`
+    sans rapport avant le vrai `git mv` a surveiller."""
     todo_name, current_name = DIRS["TODO"].name, DIRS["CURRENT_TASKS"].name
-    if "mv" not in command or todo_name not in command or current_name not in command:
+    paused_name = DIRS["PAUSED"].name
+    if "mv" not in command or current_name not in command:
+        return None
+    if todo_name not in command and paused_name not in command:
         return None
     norm = _tokenize_command(command)
     for mv_i, tok in enumerate(norm):
@@ -457,7 +460,9 @@ def _extract_git_mv_task(command):
         if len(args) < 2:
             continue
         src, dst = args[0], args[1]
-        if f"{todo_name}/" not in src or f"{current_name}/" not in dst:
+        if f"{current_name}/" not in dst:
+            continue
+        if f"{todo_name}/" not in src and f"{paused_name}/" not in src:
             continue
         if not src.endswith(".md"):
             continue
@@ -746,9 +751,11 @@ def gate_pretooluse(payload):
 
 
 def active_task_slugs():
-    """Slugs (fichiers .md) actuellement en crew/TODO/ ou crew/CURRENT_TASKS/."""
+    """Slugs (fichiers .md) actuellement en crew/TODO/, crew/CURRENT_TASKS/ ou
+    crew/PAUSED/ (une tache en pause reste bloquee, pas abandonnee : elle
+    garde sa zone de fichiers pour l'anti-collision de batch)."""
     active = set()
-    for d in (DIRS["TODO"], DIRS["CURRENT_TASKS"]):
+    for d in (DIRS["TODO"], DIRS["CURRENT_TASKS"], DIRS["PAUSED"]):
         if d.exists():
             active |= {f.name for f in d.glob("*.md")
                        if f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")}
@@ -791,7 +798,7 @@ def _section_lock_sessions(section, locks, slug_sessions=None):
 
 def check_zone_overlaps(sections, active, locks):
     """Detecte les chevauchements de `Zone :` entre deux batchs ACTIFS (>=1 tache
-    en TODO/CURRENT_TASKS). Devient bloquant (liste `blocking`) uniquement quand
+    en TODO/CURRENT_TASKS/PAUSED). Devient bloquant (liste `blocking`) uniquement quand
     les deux batchs en collision sont verrouilles par des session_id
     differentes — memes regles que check_batch_collisions, pour ne PAS bloquer
     une session solo qui travaille sequentiellement sur deux batchs a zones
@@ -896,8 +903,8 @@ def check_context_budget(payload):
 
 def regen_batch_locks_md(sections, locks, active):
     """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
-    batch ayant au moins une tache actuellement en TODO/ ou CURRENT_TASKS/.
-    Colonne `worktree` affichee quand l'entree session en porte une."""
+    batch ayant au moins une tache actuellement en TODO/, CURRENT_TASKS/ ou
+    PAUSED/. Colonne `worktree` affichee quand l'entree session en porte une."""
     lines = ["# Verrous batch (temps reel)\n\n",
               "> Regenere automatiquement par `crew/crew_hook.py` a chaque tour. "
               "Ne pas editer a la main.\n\n"]
@@ -925,7 +932,7 @@ def regen_batch_locks_md(sections, locks, active):
                 lines.append(f"- 🔓 `{slug}` — libre\n")
         lines.append("\n")
     if not any_section:
-        lines.append("_Aucun batch actif avec tache en TODO/CURRENT_TASKS pour le moment._\n")
+        lines.append("_Aucun batch actif avec tache en TODO/CURRENT_TASKS/PAUSED pour le moment._\n")
     BATCH_LOCKS_MD.write_text("".join(lines), encoding="utf-8")
 
 
@@ -1074,14 +1081,26 @@ def main():
 
     cur_c, prev_c = set(state["CURRENT_TASKS"]), set(prev.get("CURRENT_TASKS", []))
     cur_t, prev_t = set(state["TODO"]), set(prev.get("TODO", []))
+    cur_p, prev_p = set(state["PAUSED"]), set(prev.get("PAUSED", []))
     started = cur_c - prev_c
-    finished = prev_c - cur_c
+    # NB: `resumed` est un sous-ensemble de `started`, jamais soustrait de
+    # `started` — sinon `check_batch_collisions(started, ...)` plus bas
+    # sauterait la verification anti-collision batch pour une tache qui
+    # reprend juste apres une pause (cf. code review).
+    resumed = started & prev_p  # revenue de PAUSED, pas une vraie premiere prise en charge
+    paused_now = cur_p - prev_p
+    # Une tache qui quitte CURRENT_TASKS/ pour PAUSED/ n'est PAS terminee.
+    finished = prev_c - cur_c - cur_p
     added = (cur_t - prev_t) - started
 
     now = now_dt.date().isoformat()
     entries = []
-    for f in sorted(started):
+    for f in sorted(started - resumed):
         entries.append(f"- {now} ▶️ **démarrée** : `{f}`")
+    for f in sorted(resumed):
+        entries.append(f"- {now} ▶️ **reprise (post-pause)** : `{f}`")
+    for f in sorted(paused_now):
+        entries.append(f"- {now} ⏸️ **mise en pause** : `{f}`")
     for f in sorted(finished):
         entries.append(f"- {now} ✅ **terminée** : `{f}`")
     for f in sorted(added):
@@ -1185,11 +1204,19 @@ def main():
     # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
     reasons = []
 
-    dup = {f[:-3] for f in cur_t} & {f[:-3] for f in cur_c}
+    t_stems, c_stems, p_stems = ({f[:-3] for f in s} for s in (cur_t, cur_c, cur_p))
+
+    dup = t_stems & c_stems
     if dup:
         reasons.append("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
                         "crew/TODO/ et crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup)) +
                         ". Retire-les de crew/TODO/ (une tâche commencée ne reste pas dans le backlog).")
+
+    dup_p = p_stems & (t_stems | c_stems)
+    if dup_p:
+        reasons.append("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
+                        "crew/PAUSED/ et crew/TODO/ ou crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup_p)) +
+                        ". Une tâche n'est jamais dans deux dossiers à la fois.")
 
     if collision_reason:
         reasons.append(collision_reason)

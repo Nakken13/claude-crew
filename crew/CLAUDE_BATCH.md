@@ -7,9 +7,3 @@ Un batch = un Claude. Voir § Batching dans `CLAUDE.md` racine pour les règles
 
 <Tâches dont la zone d'impact n'est pas encore connue.>
 
-## Batch A
-
-Zone : <fichiers/modules>
-
-- `<slug>.md`
-

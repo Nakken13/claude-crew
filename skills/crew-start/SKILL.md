@@ -13,6 +13,13 @@ tâche.
 
 1. **Lire l'état** : lister `crew/CURRENT_TASKS/*.md` (hors
    `INDEX.md`/`README.md`).
+1bis. **Signaler les tâches en pause** : lister aussi `crew/PAUSED/*.md`
+    (hors `INDEX.md`/`README.md`). Si non vide, le signaler à l'utilisateur
+    (nom de la tâche + ce qui bloque) avant de continuer — une tâche en
+    `PAUSED/` est bloquée sur une validation visuelle/dev, ne JAMAIS la
+    reprendre automatiquement pour continuer à coder dessus (cf. `CLAUDE.md`
+    § 2bis). Ça n'empêche pas de démarrer/reprendre une autre tâche en
+    parallèle (Cas A/B ci-dessous) si elle n'est pas dans le même batch.
 
 ### Cas A — `crew/CURRENT_TASKS/` non vide
 
@@ -117,3 +124,6 @@ tâche.
   déplacement TODO → CURRENT_TASKS, même si un seul batch semble actif.
 - Ne remplace pas `/crew-close-task` — l'appelle en fin de tâche
   plutôt que de dérouler la clôture à la main.
+- Ne reprend jamais automatiquement une tâche de `crew/PAUSED/` pour coder
+  dessus — elle attend une action humaine (cf. étape 1bis), pas une reprise
+  IA.

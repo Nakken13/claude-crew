@@ -16,6 +16,9 @@ en session.
    passant.
 2. **Tâches en cours** (`crew/CURRENT_TASKS/*.md`) : pour chacune, ratio
    actions cochées / total.
+2bis. **Tâches en pause** (`crew/PAUSED/*.md`) : lister nommément, chacune
+   en attente d'une validation visuelle/dev par l'utilisateur — à signaler
+   explicitement, ne pas les compter comme du travail en cours normal.
 3. **Tests IA non cochés** (`crew/TESTS/IA/*.md`) : fichiers avec au moins
    une case non cochée — ce qui reste à valider.
 4. **Tâches TODO orphelines** : présentes dans `crew/TODO/` mais absentes de

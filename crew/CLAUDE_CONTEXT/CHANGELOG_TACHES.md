@@ -38,3 +38,9 @@
 - 2026-08-25 ✅ **terminée** : `crew-count-batches.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-count-batches.md
 - 2026-08-25 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch plugin-packaging` (historique déjà dans HISTORIQUE.md)
+- 2026-08-29 ▶️ **démarrée** : `add-paused-lifecycle-state.md`
+- 2026-08-29 ✅ **terminée** : `add-paused-lifecycle-state.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour add-paused-lifecycle-state.md
+- 2026-08-29 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch A` (historique déjà dans HISTORIQUE.md)
+- 2026-08-29 ✅ **terminée** : `add-paused-lifecycle-state.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour add-paused-lifecycle-state.md
