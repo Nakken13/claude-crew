@@ -79,6 +79,10 @@ dérouler le protocole à la main à chaque fois :
   tâche déjà en `CURRENT_TASKS/` s'il y en a une, sinon démarre un batch
   pas encore actif depuis `TODO/` (anti-collision via `manager`), code,
   puis enchaîne `/crew-close-task` en fin de tâche.
+- `/crew-dashboard` — lance un dashboard web local temps réel (tasks,
+  batches, sessions concurrentes via `crew_lock.json`) avec actions de
+  gestion (déplacer une tâche, cocher un test, purger un lock) ; venv
+  isolé, n'affecte jamais l'environnement du projet cible.
 
 ## Gestion des tâches — cycle de vie unique (modèle par dossiers)
 

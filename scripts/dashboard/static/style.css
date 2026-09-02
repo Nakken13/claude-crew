@@ -1,0 +1,99 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0e0f12;
+  --panel: #17181d;
+  --border: #2a2c33;
+  --text: #e6e6e9;
+  --muted: #9a9ba3;
+  --accent: #5b8cff;
+  --danger: #ff5b6a;
+  --warn: #e0a72b;
+  --ok: #3fbf7f;
+  font-family: -apple-system, Segoe UI, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  padding: 1.5rem;
+}
+
+h1 { font-size: 1.1rem; margin: 0 0 1rem; }
+h2 { font-size: 0.95rem; margin: 0 0 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.task-columns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.task-col h3 { font-size: 0.8rem; color: var(--muted); margin: 0 0 0.5rem; }
+
+.card {
+  background: #1e2028;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.card .title { margin-bottom: 0.4rem; }
+.card select { width: 100%; font-size: 0.75rem; }
+
+.batch, .session {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  margin-left: 0.3rem;
+}
+.badge.active { background: var(--ok); color: #04140b; }
+.badge.inactive { background: var(--border); color: var(--muted); }
+.badge.stale { background: var(--danger); color: #240609; }
+
+.alert {
+  border-left: 3px solid var(--warn);
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.78rem;
+  background: rgba(224, 167, 43, 0.08);
+}
+.alert.blocking { border-left-color: var(--danger); background: rgba(255, 91, 106, 0.08); }
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+button.danger { background: var(--danger); }
+button:hover { opacity: 0.85; }
+
+.muted { color: var(--muted); font-size: 0.75rem; }
