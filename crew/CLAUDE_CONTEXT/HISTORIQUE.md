@@ -4,6 +4,71 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## crew-dashboard — 2026-09-02
+Quoi : dashboard web local temps réel (`scripts/dashboard/server.py`,
+FastAPI + `scripts/dashboard/static/` vanilla JS, pas de build step) sur
+l'état `crew/` — 3 panneaux Tasks/Batches/Sessions, poll `GET /api/state`
+toutes les 2.5s. Réutilise directement `crew/crew_hook.py` (`import
+crew_hook as h`, `CLAUDE_PROJECT_DIR` forcé sur cwd avant l'import) pour
+parsing/collision/lock plutôt que de les dupliquer. `POST
+/api/tasks/{slug}/move` (git mv gated par `check_batch_collisions`), `POST
+/api/tests/{file}/toggle` (API seule, pas de panneau UI en v1), `POST
+/api/sessions/{id}/purge`. Bootstrap venv isolé (jamais celui du projet
+cible) : `${CLAUDE_PLUGIN_ROOT}/.dashboard-venv` via le skill
+`skills/crew-dashboard/SKILL.md` (+ copie packagée
+`.claude/skills/crew-dashboard/SKILL.md`), ou `<projet>/.dashboard-venv`
+(gitignoré) via `crew/dashboard.bat` (lanceur Windows standalone, hors
+session Claude — `CLAUDE_PLUGIN_ROOT` n'existe que dans une session
+Claude, d'où les deux chemins distincts et non une incohérence). Port
+8943 par défaut, fallback OS-assigné. Spec :
+`docs/superpowers/specs/2026-09-02-crew-dashboard-design.md`.
+
+Deux passes `requesting-code-review` (dispatchées par deux sessions
+différentes en parallèle, cf. incident ci-dessous) ont trouvé et corrigé :
+`move_task` n'enregistrait aucun verrou live sur TODO/PAUSED→CURRENT_TASKS
+(invisible à `check_batch_collisions` pour toute autre session — fix :
+`_claim_current_tasks_lock`, miroir HTTP-friendly de
+`h._claim_git_mv_lock`, + `_release_task_lock` symétrique sur les sorties
+de CURRENT_TASKS pour ne pas laisser de verrou fantôme) ; `purge_session`
+sans `LocksMutex` (race possible avec un hook concurrent) ; validation de
+chemin absente sur `slug`/`file` (`_validate_basename`, rejette
+séparateurs/chemins absolus/lettres de lecteur — la protection Starlette
+`%2f` seule ne couvre pas un chemin absolu Windows) ; venv de test non
+documenté (`scripts/dashboard/requirements-dev.txt` ajouté, pytest+httpx,
+non inclus dans le bootstrap normal) ; colonnes `worktree`/`branch`
+manquantes dans le panneau Sessions malgré l'API les renvoyant déjà.
+Suite `simplify` (4 agents parallèles reuse/simplification/efficacité/
+altitude) : dédoublonné `_release_task_lock` sur `h._slug_session_map`,
+supprimé un monkeypatch no-op dans les tests, `get_state()` ne charge plus
+`crew_lock.json` ni ne liste les dossiers de tâches deux fois par requête.
+Non corrigé (hors zone de ce batch, touche `crew/crew_hook.py` qui
+appartient au batch « Crew subagents & reporting skills ») :
+`_claim_current_tasks_lock` reste un quasi copié-collé de
+`h._claim_lock`/`h._claim_git_mv_lock` (seule différence réelle :
+`HTTPException` au lieu de `sys.exit`) — généraliser `_claim_lock` avec un
+callback `on_fail` serait la correction en profondeur, notée pour une
+tâche future dans l'autre batch.
+
+Vérification : `pytest scripts/dashboard/test_server.py` (11/11 verts,
+dépôt git temporaire réel, pas de mock) + vérification visuelle
+`claude-in-chrome` (chemin nominal + rendu des nouvelles colonnes
+Sessions, aucune erreur console) contre l'état réel de ce repo, serveur
+arrêté après coup.
+
+Incident de session notable (memory
+`crew_hook_lock_misattribution_bug`) : au démarrage de cette tâche via
+`/crew-start` après un `/clear`, `crew_lock.json` montrait un verrou vivant
+pour cette tâche sous un ancien `session_id`. Diagnostiqué à tort comme
+verrou périmé (worktree jamais créé, tâche déjà entièrement cochée) et
+purgé deux fois — la seconde fois alors qu'une **vraie** deuxième session
+Claude travaillait encore, en parallèle, sur `scripts/dashboard/server.py`
+(confirmé quand ses propres fixes sont apparus sur disque en cours
+d'édition). L'utilisateur a arrêté cette autre session sur demande avant
+que ça ne cause une collision d'écriture réelle. Point d'apprentissage :
+un verrou vivant récent ne doit pas être présumé périmé sur la seule base
+de l'absence de worktree — demander confirmation avant de purger, pas
+après un deuxième signal contradictoire.
+
 ## mecanisme-mise-a-jour-scaffold-multi-projets — 2026-08-23
 Quoi : mécanisme de mise à jour (`/crew-update`) pour un projet déjà
 bootstrapé via `crew-init`, récupérant les évolutions ultérieures des

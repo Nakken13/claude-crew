@@ -6,6 +6,7 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [alerte-contexte-150k](alerte-contexte-150k.md)
 - [batch-lock-hardening](batch-lock-hardening.md)
 - [crew-count-batches](crew-count-batches.md)
+- [crew-dashboard](crew-dashboard.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
 - [mecanisme-mise-a-jour-scaffold-multi-projets](mecanisme-mise-a-jour-scaffold-multi-projets.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)
