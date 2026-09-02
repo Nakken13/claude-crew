@@ -4,6 +4,33 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## reduire-tokens-subagents — 2026-09-02
+Quoi : audit + réduction de la consommation de tokens des dispatches de
+personas/subagents crew. `crew-status`/`crew-count` ne dispatchent aucune
+persona (déjà propre) ; `crew-close-task` non plus (invoque des skills, pas
+de persona). `crew-new-task/SKILL.md` avait un gabarit de dispatch qui
+réexpliquait le cycle de vie déjà encodé dans `manager.md` — trimmé de 3803 à
+3515 caractères (mesuré via `git show`, ~7,6 %). `crew-start/SKILL.md` étape
+5B dispatchait `manager` de façon inconditionnelle pour l'anti-collision,
+même sans aucun batch actif — un cas mesuré en session a coûté ~25k tokens /
+14s / 2 tool_uses pour confirmer une évidence vérifiable par un simple
+listing (`crew/CURRENT_TASKS/` + `crew/PAUSED/` vides). Exception ajoutée
+(`CLAUDE.md` § Batching, référencée depuis § Personas et
+`crew-start/SKILL.md`) : listing direct au lieu du dispatch dans ce cas.
+Les 4 personas (`architect`, `ceo`, `manager`, `comms`) ne rappelaient jamais
+la règle grep-avant-Read-intégral — ajoutée dans chaque fichier (cause
+probable : règle globale dans `CLAUDE.md`, non répétée au point d'usage,
+donc plus facilement oubliée par un agent dispatché à froid). Seuil de
+contexte différencié par rôle documenté (`CLAUDE.md` § Efficience de
+contexte) : ~100k pour agents d'implémentation, ~150k inchangé pour
+personas read-only. Fichiers/commits clés : `CLAUDE.md`,
+`.claude/agents/*.md` + copies packagées `agents/*.md`,
+`.claude/skills/{crew-new-task,crew-start}/SKILL.md` + copies packagées
+`skills/{crew-new-task,crew-start}/SKILL.md`. Commits (worktree batch
+`crew/batch-crew-subagents-reporting-skills`) : 76a9c17 (backlog TODO
+committé), a10819c (démarrage tâche), a509b38 (implémentation), 4541b44 (fix
+review : correction d'un chiffre de mesure erroné 3582→3515).
+
 ## crew-dashboard — 2026-09-02
 Quoi : dashboard web local temps réel (`scripts/dashboard/server.py`,
 FastAPI + `scripts/dashboard/static/` vanilla JS, pas de build step) sur

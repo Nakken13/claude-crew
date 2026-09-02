@@ -18,8 +18,9 @@ Zone : `.claude/agents/*.md` ; `.claude/skills/crew-new-task/SKILL.md`,
 Tâches (ordre à respecter — toutes touchent tout ou partie de
 `manager.md` / `crew-close-task` / `crew-status` / `crew-count`
 `SKILL.md`, séquencées pour éviter un conflit d'édition) :
-1. `crew/TODO/reduire-tokens-subagents.md` — trim des prompts de dispatch,
-   y compris dans crew-status/crew-count.
+1. ~~`crew/TODO/reduire-tokens-subagents.md`~~ — trim des prompts de dispatch,
+   y compris dans crew-status/crew-count. Clôturée 2026-09-02, cf.
+   `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 2. `crew/TODO/condenser-crew-count-status.md` — condense le format de
    sortie de crew-status/crew-count, une fois (1) fait sur ces fichiers.
 3. `crew/TODO/corriger-purge-batch-clos.md` — fait barrer (au lieu de
