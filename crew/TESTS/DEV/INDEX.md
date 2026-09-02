@@ -7,4 +7,5 @@ Tests nécessitant le dev (🖱️ manuel/visuel navigateur, ou item non outill�
 - [crew-dashboard](crew-dashboard.md)
 - [Plugin marketplace packaging](marketplace-plugin.md)
 - [readme-github-discoverability](readme-github-discoverability.md)
+- [reduire-tokens-subagents](reduire-tokens-subagents.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)
