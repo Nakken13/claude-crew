@@ -27,9 +27,12 @@ précis).
    les retours appliqués : `git status` pour identifier les fichiers
    réellement modifiés par **cette tâche** (celle en cours de clôture — pas
    une autre tâche qui traînerait en parallèle dans le même checkout), puis
-   `git commit -- <ces fichiers>` scopé à ces seuls fichiers. Jamais un
-   `git commit` nu, jamais `git add -A`/`git add .`, jamais de push — même
-   contrainte que le reste du protocole crew. Distinct et complémentaire du
+   `git add -- <ces fichiers>` (scopé, jamais `-A`) suivi de `git commit --
+   <ces fichiers>` scopé à ces seuls fichiers — le `git add` scopé est
+   nécessaire pour les fichiers nouvellement créés (non trackés), que `git
+   commit --` seul ne stage pas. Jamais un `git commit` nu, jamais `git add
+   -A`/`git add .`, jamais de push — même contrainte que le reste du
+   protocole crew. Distinct et complémentaire du
    commit auto de bookkeeping crew/ (point 5 ci-dessous,
    `crew/crew_hook.py::auto_commit_closure`) : ne pas recommitter ici les
    chemins bookkeeping (`crew/CURRENT_TASKS/<slug>.md`, `HISTORIQUE.md`,
