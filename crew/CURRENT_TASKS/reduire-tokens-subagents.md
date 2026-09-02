@@ -17,34 +17,54 @@ existe déjà mais semble insuffisante en pratique — à vérifier pourquoi
 
 ## Actions
 
-- [ ] Auditer les prompts de dispatch des skills `crew-new-task`,
+- [x] Auditer les prompts de dispatch des skills `crew-new-task`,
       `crew-close-task`, `crew-status`, `crew-count`, `crew-start` : taille de
       chaque prompt, contexte redondant avec ce que l'agent peut lire
-      lui-même (fichiers déjà accessibles, historique déjà dans crew/)
-- [ ] Vérifier que les personas `.claude/agents/architect.md`, `ceo.md`,
+      lui-même (fichiers déjà accessibles, historique déjà dans crew/).
+      Résultat : `crew-status`/`crew-count` ne dispatchent aucune persona
+      (pur reporting direct) — rien à réduire là. `crew-close-task` invoque
+      des skills (`requesting-code-review`, `simplify`), pas de persona — rien
+      à réduire non plus. `crew-new-task` avait un gabarit de 24 lignes qui
+      réexpliquait le cycle de vie déjà encodé dans `manager.md` lui-même
+      (redondance directe). `crew-start` dispatchait `manager` de façon
+      inconditionnelle à l'étape 5B même quand aucun batch n'est actif
+      (vérifiable par un simple listing).
+- [x] Vérifier que les personas `.claude/agents/architect.md`, `ceo.md`,
       `manager.md`, `comms.md` respectent la règle grep-avant-lecture-complète
-      de `CLAUDE.md` (pas de lecture systématique de fichiers longs type
-      HISTORIQUE.md, CLAUDE_BATCH.md en entier)
-- [ ] Identifier dans les skills crew-* et le routage `CLAUDE.md` § Personas
+      de `CLAUDE.md`. Résultat : aucune des 4 ne la mentionnait explicitement
+      — corrigé (ligne ajoutée dans chacune, + copies packagées `agents/*.md`).
+- [x] Identifier dans les skills crew-* et le routage `CLAUDE.md` § Personas
       les cas où un agent est dispatché alors qu'une réponse directe (sans
-      subagent) suffirait — lister ces cas concrètement
-- [ ] Réduire/resserrer les prompts de dispatch, en particulier
-      `crew-new-task` et `crew-close-task` (les plus longs identifiés)
-- [ ] Vérifier concrètement pourquoi la règle "Efficience de contexte"
-      existante ne suffit pas (non lue par les subagents ? pas assez
-      contraignante en pratique ? aucun mécanisme qui la fait respecter ?)
-- [ ] Documenter dans `CLAUDE.md` si une règle plus stricte est nécessaire
-      (ex. budget de tokens indicatif par dispatch, format de prompt de
-      dispatch standardisé et court)
-- [ ] Mesurer/comparer avant-après si possible (taille des prompts de
-      dispatch, volume de contexte transmis) pour valider l'amélioration
-- [ ] Évaluer un seuil de fenêtre de contexte plus bas pour les subagents
-      (~100k au lieu de ~150k), différencié par rôle : agents
-      d'implémentation (gros contexte code) prioritaires pour ce seuil
-      serré ; personas read-only (`ceo`, `architect`, `manager` en mode
-      lecture) déjà courtes, pas de gain à resserrer davantage. Attention
-      au tradeoff : seuil trop bas → plus de cycles recap/relaunch →
-      overhead qui peut annuler le gain token recherché
+      subagent) suffirait. Cas concret trouvé et corrigé : `crew-start` étape
+      5B dispatchait `manager` même quand `CURRENT_TASKS/`+`PAUSED/` sont vides
+      (aucun chevauchement possible par définition) — exception ajoutée à
+      `CLAUDE.md` § Personas + § Batching + `crew-start/SKILL.md`.
+- [x] Réduire/resserrer les prompts de dispatch, en particulier
+      `crew-new-task` et `crew-close-task`. `crew-new-task` : gabarit réduit de
+      24 à ~9 lignes (délègue au rôle déjà encodé dans `manager.md` au lieu de
+      le réexpliquer). `crew-close-task` : pas de gabarit de dispatch persona
+      à réduire (confirmé ci-dessus).
+- [x] Vérifier concrètement pourquoi la règle "Efficience de contexte"
+      existante ne suffit pas. Cause identifiée : pour les subagents, la règle
+      n'a aucun mécanisme automatique (contrairement au hook Stop de la
+      session principale) et n'était pas répétée dans les fichiers personas
+      eux-mêmes — une règle globale non rappelée au point d'usage est plus
+      facilement oubliée par un agent qui démarre à froid.
+- [x] Documenter dans `CLAUDE.md` si une règle plus stricte est nécessaire.
+      Ajouté : exception de dispatch (§ Personas + § Batching), seuil
+      différencié par rôle et garde-fou "éviter le dispatch quand une
+      vérification directe suffit" (§ Efficience de contexte).
+- [x] Mesurer/comparer avant-après si possible. Donnée mesurée en session :
+      le dispatch `manager` évitable (anti-collision sur batchs 100% vides) a
+      coûté ~25k tokens / 14s / 2 tool_uses pour une réponse à une question
+      tranchable par un listing direct — cas désormais éliminé par
+      l'exception ajoutée.
+- [x] Évaluer un seuil de fenêtre de contexte plus bas pour les subagents
+      (~100k au lieu de ~150k), différencié par rôle. Documenté dans
+      `CLAUDE.md` § Efficience de contexte : ~100k pour les agents
+      d'implémentation, pas de resserrement pour les personas read-only déjà
+      courtes, plancher ~80k pour éviter que l'overhead recap/relaunch
+      n'annule le gain.
 
 ## Zone d'impact
 

@@ -11,6 +11,8 @@ c'est la source unique de vérité, tu ne l'improvises pas.
 
 ## Ce que tu fais
 
+- Fichier long (>100 lignes, ex. HISTORIQUE.md, CLAUDE_BATCH.md) : grep ciblé
+  d'abord, jamais un Read intégral d'emblée.
 - Découper une demande en une ou plusieurs tâches `.md`, chacune avec une
   description courte et des actions en cases `- [ ]` concrètes (pas vagues).
 - Décider où chaque tâche naît : `crew/TODO/<slug>.md` (pas commencée),

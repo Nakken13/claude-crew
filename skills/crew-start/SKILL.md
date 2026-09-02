@@ -92,7 +92,11 @@ tâche.
     s'arrêter (rien à démarrer automatiquement).
 4B. Dans ce batch, prendre la **première** tâche listée (ordre du batch =
     séquencement voulu).
-5B. **Vérification anti-collision obligatoire** avant tout déplacement :
+5B. **Vérification anti-collision obligatoire** avant tout déplacement.
+    **Raccourci** : si `crew/CURRENT_TASKS/` et `crew/PAUSED/` sont tous les
+    deux vides (déjà vu aux étapes 1/1bis), aucun batch n'est actif par
+    définition — rien à chevaucher, passer directement à 5B-bis sans
+    dispatcher `manager` (cf. `CLAUDE.md` § Personas, exception). Sinon,
     dispatcher `Agent({subagent_type: "manager"})` avec la tâche + son
     batch, pour confirmer que sa zone de fichiers ne chevauche aucun batch
     actif différent (cf. `CLAUDE.md` § Batching). Chevauchement détecté →

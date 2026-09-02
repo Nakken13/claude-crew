@@ -48,16 +48,10 @@ Contexte technique connu :
 <fichiers/modules concernés si connus, dépendances cross-repo si ce projet
 en a, tâches crew existantes à regarder pour convention/infra proche>
 
-Ce qu'il faut faire, en suivant strictement le cycle de vie décrit dans
-CLAUDE.md :
-1. Crée <crew/TODO/<slug>.md | crew/CURRENT_TASKS/<slug>.md> avec description
-   + actions cochables `- [ ]` concrètes.
-2. Découpe en sous-actions réalistes (lister les axes attendus si connus).
-3. Mets à jour l'INDEX.md du dossier concerné.
-4. Catégorise dans crew/CLAUDE_BATCH.md (zone d'impact, batch existant si
-   chevauchement, sinon nouveau batch ou "À classer"). Vérifie l'invariant de
-   disjonction entre batchs actifs.
-5. Ne touche à aucun fichier hors crew/.
+Applique le cycle de vie standard (déjà dans ton rôle) : fichier
+crew/TODO/ ou crew/CURRENT_TASKS/, actions cochables `- [ ]` concrètes,
+INDEX.md à jour, catégorisation CLAUDE_BATCH.md (zone d'impact, batch
+existant ou nouveau, invariant de disjonction), rien hors crew/.
 
 Rapporte : chemin du fichier créé, résumé des actions cochables choisies,
 et batch/section d'atterrissage dans CLAUDE_BATCH.md.
