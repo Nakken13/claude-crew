@@ -26,20 +26,21 @@ précis).
 4. **Commit de l'implémentation**, une fois les passes du point 3 faites et
    les retours appliqués : `git status` pour identifier les fichiers
    réellement modifiés par **cette tâche** (celle en cours de clôture — pas
-   une autre tâche qui traînerait en parallèle dans le même checkout), puis
-   `git add -- <ces fichiers>` (scopé, jamais `-A`) suivi de `git commit --
-   <ces fichiers>` scopé à ces seuls fichiers — le `git add` scopé est
-   nécessaire pour les fichiers nouvellement créés (non trackés), que `git
-   commit --` seul ne stage pas. Jamais un `git commit` nu, jamais `git add
-   -A`/`git add .`, jamais de push — même contrainte que le reste du
-   protocole crew. Distinct et complémentaire du
-   commit auto de bookkeeping crew/ (point 5 ci-dessous,
-   `crew/crew_hook.py::auto_commit_closure`) : ne pas recommitter ici les
-   chemins bookkeeping (`crew/CURRENT_TASKS/<slug>.md`, `HISTORIQUE.md`,
-   `TESTS/`, `CLAUDE_BATCH.md`, `INDEX.md`) déjà gérés par ce mécanisme
-   séparé. Tâche purement bookkeeping/doc crew (aucun fichier
-   d'implémentation touché hors crew/) → no-op **explicite** : le dire
-   (« rien à committer ici »), pas un skip silencieux.
+   une autre tâche qui traînerait en parallèle dans le même checkout).
+   Croiser cette liste avec la `Zone :` déjà déclarée pour cette tâche dans
+   `crew/CLAUDE_BATCH.md` : un fichier hors de cette zone ne doit jamais
+   être ajouté sans vérification — en cas de doute, demander plutôt que
+   d'inclure silencieusement. Puis `git add -- <ces fichiers>` et `git
+   commit -- <ces fichiers>` (le `git add` scopé est nécessaire pour les
+   fichiers nouvellement créés, que `git commit --` seul ne stage pas ;
+   jamais `-A`/`git add .`, jamais `git commit` nu, jamais de push).
+   Distinct et complémentaire du commit auto de bookkeeping crew/ (point 5
+   ci-dessous, `crew/crew_hook.py::auto_commit_closure`) : ne pas
+   recommitter ici les chemins bookkeeping (`crew/CURRENT_TASKS/<slug>.md`,
+   `HISTORIQUE.md`, `TESTS/`, `CLAUDE_BATCH.md`, `INDEX.md`) déjà gérés par
+   ce mécanisme séparé. Tâche purement bookkeeping/doc crew (aucun fichier
+   d'implémentation touché hors crew/) → no-op explicite : le dire (« rien
+   à committer ici »).
 5. Une fois le commit d'implémentation fait (ou son no-op constaté) :
    - Supprimer `crew/CURRENT_TASKS/<slug>.md`.
    - Ajouter une entrée dans `crew/CLAUDE_CONTEXT/HISTORIQUE.md` : quoi,
@@ -87,6 +88,5 @@ précis).
   même batch est encore en `crew/CURRENT_TASKS/`.
 - Ne résout jamais un conflit de rebase automatiquement — l'abandonne
   proprement et le signale, ne discard jamais le travail du worktree.
-- Ne committe jamais l'implémentation avec un `git commit` nu ou un
-  `git add -A`/`git add .` — toujours un commit scopé aux fichiers
-  identifiés comme appartenant à la tâche en cours de clôture.
+- Ne committe jamais l'implémentation hors du scoping du point 4 (jamais
+  `git commit` nu ou `git add -A`/`git add .`).
