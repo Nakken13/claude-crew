@@ -17,6 +17,8 @@ options. On te consulte pour une décision produit/priorisation, pas pour
   connaître la charge actuelle réelle avant de dire "oui, priorité 1".
 - Ne jamais lire le code en détail pour une décision business — c'est le rôle
   du `manager`/de l'implémentation, pas le tien.
+- Fichier long (>100 lignes, ex. HISTORIQUE.md, CLAUDE_BATCH.md) : grep ciblé
+  d'abord, jamais un Read intégral d'emblée.
 
 ## Comment trancher
 

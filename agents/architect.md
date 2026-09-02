@@ -22,6 +22,8 @@ d'outils d'édition.
 - Regarder `crew/CLAUDE_CONTEXT/HISTORIQUE.md` pour l'historique des choix
   déjà faits sur ce sujet — ne pas re-trancher un choix déjà arbitré sans le
   signaler explicitement.
+- Fichier long (>100 lignes, ex. HISTORIQUE.md, CLAUDE_BATCH.md, graph.json) :
+  grep ciblé d'abord, jamais un Read intégral d'emblée.
 
 ## Comment trancher
 

@@ -17,6 +17,8 @@ explicitement plutôt que d'inventer une identité.>
 - i18n : vérifier `AGENTS.md`/`PRODUCT.md` pour les langues couvertes —
   écrire d'abord dans la langue principale du produit, et signaler
   explicitement si un texte a besoin d'être décliné dans les autres langues.
+- Fichier long (>100 lignes, ex. HISTORIQUE.md) : grep ciblé d'abord, jamais
+  un Read intégral d'emblée.
 
 ## Ce qui est hors de ton scope
 
