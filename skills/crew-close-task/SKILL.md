@@ -23,7 +23,21 @@ précis).
    - Skill `simplify` sur le même périmètre — couvre réutilisation,
      simplification, efficacité **et** modularité (pas de fichier
      fourre-tout, pas de logique dupliquée à 2+ endroits sans extraction).
-4. Une fois les passes faites et les retours appliqués :
+4. **Commit de l'implémentation**, une fois les passes du point 3 faites et
+   les retours appliqués : `git status` pour identifier les fichiers
+   réellement modifiés par **cette tâche** (celle en cours de clôture — pas
+   une autre tâche qui traînerait en parallèle dans le même checkout), puis
+   `git commit -- <ces fichiers>` scopé à ces seuls fichiers. Jamais un
+   `git commit` nu, jamais `git add -A`/`git add .`, jamais de push — même
+   contrainte que le reste du protocole crew. Distinct et complémentaire du
+   commit auto de bookkeeping crew/ (point 5 ci-dessous,
+   `crew/crew_hook.py::auto_commit_closure`) : ne pas recommitter ici les
+   chemins bookkeeping (`crew/CURRENT_TASKS/<slug>.md`, `HISTORIQUE.md`,
+   `TESTS/`, `CLAUDE_BATCH.md`, `INDEX.md`) déjà gérés par ce mécanisme
+   séparé. Tâche purement bookkeeping/doc crew (aucun fichier
+   d'implémentation touché hors crew/) → no-op **explicite** : le dire
+   (« rien à committer ici »), pas un skip silencieux.
+5. Une fois le commit d'implémentation fait (ou son no-op constaté) :
    - Supprimer `crew/CURRENT_TASKS/<slug>.md`.
    - Ajouter une entrée dans `crew/CLAUDE_CONTEXT/HISTORIQUE.md` : quoi,
      quand, fichiers/commits clés.
@@ -33,7 +47,7 @@ précis).
      la création — validation pour une session ultérieure.
    - Retirer la tâche de sa ligne dans `crew/CLAUDE_BATCH.md` (batch ou
      section « À classer »).
-5. **Intégration du worktree de batch**, si la session travaille depuis un
+6. **Intégration du worktree de batch**, si la session travaille depuis un
    worktree `../<nom-repo>-batch-<slug>/` sur la branche `crew/batch-<slug>`
    (isolation physique posée par `/crew-start`, cf.
    `docs/superpowers/specs/2026-08-22-worktree-batch-isolation-design.md`) :
@@ -53,7 +67,8 @@ précis).
        `crew_lock.json` à la main : `crew/crew_hook.py` la nettoie déjà tout
        seul (Stop/SessionEnd) — le travail de code est fini même si
        l'intégration ne l'est pas encore.
-6. Rapporter : ce qui a été historisé, fichiers de tests créés (IA/DEV),
+7. Rapporter : fichiers/commit de l'implémentation (point 4, ou son no-op
+   constaté), ce qui a été historisé, fichiers de tests créés (IA/DEV),
    batch mis à jour, et le sort du worktree de batch (conservé car batch pas
    fini / fusionné et supprimé / conflit laissé pour résolution manuelle).
 
@@ -69,3 +84,6 @@ précis).
   même batch est encore en `crew/CURRENT_TASKS/`.
 - Ne résout jamais un conflit de rebase automatiquement — l'abandonne
   proprement et le signale, ne discard jamais le travail du worktree.
+- Ne committe jamais l'implémentation avec un `git commit` nu ou un
+  `git add -A`/`git add .` — toujours un commit scopé aux fichiers
+  identifiés comme appartenant à la tâche en cours de clôture.
