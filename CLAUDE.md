@@ -46,7 +46,7 @@ Quatre personas dédiées (`Agent({subagent_type: "<nom>"})`), à ne pas confond
 
 - Décision business/priorisation ambiguë, arbitrage scope, "est-ce que ça vaut le coup", choix entre plusieurs directions produit → `ceo` (lecture seule, pas d'implémentation).
 - Demande à découper en tâches suivables avant (ou au lieu) de coder, découpage en lots/batches, séquencement → `manager` (écrit/déplace des fichiers `crew/`, applique le cycle de vie et le batching).
-- **Démarrage d'une tâche existante** (« fais la tâche X », déplacement `crew/TODO/` → `crew/CURRENT_TASKS/`) → `manager` aussi, systématiquement, pour la vérification anti-collision de fichiers (cf. § Batching) avant de lancer quoi que ce soit — pas seulement au moment du découpage initial. **Exception** : si `crew/CURRENT_TASKS/` et `crew/PAUSED/` sont tous les deux vides, aucun batch n'est actif par définition (rien à chevaucher) — vérifier ça directement (un listing), sans dispatcher `manager`.
+- **Démarrage d'une tâche existante** (« fais la tâche X », déplacement `crew/TODO/` → `crew/CURRENT_TASKS/`) → `manager` aussi, systématiquement, pour la vérification anti-collision de fichiers (cf. § Batching, y compris son cas trivial sans batch actif) avant de lancer quoi que ce soit — pas seulement au moment du découpage initial.
 - Copy marketing/landing/pub/email, ton de marque, wording utilisateur final → `comms` (vérifier `AGENTS.md` avant de toucher au ton d'un agent conversationnel produit s'il en existe un).
 - Choix technique structurant (lib/pattern engageant, "on refactore maintenant ou plus tard", arbitrage dette technique) sur du scope déjà défini → `architect` (lecture seule, pas d'implémentation, pas d'arbitrage business).
 
@@ -180,9 +180,23 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
 ### Reset de session
 - Seuil de contexte : **~150k tokens** (session principale) — au-delà, **recommander un `/clear` ou une nouvelle session** plutôt que d'accumuler silencieusement. Un hook Stop best-effort avertit automatiquement (stderr) en cas de dépassement, mais la recommandation s'applique dès que la conversation *semble* volumineuse même sans cet avertissement.
 - Si la session approche de la limite et que la tâche n'est pas finie : commit ce qui est fait, noter l'état dans HISTORIQUE ou CURRENT_TASKS, puis suggérer de relancer.
-- **Subagents** : même seuil ~150k, mais aucun mécanisme automatique ne l'applique pour eux — consigne textuelle que le subagent doit s'auto-imposer : au-delà, s'auto-arrêter, produire un **recap** (bullet points : travail fait, état courant, fichiers touchés, blocages pour la suite — pas un résumé narratif), puis relancer un nouvel agent avec ce recap plutôt que de continuer dans le même contexte.
-- **Seuil différencié par rôle** : ~100k pour les agents d'implémentation (gros contexte code, lecture de fichiers volumineux) — priorité pour un seuil resserré. Pas de gain à resserrer pour les personas read-only (`ceo`, `architect`, `manager` en mode lecture) : leurs prompts et leur contexte sont déjà courts par construction (cf. `.claude/agents/*.md`). Ne pas descendre sous ~80k même pour les agents d'implémentation : un seuil trop bas multiplie les cycles recap/relaunch, dont l'overhead (nouveau prompt système, re-découverte du contexte) peut annuler le gain de tokens recherché.
-- **Éviter le dispatch quand une vérification directe suffit** : avant de dispatcher une persona pour une vérification mécanique (comparaison de zones, listing vide/non-vide, pas de jugement business/technique réel), vérifier si un Glob/Grep direct répond déjà à la question. Exemple concret mesuré sur ce projet : un dispatch `manager` pour confirmer l'absence de tout batch actif (alors que `crew/CURRENT_TASKS/` et `crew/PAUSED/` étaient déjà vus vides) a coûté ~25k tokens et 14s pour une réponse à une question tranchable par un simple listing — cf. exception ajoutée au § Personas et à la « Vérification anti-collision » ci-dessus. Autre mesure : le trim du prompt de dispatch `crew-new-task` (`.claude/skills/crew-new-task/SKILL.md`) a réduit sa taille d'environ 7,6 % (3803 → 3515 caractères, mesuré via `git show`) en remplaçant une liste d'étapes dupliquant `CLAUDE.md` par un renvoi court — gain modeste mais réel, le dispatch évité ci-dessus reste le levier principal.
+- **Subagents** : seuil différencié par rôle plutôt qu'un ~150k uniforme —
+  ~100k pour les agents d'implémentation (gros contexte code), sans
+  descendre sous ~80k (un seuil trop bas multiplie les cycles
+  recap/relaunch, dont l'overhead peut annuler le gain) ; ~150k inchangé
+  pour les personas read-only (`ceo`, `architect`, `manager` en mode
+  lecture), déjà courtes par construction, pas de gain à resserrer. Aucun
+  mécanisme automatique ne l'applique — consigne textuelle que le subagent
+  doit s'auto-imposer : au-delà, s'auto-arrêter, produire un **recap**
+  (bullet points : travail fait, état courant, fichiers touchés, blocages
+  pour la suite — pas un résumé narratif), puis relancer un nouvel agent
+  avec ce recap plutôt que de continuer dans le même contexte.
+- **Éviter le dispatch quand une vérification directe suffit** : avant de
+  dispatcher une persona pour une vérification mécanique (comparaison de
+  zones, listing vide/non-vide, pas de jugement business/technique réel),
+  vérifier si un Glob/Grep direct répond déjà à la question — cf. cas
+  trivial § Batching / § Personas. Mesures concrètes et historique des
+  optimisations : `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 
 ### Guides AGENTS.md segmentés
 - Guide global (invariants produit + anti-patterns) : `crew/CLAUDE_CONTEXT/AGENTS.md`

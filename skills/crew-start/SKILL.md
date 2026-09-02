@@ -92,14 +92,13 @@ tâche.
     s'arrêter (rien à démarrer automatiquement).
 4B. Dans ce batch, prendre la **première** tâche listée (ordre du batch =
     séquencement voulu).
-5B. **Vérification anti-collision obligatoire** avant tout déplacement.
-    **Raccourci** : si `crew/CURRENT_TASKS/` et `crew/PAUSED/` sont tous les
-    deux vides (déjà vu aux étapes 1/1bis), aucun batch n'est actif par
-    définition — rien à chevaucher, passer directement à 5B-bis sans
-    dispatcher `manager` (cf. `CLAUDE.md` § Personas, exception). Sinon,
-    dispatcher `Agent({subagent_type: "manager"})` avec la tâche + son
-    batch, pour confirmer que sa zone de fichiers ne chevauche aucun batch
-    actif différent (cf. `CLAUDE.md` § Batching). Chevauchement détecté →
+5B. **Vérification anti-collision obligatoire** avant tout déplacement, y
+    compris son cas trivial sans batch actif (déjà vu aux étapes 1/1bis) qui
+    dispense de dispatcher `manager` — cf. `CLAUDE.md` § Batching pour la
+    condition exacte. Sinon, dispatcher `Agent({subagent_type: "manager"})`
+    avec la tâche + son batch, pour confirmer que sa zone de fichiers ne
+    chevauche aucun batch actif différent (cf. `CLAUDE.md` § Batching).
+    Chevauchement détecté →
     ne pas démarrer, rapporter le conflit à l'utilisateur et s'arrêter.
 5B-bis. **Isolation physique par worktree** — même procédure que l'étape
     2A-ter ci-dessus (créer ou réutiliser `../<nom-repo>-batch-<slug>/` sur
