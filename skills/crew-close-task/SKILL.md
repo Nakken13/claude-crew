@@ -49,7 +49,7 @@ précis).
      le critère de tri de `CLAUDE.md` (🤖/🔍 = l'IA peut dérouler seule ;
      🖱️ = action humaine réellement nécessaire). Ne pas cocher ces tests à
      la création — validation pour une session ultérieure.
-   - Barrer la ligne de la tâche dans `crew/CLAUDE_BATCH.md` (`~~\`slug.md\`~~`,
+   - Barrer la ligne de la tâche dans `crew/CLAUDE_BATCH.md` (`~~`slug.md`~~`,
      batch ou section « À classer ») — **ne jamais supprimer la ligne** :
      `prune_closed_batches` (`crew/crew_hook.py`) ne retire un batch que
      lorsque toutes ses tâches référencées sont barrées ; une ligne
