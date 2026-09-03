@@ -28,15 +28,11 @@ Tâches (ordre à respecter — toutes touchent tout ou partie de
    supprimer) la ligne de tâche dans `crew-close-task/SKILL.md` lors de la
    clôture, pour que `prune_closed_batches` purge correctement les batchs
    clos. Clôturée 2026-09-03, cf. `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
-4. `crew/TODO/ancrer-crew-racine-repo.md` — ancre tous les chemins `crew/...`
-   à la racine du repo (bug crew/ fantôme créé dans un sous-dossier type
-   frontend/backend quand le cwd n'est pas la racine) dans `manager.md` et
-   les 6 skills `crew-*` (`crew-new-task`, `crew-close-task`, `crew-init`,
-   `crew-status`, `crew-count`, `crew-start`). Pas de dépendance
-   fonctionnelle avec (1)/(2)/(3), mais touche les mêmes fichiers
-   (`manager.md`, `crew-status/SKILL.md`, `crew-count/SKILL.md`,
-   `crew-close-task/SKILL.md`, zone déjà déclarée) — rattachée à ce batch
-   pour respecter l'invariant de disjonction, séquencée en dernier avant (5).
+4. ~~`crew/TODO/ancrer-crew-racine-repo.md`~~ — ancre tous les chemins
+   `crew/...` à la racine du repo (bug crew/ fantôme créé dans un
+   sous-dossier type frontend/backend quand le cwd n'est pas la racine)
+   dans `manager.md` et les 6 skills `crew-*`. Clôturée 2026-09-03, cf.
+   `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 5. ~~`crew/CURRENT_TASKS/commit-implementation-crew-close-task.md`~~ — ajoute
    une étape explicite de commit de l'implémentation (fichiers hors
    bookkeeping crew/) dans `crew-close-task/SKILL.md`. Clôturée 2026-09-03,
