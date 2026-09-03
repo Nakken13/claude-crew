@@ -9,6 +9,15 @@ Exécute le protocole défini dans `CLAUDE.md` § "Gestion des tâches" (point
 `crew/CLAUDE_CONTEXT/AGENTS.md` si ce projet y documente des anti-patterns
 précis).
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
+créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
+la racine explicitement (`git rev-parse --show-toplevel` ou équivalent)
+avant tout `Read`/`Write`/`Edit`/`Bash` touchant `crew/` si le cwd n'est
+pas garanti être la racine.
+
 ## Étapes
 
 1. Identifier le fichier `crew/CURRENT_TASKS/<slug>.md` concerné (demander

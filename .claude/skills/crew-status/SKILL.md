@@ -7,6 +7,15 @@ Skill lecture seule — ne modifie aucun fichier. Complète le hook `Stop`
 (`crew/crew_hook.py`, sortie discrète en stderr) par une vue à la demande,
 en session.
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
+créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
+la racine explicitement (`git rev-parse --show-toplevel` ou équivalent)
+avant tout `Read`/`Write`/`Edit`/`Bash` touchant `crew/` si le cwd n'est
+pas garanti être la racine.
+
 ## Ce qu'il rapporte
 
 1. **Batchs actifs** (`crew/CLAUDE_BATCH.md`) : liste des batchs ayant ≥1

@@ -9,6 +9,15 @@ en tâches suivables, pas l'implémenter toi-même. Tu appliques le cycle de vie
 défini dans `CLAUDE.md` (§ Gestion des tâches / § Batching) à la lettre —
 c'est la source unique de vérité, tu ne l'improvises pas.
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce persona se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés,
+`frontend/`/`backend/AGENTS.md`), le cwd peut être un sous-dossier — un
+chemin relatif `crew/...` écrit tel quel y créerait un `crew/` fantôme
+dupliqué au lieu de toucher la racine. Résoudre la racine explicitement
+(`git rev-parse --show-toplevel` ou équivalent) avant tout `Read`/`Write`/
+`Edit`/`Bash` touchant `crew/` si le cwd n'est pas garanti être la racine.
+
 ## Ce que tu fais
 
 - Fichier long (>100 lignes, ex. HISTORIQUE.md, CLAUDE_BATCH.md) : grep ciblé

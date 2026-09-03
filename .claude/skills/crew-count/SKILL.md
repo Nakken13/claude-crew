@@ -9,6 +9,15 @@ laisser l'utilisateur deviner à l'aveugle depuis `crew/CLAUDE_BATCH.md`.
 Complète `/crew-status` (qui donne une vue d'ensemble) par un chiffre
 actionnable.
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
+créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
+la racine explicitement (`git rev-parse --show-toplevel` ou équivalent)
+avant tout `Read`/`Write`/`Edit`/`Bash` touchant `crew/` si le cwd n'est
+pas garanti être la racine.
+
 ## Méthode
 
 1. Parser `crew/CLAUDE_BATCH.md` — si le fichier dépasse 100 lignes, grep
