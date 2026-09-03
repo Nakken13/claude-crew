@@ -36,6 +36,38 @@ en session.
    `git branch -d` par l'utilisateur), ne jamais le supprimer soi-même
    (pourrait contenir du travail non commité).
 
+## Format de sortie
+
+Compact, une ligne par item, pas de paragraphe répété à chaque run. Gabarit
+(sections omises si vides, sauf mention contraire) :
+
+```
+🟢 Batchs actifs
+- <nom> — Zone: <chemins> — X tâche(s) restante(s)
+  ⚠️ chevauche <autre batch> sur <chemin>   (si détecté)
+
+⏳ En cours
+- <slug> — <n>/<m> actions cochées
+
+⏸️ En pause
+- <slug> — bloqué: <raison courte>
+
+🔍 Tests IA non cochés (N fichiers)
+- <fichier>
+
+🗑️ TODO orphelines
+- <slug>
+
+🧹 Worktrees orphelins
+- <path> (aucune session ne le référence)
+
+⚠️ Bootstrap : N placeholder(s) <...> restant(s) — voir /crew-init
+```
+
+Une section sans item n'apparaît pas (sauf "Batchs actifs"/"En cours" : si
+vide, une ligne `(aucun)` suffit — évite de faire croire à un rapport
+tronqué).
+
 ## Ce que ce skill ne fait pas
 
 - N'écrit, ne déplace, ne coche aucun fichier — pur reporting.
