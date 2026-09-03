@@ -32,20 +32,20 @@ classer" ou batch créé par anticipation sans tâche encore rattachée).
 
 ## Actions
 
-- [ ] Confirmer le bug en reproduisant localement (clore une tâche via
+- [x] Confirmer le bug en reproduisant localement (clore une tâche via
       crew-close-task, vérifier que sa ligne est supprimée et non barrée
       dans `CLAUDE_BATCH.md`)
-- [ ] Corriger crew-close-task (`.claude/skills/crew-close-task/SKILL.md` +
+- [x] Corriger crew-close-task (`.claude/skills/crew-close-task/SKILL.md` +
       toute copie packagée du plugin, notamment `skills/crew-close-task/SKILL.md`)
       pour barrer (`~~slug.md~~`) la ligne au lieu de la supprimer
-- [ ] Vérifier que `prune_closed_batches` (`scripts/crew_hook.py` et
+- [x] Vérifier que `prune_closed_batches` (`scripts/crew_hook.py` et
       `crew/crew_hook.py`) purge bien le batch au tour suivant une fois
       toutes ses tâches barrées
-- [ ] Vérifier/adapter `CLAUDE.md` § Batching si le wording décrit mal le
+- [x] Vérifier/adapter `CLAUDE.md` § Batching si le wording décrit mal le
       comportement réel
-- [ ] Nettoyer manuellement `crew/CLAUDE_BATCH.md` de ce repo si des headers
+- [x] Nettoyer manuellement `crew/CLAUDE_BATCH.md` de ce repo si des headers
       vides orphelins y trainent déjà (audit rapide)
-- [ ] Documenter dans `HISTORIQUE` si pertinent pour que les projets déjà
+- [x] Documenter dans `HISTORIQUE` si pertinent pour que les projets déjà
       déployés (voyageo) sachent qu'il faut mettre à jour leur copie du
       plugin/scaffold
 
