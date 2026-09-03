@@ -24,13 +24,10 @@ Tâches (ordre à respecter — toutes touchent tout ou partie de
 2. ~~`crew/TODO/condenser-crew-count-status.md`~~ — condense le format de
    sortie de crew-status/crew-count. Clôturée 2026-09-03, cf.
    `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
-3. `crew/TODO/corriger-purge-batch-clos.md` — fait barrer (au lieu de
+3. ~~`crew/TODO/corriger-purge-batch-clos.md`~~ — fait barrer (au lieu de
    supprimer) la ligne de tâche dans `crew-close-task/SKILL.md` lors de la
    clôture, pour que `prune_closed_batches` purge correctement les batchs
-   clos. Pas de dépendance fonctionnelle avec (1)/(2), mais touche le même
-   fichier `.claude/skills/crew-close-task/SKILL.md` (zone déjà déclarée par
-   la tâche 1) — rattachée à ce batch pour respecter l'invariant de
-   disjonction plutôt que créer un nouveau batch qui collisionnerait dessus.
+   clos. Clôturée 2026-09-03, cf. `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 4. `crew/TODO/ancrer-crew-racine-repo.md` — ancre tous les chemins `crew/...`
    à la racine du repo (bug crew/ fantôme créé dans un sous-dossier type
    frontend/backend quand le cwd n'est pas la racine) dans `manager.md` et
