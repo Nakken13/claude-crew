@@ -43,16 +43,18 @@ Compact, une ligne par item, pas de paragraphe répété à chaque run. Gabarit
 
 ```
 🟢 Batchs actifs
-- <nom> — Zone: <chemins> — X tâche(s) restante(s)
-  ⚠️ chevauche <autre batch> sur <chemin>   (si détecté)
+- <nom> — Zone : <chemins> — X tâche(s) restante(s)
+
+⚠️ Chevauchements
+- <nom> ↔ <nom> sur <chemin commun>
 
 ⏳ En cours
 - <slug> — <n>/<m> actions cochées
 
 ⏸️ En pause
-- <slug> — bloqué: <raison courte>
+- <slug> — bloqué, validation dev en attente
 
-🔍 Tests IA non cochés (N fichiers)
+📝 Tests IA non cochés (N fichiers)
 - <fichier>
 
 🗑️ TODO orphelines
@@ -66,7 +68,12 @@ Compact, une ligne par item, pas de paragraphe répété à chaque run. Gabarit
 
 Une section sans item n'apparaît pas (sauf "Batchs actifs"/"En cours" : si
 vide, une ligne `(aucun)` suffit — évite de faire croire à un rapport
-tronqué).
+tronqué). `⚠️ Chevauchements` est calculé une seule fois (même comparaison
+que dans "Ce qu'il rapporte" point 1), une ligne par paire en conflit — pas
+de duplication sous chaque batch concerné. La ligne "En pause" reste
+générique (pas de lecture du contenu du fichier `crew/PAUSED/<slug>.md` :
+sa raison est déjà `crew/PAUSED/README.md`/`CLAUDE.md` § 2bis — toujours
+"attend une validation visuelle/dev").
 
 ## Ce que ce skill ne fait pas
 
