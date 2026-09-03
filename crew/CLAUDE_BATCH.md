@@ -21,8 +21,9 @@ Tâches (ordre à respecter — toutes touchent tout ou partie de
 1. ~~`crew/TODO/reduire-tokens-subagents.md`~~ — trim des prompts de dispatch,
    y compris dans crew-status/crew-count. Clôturée 2026-09-02, cf.
    `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
-2. `crew/TODO/condenser-crew-count-status.md` — condense le format de
-   sortie de crew-status/crew-count, une fois (1) fait sur ces fichiers.
+2. ~~`crew/TODO/condenser-crew-count-status.md`~~ — condense le format de
+   sortie de crew-status/crew-count. Clôturée 2026-09-03, cf.
+   `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 3. `crew/TODO/corriger-purge-batch-clos.md` — fait barrer (au lieu de
    supprimer) la ligne de tâche dans `crew-close-task/SKILL.md` lors de la
    clôture, pour que `prune_closed_batches` purge correctement les batchs
