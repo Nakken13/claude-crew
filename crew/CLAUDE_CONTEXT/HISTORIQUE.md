@@ -4,6 +4,48 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## ancrer-crew-racine-repo — 2026-09-03
+Quoi : fixé le bug du `crew/` fantôme en sous-dossier — `.claude/agents/
+manager.md` et les 6 skills `crew-*` (`crew-new-task`, `crew-close-task`,
+`crew-init`, `crew-status`, `crew-count`, `crew-start`) référençaient tous
+`crew/...` en chemin relatif, sans ancrage explicite. En session
+mono-subtree (cwd dans `frontend/`/`backend/`, cf. `CLAUDE.md` § Guides
+AGENTS.md segmentés), une écriture relative crée un `crew/` dupliqué sous
+ce sous-dossier au lieu de toucher la racine. Bug reproduit directement en
+session : depuis un cwd `frontend/`, `crew/TODO/test.md` résout vers
+`frontend/crew/TODO/test.md`. Ajouté une consigne "Ancrage racine
+obligatoire" identique dans les 10 fichiers concernés (manager.md + 6
+`.claude/skills/crew-*/SKILL.md` + 3 copies packagées `skills/crew-{close-
+task,new-task,start}/SKILL.md`, les seules identiques à leur original avant
+cette tâche — `skills/crew-{init,status,count}/SKILL.md` étaient déjà
+divergentes avant, hors zone déclarée) et une règle dans `CLAUDE.md` §
+Guides AGENTS.md segmentés. Audit de ce repo : aucun `crew/` fantôme en
+sous-dossier (`template/crew/` est le squelette légitime du scaffold, pas
+un artefact du bug) ; pas d'accès à d'autres projets connus (voyageo) pour
+audit depuis cette session. Review `requesting-code-review` a trouvé un
+problème Critical (3 copies packagées silencieusement divergées par cette
+même tâche — `skills/crew-close-task`, `skills/crew-new-task`,
+`skills/crew-start` — même classe de drift déjà vue et corrigée pour
+`crew-close-task` dans `corriger-purge-batch-clos`) : corrigé, les 3 copies
+resynchronisées. Review a aussi suggéré un garde-fou mécanique (hook
+`PreToolUse`, comme `crew/crew_hook.py` en a déjà pour d'autres invariants)
+plutôt qu'un fix prose-only — jugé hors scope de cette tâche (zone déclarée
+= documentation uniquement, changer `crew_hook.py` est un changement de
+code séparé et plus risqué), noté comme suivi dans
+`crew/PROBLEMS/hook-guard-crew-root-anchoring.md` plutôt que silencieusement
+abandonné. Passe `simplify` (4 agents parallèles, verdict altitude : le fix
+prose-only est la bonne profondeur pour cette tâche, le hook `crew_hook.py`
+se déclare déjà best-effort/fail-open par design donc un fix mécanique ne
+remplacerait pas la prose de toute façon) a fait clarifier "résoudre la
+racine une seule fois par exécution" plutôt qu'à chaque opération `crew/`
+(risque d'appels `git rev-parse` répétés sans borne) et retiré `Write`/
+`Edit` (mots morts) des deux skills lecture-seule (`crew-status`,
+`crew-count`). Commits : `3b58925`, `d03e86f` (sync copies packagées +
+suivi), `790d5c7` (fixes simplify). Batch "Crew subagents & reporting
+skills" entièrement clos avec cette tâche (toutes ses tâches barrées) —
+sera purgé de `CLAUDE_BATCH.md` automatiquement au tour suivant
+(`prune_closed_batches`).
+
 ## corriger-purge-batch-clos — 2026-09-03
 Quoi : corrigé un bug de wording qui cassait `prune_closed_batches`
 (`crew/crew_hook.py`) — signalé sur un autre projet déployé avec le même
