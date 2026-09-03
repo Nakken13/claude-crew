@@ -8,6 +8,15 @@ scaffold (`~/.claude/templates/project-scaffold/`) — il ne remplace pas ce
 document, il évite de dérouler les étapes à la main et de laisser un
 placeholder non résolu par oubli.
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
+créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
+la racine explicitement (`git rev-parse --show-toplevel` ou équivalent)
+avant tout `Read`/`Write`/`Edit`/`Bash` touchant `crew/` si le cwd n'est
+pas garanti être la racine.
+
 ## Détection de l'état actuel
 
 1. Le projet a déjà `CLAUDE.md` + `crew/` remplis (pas de `<...>` restant) →

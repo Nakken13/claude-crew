@@ -9,6 +9,15 @@ document, il évite de ré-écrire à la main un prompt long à chaque fois.
 Source unique de vérité = `CLAUDE.md`, ce fichier ne fait que standardiser
 l'appel.
 
+**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
+résout **depuis la racine du repo**, jamais depuis le cwd courant. En
+session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
+créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
+la racine explicitement (`git rev-parse --show-toplevel` ou équivalent)
+avant tout `Read`/`Write`/`Edit`/`Bash` touchant `crew/` si le cwd n'est
+pas garanti être la racine.
+
 ## Ce que fait ce skill
 
 1. Rassembler le contexte disponible sur la demande : quoi, pourquoi,

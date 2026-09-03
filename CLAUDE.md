@@ -206,3 +206,4 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
 - Guide global (invariants produit + anti-patterns) : `crew/CLAUDE_CONTEXT/AGENTS.md`
 - Un `AGENTS.md` par subtree significatif (ex. `frontend/AGENTS.md`, `backend/AGENTS.md`, `mobile/AGENTS.md`) qui **scope** le fichier racine (le lire, ne pas le dupliquer).
 - En session mono-subtree, lire uniquement l'`AGENTS.md` de ce subtree (pas le guide global complet sauf si une règle cross-stack est ambiguë).
+- **Le mono-subtree ne fait jamais dériver l'emplacement de `crew/`** : même quand une session travaille cwd dans `frontend/`/`backend/`, `crew/` reste unique à la racine du repo. Tout chemin `crew/...` écrit relatif au cwd depuis un sous-dossier crée un `crew/` fantôme dupliqué — résoudre la racine explicitement (`git rev-parse --show-toplevel` ou équivalent) avant toute écriture `crew/` si le cwd n'est pas garanti être la racine (cf. personas/skills `crew-*`).
