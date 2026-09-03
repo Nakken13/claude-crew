@@ -4,6 +4,41 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## condenser-crew-count-status — 2026-09-03
+Quoi : sortie de `/crew-count` et `/crew-status` resserrée — remplacement
+des sections prose "Sortie attendue"/"Ce qu'il rapporte" (paragraphes
+répétés à chaque run) par une section "Format de sortie" avec gabarit
+compact (emoji + une ligne par item), dans `.claude/skills/crew-count/
+SKILL.md` et `.claude/skills/crew-status/SKILL.md`. Toute l'info utile
+préservée : chevauchements de zone, ratio d'actions cochées par tâche
+courante, tests IA non cochés, tâches TODO non catégorisées, placeholders
+`<...>` restants. Validé avec des données réelles du projet (batch "Crew
+subagents & reporting skills" actif, 10 fichiers `crew/TESTS/IA/*.md` non
+cochés, 4 placeholders `<NOM_PROJET>` non résolus) plutôt qu'un exemple
+hypothétique. Commits : `8b18665` (format initial) puis `b040f2a` (fixes
+review/simplify). Review `requesting-code-review` a signalé deux points
+Important corrigés avant merge : l'affichage d'un chevauchement de zone
+entre deux batchs actifs était ambigu (dupliqué sous chaque batch vs une
+seule fois) — résolu en une section `⚠️ Chevauchements` calculée une fois,
+notation par paire (repris de `crew-count`) ; et la `<raison courte>` d'une
+tâche en pause n'avait pas de source de données définie (`crew/PAUSED/
+<slug>.md` n'a pas de champ structuré) — au lieu de faire lire/résumer le
+contenu du fichier par l'agent (coût : un `Read` par fichier en pause à
+chaque run, signalé aussi par la passe `simplify` angle efficacité), la
+raison est restée générique (déjà connue via `CLAUDE.md` § 2bis : "attend
+une validation visuelle/dev"). Passe `simplify` (4 agents parallèles) a
+aussi fait corriger une collision d'emoji (🔍 réutilisait le symbole déjà
+défini pour le sous-type "config/curl/DB/logs" des tests IA — cf. `CLAUDE.md`
+§4/`crew_hook.py` — remplacé par 📝 pour le header de section) et ajouté un
+slot de gabarit manquant dans `crew-count` pour les batchs à placeholder
+`<...>` non résolu (la Méthode l'exigeait déjà, le gabarit ne l'affichait
+pas). Travail fait depuis le worktree de batch
+`../claude-crew-batch-crew-subagents-reporting-skills`
+(branche `crew/batch-crew-subagents-reporting-skills`) — batch pas encore
+entièrement clos (tâches `corriger-purge-batch-clos.md` et
+`ancrer-crew-racine-repo.md` restent à faire dans ce même batch), worktree
+conservé.
+
 ## commit-implementation-crew-close-task — 2026-09-02
 Quoi : ajout d'une étape explicite de commit d'implémentation au protocole
 `crew-close-task` (`.claude/skills/crew-close-task/SKILL.md` + copie
