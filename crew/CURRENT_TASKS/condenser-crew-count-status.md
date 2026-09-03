@@ -18,18 +18,18 @@ restants.
 
 ## Actions
 
-- [ ] Relire le format de sortie actuel de `crew-count` et `crew-status`
+- [x] Relire le format de sortie actuel de `crew-count` et `crew-status`
       (exemples réels sur ce projet, pas hypothétiques)
-- [ ] Définir un format condensé cible (ex. une ligne par batch,
+- [x] Définir un format condensé cible (ex. une ligne par batch,
       symboles/emoji plutôt que phrases, pas de répétition d'explication à
       chaque run)
-- [ ] Appliquer le nouveau format à `.claude/skills/crew-count/SKILL.md`
-- [ ] Appliquer le nouveau format à `.claude/skills/crew-status/SKILL.md`
-- [ ] Vérifier que l'info utile reste présente malgré la compression :
+- [x] Appliquer le nouveau format à `.claude/skills/crew-count/SKILL.md`
+- [x] Appliquer le nouveau format à `.claude/skills/crew-status/SKILL.md`
+- [x] Vérifier que l'info utile reste présente malgré la compression :
       chevauchements de zone, % d'actions cochées par tâche courante, tests
       IA non cochés, tâches TODO non catégorisées, placeholders `<...>`
       restants
-- [ ] Faire tourner `/crew-count` et `/crew-status` sur ce projet après
+- [x] Faire tourner `/crew-count` et `/crew-status` sur ce projet après
       modification pour comparer avant/après et valider la lisibilité
 
 ## Zone d'impact

@@ -52,23 +52,35 @@ actionnable.
    paralléliser entre eux — les exclure du compte "lançable en parallèle
    sûr" et le signaler nommément plutôt que de les compter.
 
-## Sortie attendue
+## Format de sortie
 
-- **Nombre de batchs lançables en parallèle maintenant** (chiffre en tête
-  de réponse) = batchs à l'état "lançable", zones disjointes entre eux et
-  vis-à-vis des batchs déjà actifs.
-- Liste par batch retenu : nom, `Zone :` déclarée, nombre de tâches
-  restantes.
-- Section séparée : batchs **déjà actifs** (informatif — pas comptés dans
-  le chiffre de parallélisme *disponible*, puisqu'ils tournent déjà), avec
-  le même niveau de détail que la liste ci-dessus (nom, `Zone :`, nombre de
-  tâches restantes).
-- Avertissement explicite si chevauchement détecté entre deux zones — quels
-  batchs, quels chemins en commun — et pourquoi ils sont exclus du compte
-  plutôt que comptés.
-- Si aucun batch lançable : le dire explicitement (`0` — pas de silence),
-  avec la raison la plus fréquente si visible (tout est actif, ou tout est
-  clôturé, ou tout est encore en « À classer »).
+Compact, une ligne par batch, pas de paragraphe explicatif répété à chaque
+run. Gabarit :
+
+```
+## N lançable(s) en parallèle
+
+🚀 Lançables
+- <nom> — Zone: <chemins> — X tâche(s) restante(s)
+
+🟢 Déjà actifs (non comptés)
+- <nom> — Zone: <chemins> — X tâche(s) restante(s)
+
+⛔ Exclus (chevauchement)
+- <nom> ↔ <nom> sur <chemin commun>
+
+📋 À classer (ignoré) : N tâche(s)
+```
+
+Règles :
+- Le chiffre de tête = uniquement les batchs "lançables" (zones disjointes
+  entre eux et vs actifs).
+- Sections **🟢**/**⛔**/**📋** omises si vides (pas de titre "0 batch" à
+  rallonge) — sauf **🚀** : si 0 lançable, garder `## 0 lançable(s) en
+  parallèle` et ajouter en une ligne la raison la plus visible (tout actif /
+  tout clôturé / tout en « À classer »).
+- Un chevauchement se signale sur la ligne `⛔` elle-même (batchs + chemin
+  commun), pas dans un paragraphe séparé.
 
 ## Ce que ce skill ne fait pas
 
