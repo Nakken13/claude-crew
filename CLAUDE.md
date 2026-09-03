@@ -168,7 +168,7 @@ Avant de déplacer une tâche vers `crew/CURRENT_TASKS/` (§ Gestion des tâches
 
 Garde-fou automatisé complémentaire (hook Stop, non bloquant) : avertit sur un chevauchement de zones entre batchs actifs manqué par la vérification manuelle. `/crew-status` pour une vue à la demande.
 
-Tâche terminée → la retirer de son batch. Le hook `crew/crew_hook.py` avertit (non bloquant) si une tâche TODO/CURRENT n'apparaît nulle part dans `CLAUDE_BATCH.md`, ou si le fichier référence une tâche disparue.
+Tâche terminée → barrer sa ligne dans son batch (`~~`slug.md`~~`), jamais la supprimer (cf. Nettoyage automatique ci-dessous — une ligne supprimée au lieu d'être barrée laisse un header de batch orphelin que la purge automatique ne détecte jamais). Le hook `crew/crew_hook.py` avertit (non bloquant) si une tâche TODO/CURRENT n'apparaît nulle part dans `CLAUDE_BATCH.md`, ou si le fichier référence une tâche disparue.
 
 **Nettoyage automatique** : un batch dont **toutes** les tâches sont barrées (`~~`slug.md`~~`) est retiré de `CLAUDE_BATCH.md` automatiquement au tour suivant — ne jamais le supprimer manuellement, l'historique complet reste de toute façon dans `HISTORIQUE.md`. Sections vides/placeholder (jamais démarrées) non concernées.
 
