@@ -14,9 +14,10 @@ résout **depuis la racine du repo**, jamais depuis le cwd courant. En
 session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés,
 `frontend/`/`backend/AGENTS.md`), le cwd peut être un sous-dossier — un
 chemin relatif `crew/...` écrit tel quel y créerait un `crew/` fantôme
-dupliqué au lieu de toucher la racine. Résoudre la racine explicitement
-(`git rev-parse --show-toplevel` ou équivalent) avant tout `Read`/`Write`/
-`Edit`/`Bash` touchant `crew/` si le cwd n'est pas garanti être la racine.
+dupliqué au lieu de toucher la racine. Résoudre la racine une seule fois en
+début d'exécution (`git rev-parse --show-toplevel` ou équivalent) si elle
+n'est pas déjà connue — pas besoin de revérifier à chaque `Read`/`Write`/
+`Edit`/`Bash` suivant.
 
 ## Ce que tu fais
 

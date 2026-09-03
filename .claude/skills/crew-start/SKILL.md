@@ -16,9 +16,10 @@ peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
 créerait un `crew/` fantôme dupliqué au lieu de toucher la racine
 (y compris le worktree de batch créé aux étapes 2A-ter/5B-bis : le
 `git worktree add`/`cd` s'exécute depuis la racine du checkout principal,
-jamais depuis un sous-dossier). Résoudre la racine explicitement
-(`git rev-parse --show-toplevel` ou équivalent) avant tout `Read`/`Write`/
-`Edit`/`Bash` touchant `crew/` si le cwd n'est pas garanti être la racine.
+jamais depuis un sous-dossier). Résoudre la racine une seule fois en début
+d'exécution (`git rev-parse --show-toplevel` ou équivalent) si elle n'est
+pas déjà connue — pas besoin de revérifier à chaque `Read`/`Write`/`Edit`/
+`Bash` suivant.
 
 ## Étapes
 
