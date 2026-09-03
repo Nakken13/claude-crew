@@ -61,13 +61,15 @@ run. Gabarit :
 ## N lançable(s) en parallèle
 
 🚀 Lançables
-- <nom> — Zone: <chemins> — X tâche(s) restante(s)
+- <nom> — Zone : <chemins> — X tâche(s) restante(s)
 
 🟢 Déjà actifs (non comptés)
-- <nom> — Zone: <chemins> — X tâche(s) restante(s)
+- <nom> — Zone : <chemins> — X tâche(s) restante(s)
 
 ⛔ Exclus (chevauchement)
 - <nom> ↔ <nom> sur <chemin commun>
+
+🚧 Placeholder(s) non résolu(s) (ignoré) : <nom du batch>
 
 📋 À classer (ignoré) : N tâche(s)
 ```
