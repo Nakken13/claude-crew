@@ -4,6 +4,35 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## commit-implementation-crew-close-task — 2026-09-02
+Quoi : ajout d'une étape explicite de commit d'implémentation au protocole
+`crew-close-task` (`.claude/skills/crew-close-task/SKILL.md` + copie
+packagée `skills/crew-close-task/SKILL.md`), entre les passes obligatoires
+(`requesting-code-review`/`simplify`, désormais point 3) et le bookkeeping
+(désormais point 5, ex-point 4). Demande directe de l'utilisateur : « rajoute
+au hook de cloture : lorsqu'une tâche bien implémentée et prête à être close,
+on commit cette tâche ». Décision `architect` actée avant implémentation :
+NE PAS automatiser dans `crew/crew_hook.py::auto_commit_closure` (risque
+réel, déjà vécu en session — un scope auto basé sur la section libre
+`## Zone d'impact` aurait pu embarquer les edits d'un fichier partagé, ex.
+`CLAUDE.md`, appartenant à une autre tâche non committée ; même classe
+d'incident que "ProjetA", à la granularité fichier au lieu de la granularité
+index/staged). À la place, nouveau point 4 explicite : `git status` →
+croiser avec la `Zone :` déclarée dans `CLAUDE_BATCH.md` (fichier hors zone
+→ demander, pas d'inclusion silencieuse) → `git add -- <fichiers>` puis
+`git commit -- <fichiers>` (jamais `-A`/`git add .`, jamais commit nu,
+jamais push). No-op explicite documenté pour les tâches purement
+bookkeeping. Review `requesting-code-review` a trouvé et fait corriger un
+bug réel : `git commit --` seul ne stage pas les fichiers non trackés
+(nécessite un `git add` scopé d'abord). Passe `simplify` (4 agents
+parallèles) a fait retirer une duplication de la contrainte anti-`add -A`
+entre le point 4 et « Ce que ce skill ne fait pas », resserré le wording, et
+ajouté le croisement avec la `Zone :` (suggestion `altitude`, pour donner un
+critère concret plutôt que du pur jugement sur `git status`). Fichiers/commits
+clés (worktree batch `crew/batch-crew-subagents-reporting-skills`) : a498d97
+(étape ajoutée), 6babc4c (fix review : `git add` manquant), ab036e7 (fixes
+simplify).
+
 ## reduire-tokens-subagents — 2026-09-02
 Quoi : audit + réduction de la consommation de tokens des dispatches de
 personas/subagents crew. `crew-status`/`crew-count` ne dispatchent aucune

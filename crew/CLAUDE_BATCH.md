@@ -39,18 +39,10 @@ Tâches (ordre à respecter — toutes touchent tout ou partie de
    (`manager.md`, `crew-status/SKILL.md`, `crew-count/SKILL.md`,
    `crew-close-task/SKILL.md`, zone déjà déclarée) — rattachée à ce batch
    pour respecter l'invariant de disjonction, séquencée en dernier avant (5).
-5. `crew/CURRENT_TASKS/commit-implementation-crew-close-task.md` — ajoute
+5. ~~`crew/CURRENT_TASKS/commit-implementation-crew-close-task.md`~~ — ajoute
    une étape explicite de commit de l'implémentation (fichiers hors
-   bookkeeping crew/) dans `crew-close-task/SKILL.md`, entre les étapes
-   "passes obligatoires" et "bookkeeping" existantes. Pas de dépendance
-   fonctionnelle avec (1)/(2)/(3)/(4), mais touche le même fichier
-   `.claude/skills/crew-close-task/SKILL.md` (et sa copie packagée
-   `skills/crew-close-task/SKILL.md`, zone déjà déclarée) — rattachée à ce
-   batch pour respecter l'invariant de disjonction, séquencée en dernier
-   pour éviter un conflit d'édition si plusieurs tâches de ce batch sont
-   traitées dans la même session. Démarrée directement en
-   `crew/CURRENT_TASKS/` (demande explicite de démarrage immédiat, aucun
-   batch actif au moment du découpage — pas de collision).
+   bookkeeping crew/) dans `crew-close-task/SKILL.md`. Clôturée 2026-09-03,
+   cf. `crew/CLAUDE_CONTEXT/HISTORIQUE.md`.
 
 Note : (1) et (2) demandées initialement comme deux batchs séparés ("zones
 distinctes"), mais leurs zones déclarées se chevauchent réellement sur
