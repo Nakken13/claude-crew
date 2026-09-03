@@ -4,6 +4,43 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## corriger-purge-batch-clos — 2026-09-03
+Quoi : corrigé un bug de wording qui cassait `prune_closed_batches`
+(`crew/crew_hook.py`) — signalé sur un autre projet déployé avec le même
+scaffold (voyageo), où `crew/CLAUDE_BATCH.md` avait grossi à >1000 lignes.
+Root cause : `CLAUDE.md`, `template/CLAUDE.md` et les deux copies de
+`crew-close-task/SKILL.md` (`.claude/skills/crew-close-task/SKILL.md` et
+`skills/crew-close-task/SKILL.md`) disaient tous "retirer la tâche de sa
+ligne dans CLAUDE_BATCH.md" — lu littéralement comme "supprimer la ligne".
+Mais `prune_closed_batches` ne détecte un batch entièrement clos que si
+**toutes** ses tâches référencées sont barrées (`~~`slug.md`~~`,
+`_task_line_counts`) ; une ligne supprimée au lieu d'être barrée fait
+tomber le total de tâches référencées à 0, et `total and total == closed`
+traite délibérément `total == 0` comme "section placeholder à ne jamais
+purger" (protège les batchs jamais démarrés) — donc un batch réellement
+clos dont les lignes ont été supprimées une à une devient un header vide
+indéfiniment orphelin, indistinguable d'un placeholder. Vérifié par
+simulation directe de `prune_closed_batches` sur un texte synthétique
+(commande en session) : un batch avec toutes ses tâches barrées est bien
+purgé, un batch mixte ou placeholder (0 tâche référencée) reste intact —
+confirme que le mécanisme est correct et que seul le wording des
+instructions était en cause (pas de bug dans `crew_hook.py` lui-même,
+confirmé aussi par la review `architect`-like côté `simplify` passe
+altitude : un fix hook-side qui rendrait la détection tolérante aux deux
+conventions casserait la distinction batch-clos / batch-placeholder-jamais-
+démarré, donc le fix au niveau prose est la bonne profondeur). Les 4 sites
+reformulent maintenant explicitement "barrer, jamais supprimer". Audit de
+ce repo : aucun header de batch orphelin déjà présent dans
+`crew/CLAUDE_BATCH.md` (une seule section batch, tâches correctement
+barrées). Commits : `ffc4ab9`, `8ecc45e` (fix template + syntaxe code-span
+suite à `requesting-code-review`), `fe41b58` (suite à `simplify`).
+**Pour les projets déjà déployés avec ce scaffold (voyageo notamment)** :
+le fix touche `CLAUDE.md`/`crew-close-task/SKILL.md` de leur propre copie
+locale (pas un composant tiré automatiquement) — il faut reporter
+manuellement la même correction de wording (ou re-bootstrapper depuis ce
+`template/CLAUDE.md` mis à jour) pour que leurs futures clôtures de tâche
+n'orphelinent plus de sections dans leur `CLAUDE_BATCH.md`.
+
 ## condenser-crew-count-status — 2026-09-03
 Quoi : sortie de `/crew-count` et `/crew-status` resserrée — remplacement
 des sections prose "Sortie attendue"/"Ce qu'il rapporte" (paragraphes
