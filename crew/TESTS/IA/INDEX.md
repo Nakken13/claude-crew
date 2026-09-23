@@ -4,7 +4,11 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 
 - [add-paused-lifecycle-state](add-paused-lifecycle-state.md)
 - [alerte-contexte-150k](alerte-contexte-150k.md)
+- [ancrer-crew-racine-repo](ancrer-crew-racine-repo.md)
 - [batch-lock-hardening](batch-lock-hardening.md)
+- [commit-implementation-crew-close-task](commit-implementation-crew-close-task.md)
+- [condenser-crew-count-status](condenser-crew-count-status.md)
+- [corriger-purge-batch-clos](corriger-purge-batch-clos.md)
 - [crew-count-batches](crew-count-batches.md)
 - [crew-dashboard](crew-dashboard.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
