@@ -4,6 +4,34 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## persona-designer — 2026-09-26
+Quoi : Nouvelle persona read-only `designer` (`.claude/agents/designer.md` + copie
+packagée `agents/designer.md`) : décisions UI/UX web/desktop/mobile —
+leviers de rétention (activation, habitude, progression, performance perçue,
+ré-engagement, pic-fin), dark patterns interdits, specs chiffrées de
+référence (cibles tactiles HIG/Material/WCAG 2.2, grille 4/8, typo,
+breakpoints, chrome iOS/M3, densité desktop, contraste, formulaires,
+motion), lois UX, format de réponse verdict → recos priorisées → specs →
+métrique/A-B → alternatives. Routée dans `CLAUDE.md` et `template/CLAUDE.md`
+(§ Personas sans compteur figé, signal d'alerte, entrée « Nouveau
+composant » du § Routage, seuil subagents read-only), listée dans
+`ENGINE_FILES_LEGACY` des deux `crew_update.py` et dans `README.md`.
+`scripts/dev/verify_plugin_package.py` compare désormais
+`.claude/agents/*.md` ↔ `agents/*.md` par glob (manquant, orphelin,
+contenu) au lieu d'une liste figée. Commit : `985f402`.
+
+Revue : `requesting-code-review` (chevauchement designer/impeccable levé par
+« retouche concrète → impeccable », typo 12 px scopée web, dark mode
+reformulé, mention click-to-cancel US corrigée). Bump de version plugin
+non fait (release = décision user). `simplify` 4 angles : pointeurs vers
+§ Routage au lieu de recopier les chaînes de skills, ligne CLAUDE.md
+raccourcie, glob côté verifier. Non appliqué : réduire les blocs rétention
+/specs (cœur explicite de la demande), glob dans `crew_update.py` (fallback
+`--seed` à prévoir, coût/gain faible). Pré-existant, hors scope :
+`verify_plugin_package.py` signale `manager.md` et `crew-status/SKILL.md`
+désynchronisés ; suite `crew/test_crew_hook.py` instable dans ce shell
+(WinError 6 subprocess, reproduit sans les changements).
+
 ## ancrer-crew-racine-repo — 2026-09-03
 Quoi : fixé le bug du `crew/` fantôme en sous-dossier — `.claude/agents/
 manager.md` et les 6 skills `crew-*` (`crew-new-task`, `crew-close-task`,

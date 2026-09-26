@@ -55,3 +55,8 @@
 - 2026-09-02 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch — Crew dashboard` (historique déjà dans HISTORIQUE.md)
 - 2026-09-02 ✅ **terminée** : `crew-dashboard.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour crew-dashboard.md
+- 2026-09-26 ✅ **terminée** : `persona-designer.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour persona-designer.md
+- 2026-09-26 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch — Persona designer` (historique déjà dans HISTORIQUE.md)
+- 2026-09-26 ✅ **terminée** : `persona-designer.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour persona-designer.md
