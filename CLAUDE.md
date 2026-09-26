@@ -15,7 +15,7 @@ Rules:
 
 Rules — adapter/retirer les lignes non pertinentes à la stack réelle du projet :
 - Question sur l'architecture/le code, exploration avant de lire des fichiers bruts → `graphify` (cf. § graphify ci-dessus ; `/graphify` pour (re)générer le graphe).
-- **Nouveau composant/page ou refonte visuelle → `design-taste-frontend` obligatoire** (anti-slop, plugin `taste-skill` ; pré-vol avant tout code visuel) **puis** `frontend-design` (direction esthétique) **puis** `ui-ux-pro-max` pour l'implémentation du composant (adapter à la stack front réelle : Next.js/Tailwind/shadcn, ou autre).
+- **Nouveau composant/page ou refonte visuelle → `designer` d'abord si le parcours/les specs ne sont pas tranchés, puis `design-taste-frontend` obligatoire** (anti-slop, plugin `taste-skill` ; pré-vol avant tout code visuel) **puis** `frontend-design` (direction esthétique) **puis** `ui-ux-pro-max` pour l'implémentation du composant (adapter à la stack front réelle : Next.js/Tailwind/shadcn, ou autre).
 - Audit/retouche d'un écran existant (hiérarchie, a11y, responsive, dark mode, i18n) → `impeccable`.
 - **Micro-interaction/animation dans une app React Native (Reanimated/Moti/Lottie)** → `motion-design-rn` (implémentation : choix de lib, timing/easing, perf) **et** `accessibility-motion` (reduced-motion, obligatoire pour CHAQUE animation ajoutée, pas une passe optionnelle en fin de tâche) systématiquement les deux ensemble. Ajouter `haptics` dès qu'un retour tactile est en jeu (press feedback CTA, célébration, erreur) et `sound-design-ui` seulement si un cue sonore est explicitement envisagé (c'est un gate produit — la réponse par défaut est "pas de son", le skill sert à trancher, pas à justifier). Ligne à retirer si le projet n'a pas de stack RN/mobile (cf. § adapter/retirer ci-dessus).
 - Ajout d'un chart/graphique (dashboard, analytics) → `dataviz` avant d'écrire le code du chart.
@@ -40,7 +40,7 @@ Rules — adapter/retirer les lignes non pertinentes à la stack réelle du proj
 
 ## Personas (subagents `.claude/agents/`) — routage obligatoire
 
-Quatre personas dédiées (`Agent({subagent_type: "<nom>"})`), à ne pas confondre avec les skills ci-dessus — elles portent un point de vue/rôle, pas une procédure technique.
+Personas dédiées (`Agent({subagent_type: "<nom>"})`), à ne pas confondre avec les skills ci-dessus — elles portent un point de vue/rôle, pas une procédure technique.
 
 **Si tu penses qu'il y a ne serait-ce que 1% de chance qu'une persona s'applique, tu DOIS la dispatcher. Ce n'est pas négociable — ne pas traiter la question toi-même à sa place.**
 
@@ -49,12 +49,14 @@ Quatre personas dédiées (`Agent({subagent_type: "<nom>"})`), à ne pas confond
 - **Démarrage d'une tâche existante** (« fais la tâche X », déplacement `crew/TODO/` → `crew/CURRENT_TASKS/`) → `manager` aussi, systématiquement, pour la vérification anti-collision de fichiers (cf. § Batching, y compris son cas trivial sans batch actif) avant de lancer quoi que ce soit — pas seulement au moment du découpage initial.
 - Copy marketing/landing/pub/email, ton de marque, wording utilisateur final → `comms` (vérifier `AGENTS.md` avant de toucher au ton d'un agent conversationnel produit s'il en existe un).
 - Choix technique structurant (lib/pattern engageant, "on refactore maintenant ou plus tard", arbitrage dette technique) sur du scope déjà défini → `architect` (lecture seule, pas d'implémentation, pas d'arbitrage business).
+- Décision UX/UI (parcours, hiérarchie, rétention/conversion, specs chiffrées, conventions plateforme web/desktop/mobile) → `designer` (lecture seule ; retouche concrète d'un écran → `impeccable`).
 
 Signaux d'alerte — si une de ces pensées traverse l'esprit, c'est probablement une rationalisation pour éviter de dispatcher :
-- *« Je peux répondre directement, c'est rapide »* → la rapidité ne dispense pas de la persona si le sujet (business/planning/copy) matche.
+- *« Je peux répondre directement, c'est rapide »* → la rapidité ne dispense pas de la persona si le sujet (business/planning/copy/design UX) matche.
 - *« Ce n'est pas vraiment une décision business/un découpage/de la copy »* → si le doute existe, dispatcher quand même.
 - *« Le user a juste posé une question simple »* → une question simple sur la priorisation reste une décision `ceo`.
 - *« Je peux trancher ce choix technique moi-même, c'est rapide »* → si 2+ approches raisonnables existent sur un choix structurant, dispatcher `architect` quand même.
+- *« C'est juste un écran, je code directement »* → si le parcours, la hiérarchie ou les specs ne sont pas déjà tranchés, dispatcher `designer` avant les skills d'implémentation.
 
 Ne pas invoquer ces personas pour de l'implémentation de code — elles cadrent une décision ou un texte, le code reste porté par la session principale ou les skills de la section précédente. En cas de doute réel entre deux personas, choisir la plus proche du cœur de la demande plutôt que de s'abstenir. Les personas de ce scaffold sont génériques (placeholders `<NOM_PROJET>`) : les adapter à la voix de marque et à l'organisation réelles du projet.
 
@@ -188,7 +190,7 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
   ~100k pour les agents d'implémentation (gros contexte code), sans
   descendre sous ~80k (un seuil trop bas multiplie les cycles
   recap/relaunch, dont l'overhead peut annuler le gain) ; ~150k inchangé
-  pour les personas read-only (`ceo`, `architect`, `manager` en mode
+  pour les personas read-only (`ceo`, `architect`, `designer`, `manager` en mode
   lecture), déjà courtes par construction, pas de gain à resserrer. Aucun
   mécanisme automatique ne l'applique — consigne textuelle que le subagent
   doit s'auto-imposer : au-delà, s'auto-arrêter, produire un **recap**
