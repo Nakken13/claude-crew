@@ -125,10 +125,6 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
-    (".claude/agents/architect.md", "agents/architect.md"),
-    (".claude/agents/ceo.md", "agents/ceo.md"),
-    (".claude/agents/comms.md", "agents/comms.md"),
-    (".claude/agents/manager.md", "agents/manager.md"),
     # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally
     # excluded: the plugin-distributed copies under scripts/ must resolve
     # the target project's directory via CLAUDE_PROJECT_DIR (see Fix 1 /
@@ -149,6 +145,19 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
             problems.append(f"missing {target}")
         elif not source.exists():
             problems.append(f"source missing {source}")
+        elif not _content_equal(source, target):
+            problems.append(f"content mismatch: {target} differs from {source}")
+    # Personas: every .claude/agents/*.md must have an identical agents/ copy
+    # and vice versa, so adding a persona needs no list edit here.
+    sources = {p.name for p in (repo_root / ".claude/agents").glob("*.md")}
+    targets = {p.name for p in (repo_root / "agents").glob("*.md")}
+    for name in sorted(targets - sources):
+        problems.append(f"orphan packaged agent {repo_root / 'agents' / name}")
+    for name in sorted(sources):
+        source = repo_root / ".claude/agents" / name
+        target = repo_root / "agents" / name
+        if name not in targets:
+            problems.append(f"missing {target}")
         elif not _content_equal(source, target):
             problems.append(f"content mismatch: {target} differs from {source}")
     return problems
