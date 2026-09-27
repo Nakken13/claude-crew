@@ -49,14 +49,14 @@ Cinq personas dédiées (`Agent({subagent_type: "<nom>"})`), à ne pas confondre
 - **Démarrage d'une tâche existante** (« fais la tâche X », déplacement `crew/TODO/` → `crew/CURRENT_TASKS/`) → `manager` aussi, systématiquement, pour la vérification anti-collision de fichiers (cf. § Batching, y compris son cas trivial sans batch actif) avant de lancer quoi que ce soit — pas seulement au moment du découpage initial.
 - Copy marketing/landing/pub/email, ton de marque, wording utilisateur final → `comms` (vérifier `AGENTS.md` avant de toucher au ton d'un agent conversationnel produit s'il en existe un).
 - Choix technique structurant (lib/pattern engageant, "on refactore maintenant ou plus tard", arbitrage dette technique) sur du scope déjà défini → `architect` (lecture seule, pas d'implémentation, pas d'arbitrage business).
-- Feature ou lancement qui touche aux données personnelles, au paiement/abonnement, aux mineurs, à l'IA, au contenu utilisateur, au scraping/données tierces, aux licences open-source, à l'accessibilité, à un secteur réglementé ou à un nouveau pays → `legal` (lecture seule : verdict go / go sous conditions / no-go, chemin légal le moins coûteux, seuil « il faut un avocat » ; pas de rédaction de CGU/politiques).
+- Feature ou lancement qui **change l'exposition juridique** — nouvelle collecte/nouveau traitement de données perso, nouveau SDK/fournisseur tiers qui reçoit des données utilisateur (analytics, pub, paiement, crash reporting), paiement/abonnement, mineurs, IA, contenu utilisateur, scraping/données tierces, nouvelle licence open-source, secteur réglementé, nouveau pays → `legal` (lecture seule, verdict business, pas de rédaction de CGU).
 
 Signaux d'alerte — si une de ces pensées traverse l'esprit, c'est probablement une rationalisation pour éviter de dispatcher :
 - *« Je peux répondre directement, c'est rapide »* → la rapidité ne dispense pas de la persona si le sujet (business/planning/copy/juridique) matche.
 - *« Ce n'est pas vraiment une décision business/un découpage/de la copy »* → si le doute existe, dispatcher quand même.
 - *« Le user a juste posé une question simple »* → une question simple sur la priorisation reste une décision `ceo`.
 - *« Je peux trancher ce choix technique moi-même, c'est rapide »* → si 2+ approches raisonnables existent sur un choix structurant, dispatcher `architect` quand même.
-- *« Il n'y a sûrement aucun enjeu juridique »* → dès qu'une donnée personnelle, un paiement, un mineur, de l'IA ou un nouveau pays entre en jeu, dispatcher `legal` avant de coder.
+- *« Il n'y a sûrement aucun enjeu juridique »* → si la feature matche un déclencheur `legal` ci-dessus, dispatcher `legal` avant de coder.
 
 Ne pas invoquer ces personas pour de l'implémentation de code — elles cadrent une décision ou un texte, le code reste porté par la session principale ou les skills de la section précédente. En cas de doute réel entre deux personas, choisir la plus proche du cœur de la demande plutôt que de s'abstenir. Les personas de ce scaffold sont génériques (placeholders `<NOM_PROJET>`) : les adapter à la voix de marque et à l'organisation réelles du projet.
 
