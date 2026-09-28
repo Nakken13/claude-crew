@@ -750,3 +750,32 @@ lieu de réutiliser `active_task_slugs()`, et `dup_p` qui calculait deux fois
 le même set de stems ; corrigés. Généralisations "pour de futurs états de
 cycle de vie" jugées mineures/pas urgentes par l'agent lui-même, non
 appliquées).
+
+## persona-legal — 2026-09-27
+
+Nouvelle persona read-only `legal` : juriste business FR + international
+(UE/US/UK + marchés cibles de `PRODUCT.md`). Rend un verdict ✅ go /
+🟡 go sous conditions / ⛔ no-go, le chemin légal le moins coûteux vers le
+même objectif business, des garde-fous actionnables pour `manager` et un
+seuil explicite « il faut un avocat ». Grille de risques ordonnée (données
+perso, mineurs, conso/paiement, IA, plateformes, PI/licences/scraping,
+accessibilité, sectoriel, fiscalité). Interdit : citer une loi/amende de
+mémoire sans le signaler, aider à contourner, rédiger un document
+engageant. Choix user : conseil seul (pas de rédaction de CGU).
+Fichiers : `.claude/agents/legal.md` + miroir `agents/legal.md`, routage
+`CLAUDE.md`/`template/CLAUDE.md` (déclencheur = changement d'exposition
+juridique, pas toute donnée perso), `README.md`, `crew/crew_update.py` +
+`scripts/crew_update.py`, `scripts/dev/verify_plugin_package.py`.
+Commits : `9d8137a`, `f9d193d` (branche `feat/legal-persona`).
+Tests : 2 cas joués (ados US → 🟡/⛔ séquencé 18+ puis v2 ; scraping
+SeLoger/Leboncoin → ⛔ + alternative DVF), verdict + garde-fous + seuil
+avocat présents. Revue : `requesting-code-review` (GPL vs AGPL, règle FTC
+click-to-cancel annulée en 2025, déclencheur trop large, longueur → corrigés)
+puis `simplify` 4 angles (doublons routage/alerte, `WebFetch` non cadré,
+graphify paraphrasé → corrigés ; listes de personas maintenues à la main →
+suivi `crew/PROBLEMS/listes-personas-glob.md`).
+Note : `verify_plugin_package.py` échoue déjà sur `main` (miroirs
+`agents/manager.md` et `skills/crew-status/SKILL.md` désynchronisés depuis
+`790d5c7`/`a509b38`) — hors zone, signalé dans le même problème.
+Merge : conflit attendu avec `feat/designer-persona` (mêmes lignes
+`CLAUDE.md`/README/verify) — prendre la version glob de designer.
