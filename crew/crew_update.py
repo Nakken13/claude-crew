@@ -54,6 +54,7 @@ ENGINE_FILES_LEGACY = [
     ".claude/agents/manager.md",
     ".claude/agents/comms.md",
     ".claude/agents/architect.md",
+    ".claude/agents/legal.md",
 ]
 
 
