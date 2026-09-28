@@ -152,6 +152,19 @@ def check_engine_files_copied(repo_root: Path) -> list[str]:
             problems.append(f"source missing {source}")
         elif not _content_equal(source, target):
             problems.append(f"content mismatch: {target} differs from {source}")
+    # Personas: every .claude/agents/*.md must have an identical agents/ copy
+    # and vice versa, so adding a persona needs no list edit here.
+    sources = {p.name for p in (repo_root / ".claude/agents").glob("*.md")}
+    targets = {p.name for p in (repo_root / "agents").glob("*.md")}
+    for name in sorted(targets - sources):
+        problems.append(f"orphan packaged agent {repo_root / 'agents' / name}")
+    for name in sorted(sources):
+        source = repo_root / ".claude/agents" / name
+        target = repo_root / "agents" / name
+        if name not in targets:
+            problems.append(f"missing {target}")
+        elif not _content_equal(source, target):
+            problems.append(f"content mismatch: {target} differs from {source}")
     return problems
 
 

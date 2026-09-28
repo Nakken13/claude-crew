@@ -15,7 +15,7 @@ Rules:
 
 Rules — adapter/retirer les lignes non pertinentes à la stack réelle du projet :
 - Question sur l'architecture/le code, exploration avant de lire des fichiers bruts → `graphify` (cf. § graphify ci-dessus ; `/graphify` pour (re)générer le graphe).
-- **Nouveau composant/page ou refonte visuelle → `design-taste-frontend` obligatoire** (anti-slop, plugin `taste-skill` ; pré-vol avant tout code visuel) **puis** `frontend-design` (direction esthétique) **puis** `ui-ux-pro-max` pour l'implémentation du composant (adapter à la stack front réelle : Next.js/Tailwind/shadcn, ou autre).
+- **Nouveau composant/page ou refonte visuelle → `designer` d'abord si le parcours/les specs ne sont pas tranchés, puis `design-taste-frontend` obligatoire** (anti-slop, plugin `taste-skill` ; pré-vol avant tout code visuel) **puis** `frontend-design` (direction esthétique) **puis** `ui-ux-pro-max` pour l'implémentation du composant (adapter à la stack front réelle : Next.js/Tailwind/shadcn, ou autre).
 - Audit/retouche d'un écran existant (hiérarchie, a11y, responsive, dark mode, i18n) → `impeccable`.
 - **Micro-interaction/animation dans une app React Native (Reanimated/Moti/Lottie)** → `motion-design-rn` (implémentation : choix de lib, timing/easing, perf) **et** `accessibility-motion` (reduced-motion, obligatoire pour CHAQUE animation ajoutée, pas une passe optionnelle en fin de tâche) systématiquement les deux ensemble. Ajouter `haptics` dès qu'un retour tactile est en jeu (press feedback CTA, célébration, erreur) et `sound-design-ui` seulement si un cue sonore est explicitement envisagé (c'est un gate produit — la réponse par défaut est "pas de son", le skill sert à trancher, pas à justifier). Ligne à retirer si le projet n'a pas de stack RN/mobile (cf. § adapter/retirer ci-dessus).
 - Ajout d'un chart/graphique (dashboard, analytics) → `dataviz` avant d'écrire le code du chart.
@@ -190,6 +190,7 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
   ~100k pour les agents d'implémentation (gros contexte code), sans
   descendre sous ~80k (un seuil trop bas multiplie les cycles
   recap/relaunch, dont l'overhead peut annuler le gain) ; ~150k inchangé
+  pour les personas read-only (`ceo`, `architect`, `designer`, `manager` en mode
   pour les personas read-only (`ceo`, `architect`, `legal`, `manager` en mode
   lecture), déjà courtes par construction, pas de gain à resserrer. Aucun
   mécanisme automatique ne l'applique — consigne textuelle que le subagent
