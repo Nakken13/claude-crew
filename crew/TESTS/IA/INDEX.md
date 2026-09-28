@@ -14,5 +14,6 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
 - [mecanisme-mise-a-jour-scaffold-multi-projets](mecanisme-mise-a-jour-scaffold-multi-projets.md)
 - [persona-designer](persona-designer.md)
+- [persona-legal](persona-legal.md)
 - [reduire-tokens-subagents](reduire-tokens-subagents.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)

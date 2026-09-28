@@ -120,6 +120,7 @@ each other's files.
 | ⚡ `/crew-init` | Bootstraps the whole scaffold onto a project, resolves every `<placeholder>`, fails loud if one is left unresolved |
 | ⚡ `/crew-new-task` `/crew-close-task` `/crew-status` | Run the lifecycle + batching instead of doing it by hand every time |
 | 🎭 `.claude/agents/ceo.md` `manager.md` `comms.md` `architect.md` `designer.md` | Subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, structural tech choices, and UX/retention/spec decisions don't get answered by the same voice that writes your diff |
+| 🎭 `.claude/agents/ceo.md` `manager.md` `comms.md` `architect.md` `legal.md` | Subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, structural tech choices, and legal risk (FR + international, framed as business trade-offs) don't get answered by the same voice that writes your diff |
 | 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading 2000-line files whole) wired into Claude Code from day one |
 
 Everything is plain markdown + JSON state — readable, greppable, diffable in
