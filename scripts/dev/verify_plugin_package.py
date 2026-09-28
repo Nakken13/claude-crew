@@ -125,6 +125,11 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
+    (".claude/agents/architect.md", "agents/architect.md"),
+    (".claude/agents/ceo.md", "agents/ceo.md"),
+    (".claude/agents/comms.md", "agents/comms.md"),
+    (".claude/agents/legal.md", "agents/legal.md"),
+    (".claude/agents/manager.md", "agents/manager.md"),
     # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally
     # excluded: the plugin-distributed copies under scripts/ must resolve
     # the target project's directory via CLAUDE_PROJECT_DIR (see Fix 1 /
