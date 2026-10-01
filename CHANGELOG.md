@@ -6,6 +6,16 @@ version numbers match the `version` field in
 [`.claude-plugin/plugin.json`](./.claude-plugin/plugin.json) (see
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the bump convention).
 
+## [Unreleased]
+
+- **Fixed ghost sessions in `crew_lock.json`** — a task started and closed
+  inside a batch worktree was never seen in the main checkout's
+  `CURRENT_TASKS/`, so it never entered `finished` and its lock (and session
+  entry) survived until the 6h TTL. `purge_closed_task_locks` now drops any
+  locked task absent from both the main checkout and the session's worktree
+  (TODO/CURRENT_TASKS/PAUSED) on each `Stop`; no-op when run from a
+  worktree — 2026-10-01.
+
 ## [0.1.1] - 2026-08-22 (retroactive)
 
 Everything up to and including this version predates this changelog — this

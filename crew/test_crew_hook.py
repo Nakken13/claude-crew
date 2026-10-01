@@ -809,3 +809,65 @@ def test_rotate_historique_writes_archive_and_trims_live_file(repo, monkeypatch)
     assert "tache-recente" in live
     assert archive.exists()
     assert "tache-vieille" in archive.read_text(encoding="utf-8")
+
+
+def _seed_session_lock(root, slug, session_id="S1"):
+    since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    h.save_locks({"sessions": {session_id: {
+        "batch": "Batch Zone1", "tasks": [slug],
+        "worktree": f"../{root.name}-batch-zone1", "branch": "crew/batch-zone1", "since": since,
+    }}})
+
+
+def test_stop_purges_lock_of_task_closed_in_worktree(repo, monkeypatch, capsys):
+    """Tache demarree ET close dans un worktree : le checkout principal ne l'a
+    jamais vue en CURRENT_TASKS/, donc jamais dans `finished` -> le verrou
+    restait indefiniment (session fantome dans crew_lock.json). Une tache
+    absente du checkout principal ET du worktree de la session est close."""
+    root, dirs, ctx = repo
+    slug = "close-en-worktree.md"
+    _seed_session_lock(root, slug)
+
+    _run_stop(monkeypatch, capsys, session_id="OTHER")
+
+    assert "S1" not in h.load_locks()["sessions"]
+
+
+def test_stop_keeps_lock_of_task_current_in_session_worktree(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    slug = "en-cours-worktree.md"
+    wt_current = root.parent / f"{root.name}-batch-zone1" / "crew" / "CURRENT_TASKS"
+    wt_current.mkdir(parents=True)
+    (wt_current / slug).write_text(f"# {slug}\n", encoding="utf-8")
+    _seed_session_lock(root, slug)
+
+    _run_stop(monkeypatch, capsys, session_id="OTHER")
+
+    assert h.load_locks()["sessions"]["S1"]["tasks"] == [slug]
+
+
+def test_stop_keeps_lock_of_task_still_in_main_todo(repo, monkeypatch, capsys):
+    """Worktree pas encore merge : la tache est encore dans TODO/ du checkout
+    principal -> toujours vivante, verrou conserve."""
+    root, dirs, ctx = repo
+    slug = "pas-encore-merge.md"
+    (dirs["TODO"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
+    _seed_session_lock(root, slug)
+
+    _run_stop(monkeypatch, capsys, session_id="OTHER")
+
+    assert h.load_locks()["sessions"]["S1"]["tasks"] == [slug]
+
+
+def test_purge_closed_task_locks_skipped_outside_main_checkout(repo, monkeypatch):
+    """Depuis un worktree (`.git` = fichier), ROOT ne voit pas l'etat crew du
+    checkout principal : ne rien purger plutot que de liberer un vrai verrou."""
+    root, dirs, ctx = repo
+    worktree_root = root.parent / f"{root.name}-wt"
+    (worktree_root / "crew" / "TODO").mkdir(parents=True)
+    (worktree_root / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    monkeypatch.setattr(h, "ROOT", worktree_root)
+    locks = {"sessions": {"S1": {"tasks": ["inconnue.md"], "worktree": None}}}
+
+    assert h.purge_closed_task_locks(locks) == []
+    assert locks["sessions"]["S1"]["tasks"] == ["inconnue.md"]
