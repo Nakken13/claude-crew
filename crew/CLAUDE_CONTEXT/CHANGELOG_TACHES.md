@@ -60,3 +60,8 @@
 - 2026-09-26 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch — Persona designer` (historique déjà dans HISTORIQUE.md)
 - 2026-09-26 ✅ **terminée** : `persona-designer.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour persona-designer.md
+- 2026-10-01 ➕ **ajoutée au backlog** : `claude-md-template-2955-mots-toujours-charge.md`
+- 2026-10-01 ➕ **ajoutée au backlog** : `continuite-session-sessionstart-precompact.md`
+- 2026-10-01 ➕ **ajoutée au backlog** : `faux-positif-check-batches-claude-md.md`
+- 2026-10-01 ➕ **ajoutée au backlog** : `latence-hook-pretooluse-spawn-python.md`
+- 2026-10-01 ➕ **ajoutée au backlog** : `moniteur-contexte-seuil-fixe-stderr.md`
