@@ -871,6 +871,37 @@ def active_task_slugs():
     return active
 
 
+def purge_closed_task_locks(locks):
+    """Retire des verrous les taches closes hors du checkout principal : une
+    tache demarree puis close dans un worktree n'a jamais ete vue en
+    CURRENT_TASKS/ ici, donc n'entre jamais dans `finished` et son verrou
+    survivait (session fantome). Vivante = presente dans TODO/CURRENT_TASKS
+    (/PAUSED) du checkout principal OU du worktree de la session. Une session
+    sans tache restante est retiree. No-op hors checkout principal (`.git`
+    fichier) : l'etat crew vu depuis un worktree peut etre en retard.
+    Retourne la liste triee des slugs purges."""
+    if not (ROOT / ".git").is_dir():
+        return []
+    rel_dirs = [DIRS[k].relative_to(ROOT) for k in ("TODO", "CURRENT_TASKS", "PAUSED")]
+    main_live = active_task_slugs()
+    purged = set()
+    sessions = locks.get("sessions", {})
+    for sid, info in list(sessions.items()):
+        live = set(main_live)
+        if info.get("worktree"):
+            wt = ROOT / info["worktree"]
+            for rel in rel_dirs:
+                if (wt / rel).exists():
+                    live |= {f.name for f in (wt / rel).glob("*.md")}
+        dead = [t for t in info.get("tasks", []) if t not in live]
+        if dead:
+            purged.update(dead)
+            info["tasks"] = [t for t in info["tasks"] if t in live]
+            if not info["tasks"]:
+                del sessions[sid]
+    return sorted(purged)
+
+
 def _expand_brace_glob(path):
     """Expanse tous les segments `{a,b,c}` d'un chemin en chemins concrets
     (produit cartesien des membres). Sans brace-glob, retourne [path] inchange."""
@@ -1256,6 +1287,8 @@ def main():
         locks = load_locks()
         for sid in purge_stale_locks(locks, now_dt):
             entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé (session `{sid}`)**")
+        for slug in purge_closed_task_locks(locks):
+            entries.append(f"- {now} 🧹 **verrou de tâche close hors checkout principal purgé** : `{slug}`")
 
         # Tache finie : sort des `tasks` de TOUTES les sessions qui la tenaient
         # (normalement une seule). Si une session se retrouve sans aucune tache,
