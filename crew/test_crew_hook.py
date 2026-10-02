@@ -871,3 +871,125 @@ def test_purge_closed_task_locks_skipped_outside_main_checkout(repo, monkeypatch
 
     assert h.purge_closed_task_locks(locks) == []
     assert locks["sessions"]["S1"]["tasks"] == ["inconnue.md"]
+
+
+def _write_two_overlapping_batches(slug_a="task-a.md", slug_b="task-b.md"):
+    """Deux batchs dont les `Zone :` se chevauchent (`shared/` vs `shared/x.py`).
+    Ne cree aucun fichier de tache : chaque test place a et b ou il veut."""
+    h.BATCH_FILE.write_text(
+        "# Batching\n\n"
+        f"## Batch A · ⏳ pas démarré\n\nZone : `shared/`\n\n- `{slug_a}`\n\n"
+        f"## Batch B · ⏳ pas démarré\n\nZone : `shared/x.py`\n\n- `{slug_b}`\n",
+        encoding="utf-8",
+    )
+
+
+def _lock_sessions(root, by_session):
+    """crew_lock.json avec une session live par entree {session_id: [slugs]}."""
+    since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    h.save_locks({"sessions": {
+        sid: {"batch": None, "tasks": list(tasks), "worktree": f"../{root.name}-batch-{sid.lower()}",
+              "branch": f"crew/batch-{sid.lower()}", "since": since}
+        for sid, tasks in by_session.items()
+    }})
+
+
+def test_zone_overlap_ignores_batches_with_only_todo_tasks(repo, monkeypatch, capsys):
+    """Faux positif constate (voyageo/time2cook) : deux batchs « pas demarre »
+    dont toutes les taches sont en TODO/ etaient traites comme actifs ->
+    avertissement `[zone]` a chaque tour. Actif = >=1 tache en
+    CURRENT_TASKS/PAUSED ou tenue par un verrou (CLAUDE.md § Batching)."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    for s in ("task-a.md", "task-b.md"):
+        (dirs["TODO"] / s).write_text(f"# {s}\n", encoding="utf-8")
+
+    err = _run_stop_capture_err(monkeypatch, capsys)
+
+    assert "[zone]" not in err
+
+
+def test_zone_overlap_warns_when_both_batches_in_progress(repo, monkeypatch, capsys):
+    """Garde-fou conserve : un batch en CURRENT_TASKS et l'autre en PAUSED
+    (pause = toujours actif) se chevauchant -> avertissement."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    (dirs["CURRENT_TASKS"] / "task-a.md").write_text("# a\n", encoding="utf-8")
+    (dirs["PAUSED"] / "task-b.md").write_text("# b\n", encoding="utf-8")
+
+    err = _run_stop_capture_err(monkeypatch, capsys)
+
+    assert "[zone]" in err
+
+
+def test_zone_overlap_counts_task_locked_from_worktree(repo, monkeypatch, capsys):
+    """Tache demarree dans un worktree de batch : encore en TODO/ dans le
+    checkout principal, mais tenue par un verrou live -> son batch est actif."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    (dirs["TODO"] / "task-a.md").write_text("# a\n", encoding="utf-8")
+    (dirs["CURRENT_TASKS"] / "task-b.md").write_text("# b\n", encoding="utf-8")
+    _lock_sessions(root, {"WT": ["task-a.md"]})
+
+    # S1 (session du tour) s'approprie task-b via le fallback `started` :
+    # chevauchement cross-session -> bloquant (stdout) plutot qu'avertissement.
+    decision = _run_stop(monkeypatch, capsys, session_id="S1")
+
+    assert decision and decision.get("decision") == "block", decision
+    assert "zone" in decision["reason"]
+
+
+def test_zone_overlap_does_not_block_uninvolved_third_session(repo, monkeypatch, capsys):
+    """Deux batchs en collision verrouilles par S1 et S2 : une 3e session S3,
+    etrangere aux deux, ne doit pas etre bloquee (elle ne peut rien y faire ;
+    la bloquer boucle Stop->reinvoke). Avertissement seulement."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    for s in ("task-a.md", "task-b.md"):
+        (dirs["TODO"] / s).write_text(f"# {s}\n", encoding="utf-8")
+    _lock_sessions(root, {"S1": ["task-a.md"], "S2": ["task-b.md"]})
+
+    decision = _run_stop(monkeypatch, capsys, session_id="S3")
+
+    assert decision is None or decision.get("decision") != "block", decision
+
+
+def test_zone_overlap_blocks_involved_session(repo, monkeypatch, capsys):
+    """Meme collision, vue par S1 (impliquee) : blocage conserve."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    for s in ("task-a.md", "task-b.md"):
+        (dirs["TODO"] / s).write_text(f"# {s}\n", encoding="utf-8")
+    _lock_sessions(root, {"S1": ["task-a.md"], "S2": ["task-b.md"]})
+
+    decision = _run_stop(monkeypatch, capsys, session_id="S1")
+
+    assert decision and decision.get("decision") == "block", decision
+
+
+def test_in_progress_task_slugs_ignores_expired_session_lock(repo):
+    """Une session morte (since > LOCK_TTL, pas encore purgee : dashboard ou
+    lecture hors Stop) ne doit pas rendre son batch actif."""
+    root, dirs, ctx = repo
+    old = (datetime.datetime.now() - h.LOCK_TTL - datetime.timedelta(minutes=1)).isoformat()
+    fresh = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    locks = {"sessions": {
+        "DEAD": {"tasks": ["morte.md"], "since": old},
+        "LIVE": {"tasks": ["vivante.md"], "since": fresh},
+    }}
+
+    assert h.in_progress_task_slugs(locks) == {"vivante.md"}
+
+
+def test_check_zone_overlaps_observer_view_blocks_cross_session(repo):
+    """observer=True (dashboard) : vue observateur, tout conflit
+    cross-session reste signale comme bloquant."""
+    root, dirs, ctx = repo
+    _write_two_overlapping_batches()
+    _lock_sessions(root, {"S1": ["task-a.md"], "S2": ["task-b.md"]})
+    locks = h.load_locks()
+
+    warnings, blocking = h.check_zone_overlaps(
+        h.load_sections(), h.in_progress_task_slugs(locks), locks, observer=True)
+
+    assert blocking and not warnings
