@@ -8,6 +8,16 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-02
+
+- **Fixed zone-overlap false positives** — `check_zone_overlaps` counted any
+  batch with a task in `crew/TODO/` as active, so two never-started batches
+  with touching `Zone :` lines raised `[zone]` warnings (or Stop blocks) every
+  turn. Active now means a task in `CURRENT_TASKS/`/`PAUSED/` or held by a
+  non-expired session lock (worktree-started tasks). A cross-session overlap
+  only hard-blocks a session involved in it; an unrelated third session gets
+  a warning instead of a Stop→reinvoke loop. The dashboard uses the same
+  definition and no longer counts sessions older than the 6h TTL — 2026-10-02.
 - **Fixed ghost sessions in `crew_lock.json`** — a task started and closed
   inside a batch worktree was never seen in the main checkout's
   `CURRENT_TASKS/`, so it never entered `finished` and its lock (and session
