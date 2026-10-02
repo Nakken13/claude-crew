@@ -380,6 +380,16 @@ def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNI
     return due
 
 
+def _session_expired(info, now_dt):
+    """Entree de session plus vieille que LOCK_TTL (session probablement
+    crashee) ou corrompue (pas de `since` ISO lisible)."""
+    since_raw = info.get("since") if isinstance(info, dict) else None
+    try:
+        return now_dt - datetime.datetime.fromisoformat(since_raw) > LOCK_TTL
+    except Exception:
+        return True
+
+
 def purge_stale_locks(locks, now_dt):
     """Retire les entrees SESSION plus vieilles que LOCK_TTL (session probablement
     crashee) — tasks + worktree + branch partent ensemble, une session ne peut
@@ -387,13 +397,7 @@ def purge_stale_locks(locks, now_dt):
     sessions = locks.setdefault("sessions", {})
     stale = []
     for sid, info in list(sessions.items()):
-        since_raw = info.get("since") if isinstance(info, dict) else None
-        try:
-            since = datetime.datetime.fromisoformat(since_raw)
-            expired = now_dt - since > LOCK_TTL
-        except Exception:
-            expired = True  # entree corrompue -> on la degage aussi
-        if expired:
+        if _session_expired(info, now_dt):
             stale.append(sid)
             del sessions[sid]
     return sorted(stale)
@@ -859,16 +863,29 @@ def gate_pretooluse(payload):
         _gate_check_path(p, session_id, locks, sections)
 
 
+def _task_slugs(*dirs):
+    """Slugs de tache (.md hors INDEX/README/_*) presents dans `dirs`."""
+    return {f.name for d in dirs if d.exists() for f in d.glob("*.md")
+            if f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")}
+
+
 def active_task_slugs():
     """Slugs (fichiers .md) actuellement en crew/TODO/, crew/CURRENT_TASKS/ ou
     crew/PAUSED/ (une tache en pause reste bloquee, pas abandonnee : elle
     garde sa zone de fichiers pour l'anti-collision de batch)."""
-    active = set()
-    for d in (DIRS["TODO"], DIRS["CURRENT_TASKS"], DIRS["PAUSED"]):
-        if d.exists():
-            active |= {f.name for f in d.glob("*.md")
-                       if f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")}
-    return active
+    return _task_slugs(DIRS["TODO"], DIRS["CURRENT_TASKS"], DIRS["PAUSED"])
+
+
+def in_progress_task_slugs(locks, now_dt=None):
+    """« Batch actif » de CLAUDE.md : slugs en CURRENT_TASKS/ + PAUSED/, plus
+    ceux tenus par une session non expiree (taches demarrees dans un worktree,
+    encore en TODO/ ici). Pas de TODO seul, contrairement a active_task_slugs()."""
+    slugs = _task_slugs(DIRS["CURRENT_TASKS"], DIRS["PAUSED"])
+    now_dt = now_dt or datetime.datetime.now()
+    for info in locks.get("sessions", {}).values():
+        if not _session_expired(info, now_dt):
+            slugs |= set(info.get("tasks", []) or [])
+    return slugs
 
 
 def purge_closed_task_locks(locks):
@@ -936,13 +953,17 @@ def _section_lock_sessions(section, locks, slug_sessions=None):
     return {slug_sessions[s] for s in section["slugs"] if s in slug_sessions}
 
 
-def check_zone_overlaps(sections, active, locks):
-    """Detecte les chevauchements de `Zone :` entre deux batchs ACTIFS (>=1 tache
-    en TODO/CURRENT_TASKS/PAUSED). Devient bloquant (liste `blocking`) uniquement quand
-    les deux batchs en collision sont verrouilles par des session_id
-    differentes — memes regles que check_batch_collisions, pour ne PAS bloquer
-    une session solo qui travaille sequentiellement sur deux batchs a zones
-    voisines (aucun des deux n'est alors verrouille par une AUTRE session).
+def check_zone_overlaps(sections, active, locks, session_id=None, observer=False):
+    """Detecte les chevauchements de `Zone :` entre deux batchs ACTIFS (>=1 slug
+    de `active` — l'appelant passe in_progress_task_slugs()). Devient bloquant
+    (liste `blocking`) uniquement quand les deux batchs en collision sont
+    verrouilles par des session_id differentes ET que la session courante
+    (`session_id`) est l'une des deux (ou `observer=True` : vue dashboard,
+    tout conflit cross-session est signale bloquant) : une 3e session etrangere a la
+    collision n'y peut rien, la bloquer boucle Stop->reinvoke. Memes regles
+    que check_batch_collisions, pour ne PAS bloquer une session solo qui
+    travaille sequentiellement sur deux batchs a zones voisines (aucun des
+    deux n'est alors verrouille par une AUTRE session).
     Sinon reste un avertissement non bloquant : garde-fou automatise
     complementaire a la verification manuelle du manager avant de demarrer."""
     warnings = []
@@ -954,13 +975,14 @@ def check_zone_overlaps(sections, active, locks):
         for sec_b in active_sections[i + 1:]:
             sessions_b = _section_lock_sessions(sec_b, locks, slug_sessions)
             cross_session = bool(sessions_a) and bool(sessions_b) and sessions_a != sessions_b
+            involved = observer or session_id in sessions_a or session_id in sessions_b
             for pa in sec_a["zone_paths"]:
                 for pb in sec_b["zone_paths"]:
                     if not _path_overlaps(pa, pb):
                         continue
                     base = (f"[zone] Chevauchement detecte entre batchs actifs « {sec_a['header']} » "
                             f"et « {sec_b['header']} » : `{pa}` vs `{pb}`.")
-                    if cross_session:
+                    if cross_session and involved:
                         blocking.append(base + " Verrouilles par des sessions differentes — "
                                          "attendre la fin de l'une avant de continuer l'autre.")
                     else:
@@ -1359,7 +1381,8 @@ def main():
         save_locks(locks)
         regen_batch_locks_md(sections, locks, active)
 
-    zone_warnings, zone_blocking = check_zone_overlaps(sections, active, locks)
+    zone_warnings, zone_blocking = check_zone_overlaps(
+        sections, in_progress_task_slugs(locks, now_dt), locks, session_id=session_id)
 
     # Throttle des avertissements non bloquants (cf. _throttle_warnings) : mute
     # locks["warned"], donc re-sauvegarde derriere le mutex comme toute autre

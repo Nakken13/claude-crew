@@ -101,10 +101,10 @@ def _list_tasks():
     }
 
 
-def _list_batches(tasks, locks):
+def _list_batches(locks):
     sections = h.load_sections()
-    active = {t["slug"] for name in ("TODO", "CURRENT_TASKS", "PAUSED") for t in tasks[name]}
-    warnings, blocking = h.check_zone_overlaps(sections, active, locks)
+    active = h.in_progress_task_slugs(locks)  # pas TODO : un batch du backlog n'est pas actif
+    warnings, blocking = h.check_zone_overlaps(sections, active, locks, observer=True)
     batches = [
         {
             "header": s["header"],
@@ -121,11 +121,7 @@ def _list_sessions(locks):
     now = datetime.datetime.now()
     sessions = []
     for sid, info in locks.get("sessions", {}).items():
-        since_raw = info.get("since")
-        try:
-            stale = (now - datetime.datetime.fromisoformat(since_raw)) > h.LOCK_TTL
-        except Exception:
-            stale = True
+        stale = h._session_expired(info, now)
         sessions.append(
             {
                 "session_id": sid,
@@ -133,7 +129,7 @@ def _list_sessions(locks):
                 "tasks": info.get("tasks", []),
                 "worktree": info.get("worktree"),
                 "branch": info.get("branch"),
-                "since": since_raw,
+                "since": info.get("since"),
                 "stale": stale,
             }
         )
@@ -144,7 +140,7 @@ def _list_sessions(locks):
 def get_state():
     tasks = _list_tasks()
     locks = h.load_locks()
-    batches, warnings, blocking = _list_batches(tasks, locks)
+    batches, warnings, blocking = _list_batches(locks)
     return {
         "tasks": tasks,
         "batches": batches,

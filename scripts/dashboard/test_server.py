@@ -85,6 +85,22 @@ def test_state_lists_tasks_batches_sessions(repo):
     assert state["sessions"][0]["stale"] is False
 
 
+def test_state_batch_with_only_todo_tasks_is_not_active(repo):
+    """Un batch du backlog (taches en TODO seulement) n'est pas actif et ne
+    produit pas d'avertissement de chevauchement de zone (faux positif)."""
+    repo["crew"].joinpath("CLAUDE_BATCH.md").write_text(
+        "# Batching\n\n## Batch A\n\nZone : `shared/`\n\n- `a.md`\n\n"
+        "## Batch B\n\nZone : `shared/x.py`\n\n- `b.md`\n",
+        encoding="utf-8",
+    )
+    _write_task(repo["dirs"], "TODO", "a.md")
+    _write_task(repo["dirs"], "TODO", "b.md")
+    client = TestClient(repo["srv"].app)
+    state = client.get("/api/state").json()
+    assert [b["active"] for b in state["batches"]] == [False, False]
+    assert not any("[zone]" in w for w in state["batch_warnings"])
+
+
 def test_move_task_updates_folders(repo):
     _write_task(repo["dirs"], "TODO", "a.md", root=repo["root"])
     client = TestClient(repo["srv"].app)
