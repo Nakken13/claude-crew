@@ -12,6 +12,7 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [crew-count-batches](crew-count-batches.md)
 - [crew-dashboard](crew-dashboard.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
+- [fix-zone-overlap-faux-positifs](fix-zone-overlap-faux-positifs.md)
 - [mecanisme-mise-a-jour-scaffold-multi-projets](mecanisme-mise-a-jour-scaffold-multi-projets.md)
 - [persona-designer](persona-designer.md)
 - [persona-legal](persona-legal.md)
