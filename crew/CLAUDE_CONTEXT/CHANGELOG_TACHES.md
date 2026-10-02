@@ -65,3 +65,10 @@
 - 2026-10-01 ➕ **ajoutée au backlog** : `faux-positif-check-batches-claude-md.md`
 - 2026-10-01 ➕ **ajoutée au backlog** : `latence-hook-pretooluse-spawn-python.md`
 - 2026-10-01 ➕ **ajoutée au backlog** : `moniteur-contexte-seuil-fixe-stderr.md`
+- 2026-10-02 ▶️ **démarrée** : `fix-zone-overlap-faux-positifs.md`
+- 2026-10-02 ▶️ **démarrée** : `fix-zone-overlap-faux-positifs.md`
+- 2026-10-02 ✅ **terminée** : `fix-zone-overlap-faux-positifs.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour fix-zone-overlap-faux-positifs.md
+- 2026-10-02 🧹 **verrou de tâche close hors checkout principal purgé** : `fix-zone-overlap-faux-positifs.md`
+- 2026-10-02 ✅ **terminée** : `fix-zone-overlap-faux-positifs.md`
+  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour fix-zone-overlap-faux-positifs.md

@@ -4,6 +4,32 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## fix-zone-overlap-faux-positifs — 2026-10-02
+Quoi : faux positifs `[zone]` constatés dans voyageo/time2cook (avertissements,
+voire blocages Stop, entre batchs « ⏳ pas démarré »). Cause :
+`check_zone_overlaps` recevait `active_task_slugs()` qui inclut `crew/TODO/` →
+tout batch du backlog passait pour actif. Nouveau `in_progress_task_slugs(locks,
+now_dt)` = CURRENT_TASKS + PAUSED + tâches tenues par une session non expirée
+(couvre les tâches démarrées en worktree, encore en TODO/ dans le principal).
+`check_zone_overlaps` ne bloque plus qu'une session impliquée dans la collision
+(une 3e session étrangère bouclait Stop→reinvoke) ; `observer=True` = vue
+dashboard. Helpers partagés `_task_slugs()` / `_session_expired()` (réutilisés
+par `active_task_slugs`, `purge_stale_locks`, dashboard `_list_sessions`).
+Port amont du fix local voyageo `6e0e5d50`, + PAUSED + filtre TTL.
+`active_task_slugs` (TODO inclus) reste volontairement utilisé par
+`purge_closed_task_locks` (une tâche de worktree est encore en TODO/ ici),
+`check_batches` et `regen_batch_locks_md`.
+Diagnostic même session (non traité ici, cf. TODO/PROBLEMS à créer) : chaque
+worktree a son propre `crew_lock.json` (ROOT = CLAUDE_PROJECT_DIR) ; voyageo
+exécute deux hooks (local `crew/crew_hook.py` + plugin) sur le même fichier ;
+identité de batch = header complet, statut inclus (verrou orphelin dès qu'on
+édite « (prochaine : 04) » → « 05 »). Reco architect pour le lock partagé :
+résoudre le checkout principal via `.git` fichier → `gitdir` → `commondir`
+(sans spawn git), verrou dans `MAIN_ROOT/crew/CLAUDE_CONTEXT/`.
+Fichiers : `crew/crew_hook.py`, `scripts/crew_hook.py`,
+`scripts/dashboard/server.py`, tests `crew/test_crew_hook.py` (+7),
+`scripts/dashboard/test_server.py` (+1). Commit : `13741dd`.
+
 ## persona-designer — 2026-09-26
 Quoi : Nouvelle persona read-only `designer` (`.claude/agents/designer.md` + copie
 packagée `agents/designer.md`) : décisions UI/UX web/desktop/mobile —

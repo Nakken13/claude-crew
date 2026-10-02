@@ -18,6 +18,13 @@ dans `crew_lock.json` ; la commande shell du hook teste le marqueur avant d'invo
 Python. Les claims Bash (déplacement TODO → CURRENT_TASKS, `crew-resume:`) doivent
 toujours atteindre le script (ils écrivent le verrou même en solo).
 
+**Dépendance (Batch A, tâche 1 `verrou-partage-worktrees.md`)** : après ce fix, le verrou
+vit dans `MAIN_ROOT/crew/CLAUDE_CONTEXT/` alors que le pré-filtre shell teste
+`$CLAUDE_PROJECT_DIR/crew/CLAUDE_CONTEXT/.gate_armed` (= le worktree courant). Le
+marqueur `.gate_armed` doit donc être posé/retiré par `save_locks()` dans le checkout
+principal **ET** dans chaque worktree enregistré dans le lock (champ `worktree`),
+sinon une session worktree saute la garde. Ajouter le test correspondant.
+
 ## Actions
 
 - [ ] Mesure AVANT : chronométrer 10 appels du hook PreToolUse (payload Edit factice
