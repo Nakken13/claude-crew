@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./media/Claude-crew-logo.png" alt="claude-crew logo" width="260" />
+
 # 🗂️ claude-crew
 
 **File-based task lifecycle + multi-agent collision prevention for Claude Code.**
