@@ -11,3 +11,4 @@ Tests nécessitant le dev (🖱️ manuel/visuel navigateur, ou item non outill�
 - [readme-github-discoverability](readme-github-discoverability.md)
 - [reduire-tokens-subagents](reduire-tokens-subagents.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)
+- [latence-hook-pretooluse-spawn-python](latence-hook-pretooluse-spawn-python.md)

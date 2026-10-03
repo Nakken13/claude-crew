@@ -1,6 +1,6 @@
 ---
 name: crew-close-task
-description: Clôture une tâche crew terminée (crew/CURRENT_TASKS/<slug>.md) — vérifie que toutes les actions sont cochées, applique les passes obligatoires avant closing (requesting-code-review, simplify + modularité), historise dans CLAUDE_CONTEXT/HISTORIQUE.md, sort les tests dans TESTS/IA et/ou TESTS/DEV, retire la tâche de son batch. Trigger — "/crew-close-task", "cette tâche est finie", "clôture la tâche", "code fini, on ferme".
+description: Clôture une tâche crew terminée — vérifie les cases, passes review + simplify, historise, sort les tests IA/DEV, barre la tâche du batch. Trigger — "/crew-close-task", "cette tâche est finie", "clôture la tâche".
 ---
 
 Exécute le protocole défini dans `CLAUDE.md` § "Gestion des tâches" (point

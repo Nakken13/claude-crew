@@ -1,6 +1,6 @@
 ---
 name: crew-status
-description: Rapport lecture seule de l'état crew — batchs actifs et zones (chevauchements éventuels), tâches en cours (CURRENT_TASKS avec % d'actions cochées), tests crew/TESTS/IA non cochés, tâches TODO non catégorisées dans CLAUDE_BATCH.md, et placeholders <...> restants si le scaffold est encore en bootstrap. Trigger — "/crew-status", "où en est le projet", "état des batchs", "statut crew".
+description: Rapport lecture seule de l'état crew — batchs actifs et zones, tâches en cours, tests IA non cochés, TODO non classées. Trigger — "/crew-status", "où en est le projet", "état des batchs".
 ---
 
 Skill lecture seule — ne modifie aucun fichier. Complète le hook `Stop`

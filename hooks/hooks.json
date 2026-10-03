@@ -2,11 +2,22 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
+            "command": "[ \"$CREW_HOOK_PROFILE\" = minimal ] && exit 0; [ -e \"${CLAUDE_PROJECT_DIR:-.}/crew/CLAUDE_CONTEXT/.gate_armed\" ] || exit 0; PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
+            "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS + zone verrouillee par une autre session)",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "IN=$(cat); [ \"$CREW_HOOK_PROFILE\" = minimal ] && exit 0; [ -e \"${CLAUDE_PROJECT_DIR:-.}/crew/CLAUDE_CONTEXT/.gate_armed\" ] || case \"$IN\" in *crew-resume:*|*mv*CURRENT_TASKS*) ;; *) exit 0;; esac; printf '%s' \"$IN\" | { PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"; }",
             "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS + zone verrouillee par une autre session)",
             "timeout": 10
           }
@@ -21,7 +32,21 @@
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/spec_to_task_hook.py\"",
             "statusMessage": "Spec superpowers -> tache CURRENT_TASKS",
-            "timeout": 15
+            "timeout": 15,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
+            "statusMessage": "Digest crew (taches en cours, batchs, verrous)",
+            "timeout": 10
           }
         ]
       }

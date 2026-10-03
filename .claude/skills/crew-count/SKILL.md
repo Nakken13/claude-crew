@@ -1,6 +1,6 @@
 ---
 name: crew-count
-description: Rapport lecture seule — combien de batchs de crew/CLAUDE_BATCH.md sont lançables en parallèle maintenant (un Claude par batch), en distinguant batchs déjà actifs, encore lançables, et exclus pour chevauchement de zone. Trigger — "/crew-count", "combien de batchs je peux lancer", "combien de Claude en parallèle".
+description: Rapport lecture seule — combien de batchs de CLAUDE_BATCH.md sont lançables en parallèle (actifs, lançables, exclus pour chevauchement). Trigger — "/crew-count", "combien de Claude en parallèle".
 ---
 
 Skill lecture seule — ne modifie aucun fichier. Répond directement à
