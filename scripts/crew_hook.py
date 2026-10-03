@@ -1125,6 +1125,10 @@ def check_zone_overlaps(sections, active, locks, session_id=None, observer=False
 
 
 CONTEXT_BUDGET_TOKENS = 150_000
+CONTEXT_BUDGET_TOKENS_1M = 800_000
+# Au-dela, une fenetre 200k est impossible : fenetre 1M inferee meme sans `[1m]`.
+CONTEXT_WINDOW_200K_MAX = 210_000
+CONTEXT_REPEAT_STEP = 50_000
 
 
 def _iter_lines_reverse(path, chunk_size=65536):
@@ -1150,16 +1154,25 @@ def _iter_lines_reverse(path, chunk_size=65536):
             yield carry
 
 
-def check_context_budget(payload):
+def check_context_budget(payload, state=None):
     """Avertit (non bloquant) quand le contexte de la session principale
-    depasse ~150k tokens (cf. CLAUDE.md § Efficience de contexte / Reset de
-    session). Aucune API de comptage de tokens dediee n'est exposee aux hooks
-    Claude Code : approxime via le dernier message assistant du transcript
-    (`transcript_path` du payload Stop) — usage.input_tokens +
-    cache_read_input_tokens + cache_creation_input_tokens, proxy raisonnable
-    puisque chaque tour renvoie l'historique complet en entree. Best-effort :
-    toute erreur (transcript absent, format inattendu, ligne corrompue) ->
-    pas d'avertissement."""
+    depasse ~150k tokens (800k en fenetre 1M ; cf. CLAUDE.md § Efficience de
+    contexte / Reset de session). Aucune API de comptage de tokens dediee
+    n'est exposee aux hooks Claude Code : approxime via le dernier message
+    assistant du transcript (`transcript_path` du payload Stop) —
+    usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens,
+    proxy raisonnable puisque chaque tour renvoie l'historique complet en
+    entree. Fenetre 1M detectee par `model` contenant `[1m]` ou par un total
+    > CONTEXT_WINDOW_200K_MAX. `state` ({session_id -> total au dernier
+    avertissement}, mute en place) limite la repetition a un palier de
+    CONTEXT_REPEAT_STEP tokens ; repasse sous le seuil (/clear, compaction)
+    -> entree purgee, re-avertit au prochain franchissement. state=None ->
+    sans memoire (un avertissement a chaque appel au-dessus du seuil).
+    Limite connue : le transcript porte souvent l'id modele nu (sans `[1m]`) ;
+    une session 1M n'est alors reconnue qu'au-dela de 210k (alerte 150k possible
+    avant, faux positif accepte).
+    Best-effort : toute erreur (transcript absent, format inattendu, ligne
+    corrompue) -> pas d'avertissement."""
     transcript_path = payload.get("transcript_path")
     if not transcript_path:
         return []
@@ -1168,6 +1181,7 @@ def check_context_budget(payload):
         return []
     try:
         last_usage = None
+        model = ""
         for raw_line in _iter_lines_reverse(path):
             line = raw_line.strip()
             if not line:
@@ -1176,6 +1190,7 @@ def check_context_budget(payload):
             msg = entry.get("message") or {}
             if msg.get("role") == "assistant" and msg.get("usage"):
                 last_usage = msg["usage"]
+                model = str(msg.get("model") or "")
                 break
     except Exception:
         return []
@@ -1186,11 +1201,21 @@ def check_context_budget(payload):
         + (last_usage.get("cache_read_input_tokens") or 0)
         + (last_usage.get("cache_creation_input_tokens") or 0)
     )
-    if total <= CONTEXT_BUDGET_TOKENS:
+    window_1m = "[1m]" in model.lower() or total > CONTEXT_WINDOW_200K_MAX
+    threshold = CONTEXT_BUDGET_TOKENS_1M if window_1m else CONTEXT_BUDGET_TOKENS
+    sid = str(payload.get("session_id"))
+    if total <= threshold:
+        if state is not None:
+            state.pop(sid, None)
         return []
+    if state is not None:
+        last = state.get(sid)
+        if isinstance(last, int) and total < last + CONTEXT_REPEAT_STEP:
+            return []
+        state[sid] = total
     return [
         f"[contexte] ~{total:,} tokens de contexte estimes (seuil "
-        f"{CONTEXT_BUDGET_TOKENS:,}) — /clear ou nouvelle session "
+        f"{threshold:,}) — /clear ou nouvelle session "
         "recommande avant de continuer (cf. CLAUDE.md § Efficience de "
         "contexte)."
     ]
@@ -1533,12 +1558,33 @@ def main():
     # longtemps pour ca.
     due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
     due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
+    # Alerte contexte : palier par session dans locks["warned"]["context"]
+    # (persiste avec le reste de `warned` ci-dessous, pas de nouveau fichier).
+    # Sans session_id : pas de memoire (cle partagee entre sessions sinon).
+    # SessionEnd : pas d'alerte, entree de la session purgee.
+    ctx_state = locks.setdefault("warned", {}).setdefault("context", {})
+    ctx_key = str(session_id)
+    if hook_event == "SessionEnd":
+        ctx_state.pop(ctx_key, None)
+        context_warnings = []
+    else:
+        context_warnings = check_context_budget(payload, ctx_state if session_id else None)
     with LocksMutex():
         # Recharge : seul `warned` est a persister ici. Re-sauver l'objet `locks`
         # charge plus haut ecraserait une session enregistree entre-temps (et
         # desarmerait a tort le marqueur .gate_armed).
         fresh = load_locks()
+        fresh_ctx = (fresh.get("warned") or {}).get("context") or {}
         fresh["warned"] = locks.get("warned", {})
+        # `context` : ne reporter que l'entree de CETTE session (celles des
+        # sessions concurrentes, relues sous mutex, sont conservees).
+        merged_ctx = dict(fresh_ctx)
+        if session_id:
+            if ctx_key in ctx_state:
+                merged_ctx[ctx_key] = ctx_state[ctx_key]
+            else:
+                merged_ctx.pop(ctx_key, None)
+        fresh["warned"]["context"] = merged_ctx
         save_locks(fresh)
 
     if entries and prev:  # ne pas journaliser le premier snapshot de référence
@@ -1555,15 +1601,12 @@ def main():
 
     # Batching : avertissements non bloquants (stderr) — n'interfère pas avec le
     # JSON de décision émis sur stdout. Throttlés (cf. _throttle_warnings) pour
-    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé ;
-    # check_context_budget n'est PAS throttlé (le rappel doit persister tant
-    # que le contexte reste au-dessus du seuil, l'action attendue est un
-    # /clear, pas un simple accusé de réception).
+    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé.
+    # L'alerte contexte (context_warnings) part, elle, dans le JSON stdout sous
+    # "systemMessage" (palier de 50k par session, cf. check_context_budget).
     for w in due_batch_warnings:
         sys.stderr.write(w + "\n")
     for w in due_zone_warnings:
-        sys.stderr.write(w + "\n")
-    for w in check_context_budget(payload):
         sys.stderr.write(w + "\n")
 
     # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
@@ -1591,9 +1634,14 @@ def main():
                         "sessions différentes : " + " ; ".join(zone_blocking) +
                         " Attendre la fin de l'autre session avant de continuer.")
 
+    out = {}
     if reasons:
-        print(json.dumps({"decision": "block", "reason": "\n\n".join(reasons)}))
-        return
+        out["decision"] = "block"
+        out["reason"] = "\n\n".join(reasons)
+    if context_warnings:
+        out["systemMessage"] = "\n".join(context_warnings)
+    if out:
+        print(json.dumps(out))
 
 
 if __name__ == "__main__":

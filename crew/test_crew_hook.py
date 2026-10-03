@@ -614,7 +614,7 @@ def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
     assert new_text.strip() == ""
 
 
-def _write_transcript(tmp_path, usages):
+def _write_transcript(tmp_path, usages, model=None):
     """Ecrit un transcript JSONL minimal : un message assistant par usage
     donne (dans l'ordre), entrelace de lignes non-assistant/vides/corrompues
     pour verifier que seule la DERNIERE entree assistant valide est retenue."""
@@ -624,7 +624,10 @@ def _write_transcript(tmp_path, usages):
         lines.append('{"message": {"role": "user", "content": "hi"}}')
         lines.append("")  # ligne vide, doit etre ignoree
         lines.append("not json")  # ligne corrompue, doit etre ignoree
-        lines.append(json.dumps({"message": {"role": "assistant", "usage": u}}))
+        msg = {"role": "assistant", "usage": u}
+        if model:
+            msg["model"] = model
+        lines.append(json.dumps({"message": msg}))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return str(path)
 
@@ -663,6 +666,94 @@ def test_check_context_budget_uses_last_assistant_usage_not_first(tmp_path):
         {"input_tokens": 1000},
     ])
     assert h.check_context_budget({"transcript_path": transcript}) == []
+
+
+def _ctx(tokens):
+    return {"input_tokens": tokens}
+
+
+def test_check_context_budget_200k_window_alerts_at_160k(tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": transcript})) == 1
+
+
+def test_check_context_budget_1m_model_threshold_800k(tmp_path):
+    model = "claude-opus-5-5[1m]"
+    low = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
+    assert h.check_context_budget({"transcript_path": low}) == []
+    high = _write_transcript(tmp_path, [_ctx(810_000)], model=model)
+    assert len(h.check_context_budget({"transcript_path": high})) == 1
+
+
+def test_check_context_budget_infers_1m_window_above_210k(tmp_path):
+    """Total > 210k sans [1m] : impossible en fenetre 200k -> fenetre 1M inferee,
+    seuil 800k (pas d'alerte a 215k)."""
+    mid = _write_transcript(tmp_path, [_ctx(215_000)], model="claude-sonnet-5-5")
+    assert h.check_context_budget({"transcript_path": mid}) == []
+    high = _write_transcript(tmp_path, [_ctx(820_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": high})) == 1
+
+
+def test_check_context_budget_repeats_only_every_50k_per_session(tmp_path):
+    state = {}
+    payload = lambda t, sid="S1": {"transcript_path": _write_transcript(
+        tmp_path, [_ctx(t)], model="claude-opus-5-5[1m]"), "session_id": sid}
+    assert len(h.check_context_budget(payload(810_000), state)) == 1
+    assert h.check_context_budget(payload(830_000), state) == []  # < +50k
+    assert len(h.check_context_budget(payload(865_000), state)) == 1  # palier +50k
+    # autre session : etat independant
+    assert len(h.check_context_budget(payload(830_000, "S2"), state)) == 1
+
+
+def test_check_context_budget_state_resets_when_back_under_threshold(tmp_path):
+    state = {}
+    p = lambda t: {"transcript_path": _write_transcript(tmp_path, [_ctx(t)]), "session_id": "S1"}
+    assert len(h.check_context_budget(p(160_000), state)) == 1
+    assert h.check_context_budget(p(20_000), state) == []  # /clear ou compaction
+    assert len(h.check_context_budget(p(160_000), state)) == 1  # re-alerte
+
+
+def test_stop_context_alert_goes_to_system_message_not_stderr(repo, monkeypatch, capsys, tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    payload = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    cap = capsys.readouterr()
+    assert "[contexte]" not in cap.err
+    out = json.loads(cap.out.strip())
+    assert "[contexte]" in out["systemMessage"]
+    assert "decision" not in out
+
+    # 2e Stop, meme niveau : pas de re-alerte (palier 50k par session)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    assert "systemMessage" not in capsys.readouterr().out
+
+
+def test_stop_context_state_keeps_concurrent_session_entry(repo, monkeypatch, capsys, tmp_path):
+    """Un autre Stop a ecrit warned.context['S2'] entre-temps : le save de S1 ne l'ecrase pas."""
+    locks = h.load_locks()
+    locks.setdefault("warned", {})["context"] = {"S2": 900_000}
+    h.save_locks(locks)
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    payload = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    ctx = h.load_locks()["warned"]["context"]
+    assert ctx == {"S2": 900_000, "S1": 160_000}
+
+
+def test_session_end_purges_context_state_without_alert(repo, monkeypatch, capsys, tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    stop = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(stop)))
+    h.main()
+    capsys.readouterr()
+    end = dict(stop, hook_event_name="SessionEnd")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(end)))
+    h.main()
+    assert "systemMessage" not in capsys.readouterr().out
+    assert "S1" not in h.load_locks()["warned"]["context"]
 
 
 def _run_stop(monkeypatch, capsys, session_id="S1"):
