@@ -1,6 +1,6 @@
 ---
 name: crew-start
-description: Reprend le travail crew sans que l'utilisateur précise quoi — continue la (ou les) tâche(s) déjà en crew/CURRENT_TASKS/ si il y en a ; sinon démarre un batch pas encore actif depuis crew/TODO/ (anti-collision via manager) puis code. Trigger — "/crew-start", "continue le travail", "reprends où t'en étais", "lance la suite", "qu'est-ce qu'on fait maintenant".
+description: Reprend le travail crew sans préciser quoi — continue la tâche en CURRENT_TASKS, sinon démarre un batch inactif depuis TODO (anti-collision), puis code. Trigger — "/crew-start", "continue le travail", "lance la suite".
 ---
 
 Point d'entrée unique pour reprendre une session crew sans avoir à dire

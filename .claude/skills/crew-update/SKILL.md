@@ -1,6 +1,6 @@
 ---
 name: crew-update
-description: Met à jour les fichiers "moteur" d'un projet déjà bootstrapé via `/crew-init` vers la dernière version du scaffold (CLAUDE.md/AGENTS.md/PRODUCT.md/CONTRIBUTING.md/SECURITY.md/check_placeholders.py, et en mode legacy crew_hook.py/spec_to_task_hook.py/skills/agents locaux) — sans jamais toucher aux données utilisateur (crew/TODO, CURRENT_TASKS, PROBLEMS, ICEBOX, TESTS, HISTORIQUE.md) ni écraser silencieusement un fichier personnalisé. Trigger — "/crew-update", "mets à jour le scaffold", "récupère les dernières règles crew", "il y a une nouvelle version du scaffold".
+description: Met à jour les fichiers moteur d'un projet bootstrapé vers la dernière version du scaffold, sans toucher aux données ni écraser un fichier personnalisé. Trigger — "/crew-update", "mets à jour le scaffold".
 ---
 
 Ce skill exécute `crew/crew_update.py` (ou `scripts/crew_update.py` en mode
@@ -72,6 +72,24 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
      copier). Signaler à l'utilisateur pour décision manuelle : vérifier si
      le fichier a été déplacé ailleurs dans la source avant de le supprimer
      soi-même, ne jamais le supprimer silencieusement.
+
+### Cas particulier : `CLAUDE.md` allégé (opt-in)
+
+Depuis le slimming du template, un `CLAUDE.md` d'ancienne génération reste **valide** :
+les skills y renvoient par titres de section (`§ Batching`, `§ Gestion des tâches`,
+`§ Personas`, `§ Guides AGENTS.md segmentés`, `§ 2bis`) présents dans les deux versions.
+
+- `apply` → sans risque ; `conflict` (personnalisé) → **jamais touché par défaut**, le
+  rapport signale seulement « version allégée disponible ». Migration **sur demande
+  explicite** uniquement.
+- Si migration demandée (flux **manuel**, `crew_update.py` n'a pas de mode dédié) :
+  écrire `CLAUDE.md.new`, garder `CLAUDE.md.bak`, montrer le diff, lister les sections
+  locales absentes du template (règles projet à réinjecter à la main). Rien n'est
+  appliqué sans confirmation.
+- Vérifier que les ancres obligatoires sont présentes dans le résultat : anti-collision,
+  clause personas 1 %, règle des 100 lignes, seuils 150k/100k, `crew/` ancré racine.
+- Ne jamais retirer un renvoi `§` des skills tant que des projets dérivés peuvent
+  porter l'ancienne version.
 
 ## Confirmation obligatoire
 

@@ -1,6 +1,6 @@
 ---
 name: crew-dashboard
-description: Lance un dashboard web local temps réel (tasks TODO/CURRENT_TASKS/PAUSED/ICEBOX, batches CLAUDE_BATCH.md, sessions concurrentes crew_lock.json) avec actions de gestion (déplacer une tâche, cocher un test, purger un lock). Trigger — "/crew-dashboard", "interface crew", "dashboard des tâches", "visualiser l'état crew en temps réel".
+description: Lance un dashboard web local temps réel (tâches, batchs, sessions concurrentes) avec actions de gestion. Trigger — "/crew-dashboard", "interface crew", "dashboard des tâches".
 ---
 
 Lance `scripts/dashboard/server.py` (FastAPI, `127.0.0.1` uniquement) dans

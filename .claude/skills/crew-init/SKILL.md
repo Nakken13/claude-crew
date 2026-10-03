@@ -1,6 +1,6 @@
 ---
 name: crew-init
-description: Bootstrap le scaffold crew (CLAUDE.md/AGENTS.md/PRODUCT.md/CONTRIBUTING.md/SECURITY.md/crew/) sur un projet neuf ou existant sans ce dispositif — copie les fichiers, détecte la stack, pose les questions nécessaires (vision produit, conventions, secrets), résout les placeholders `<...>`, adapte le routage skills à la stack réelle, lance check_placeholders.py. Trigger — "/crew-init", "initialise le scaffold crew", "bootstrap ce projet avec crew".
+description: Bootstrap le scaffold crew (CLAUDE.md, AGENTS.md, crew/…) sur un projet neuf ou existant — copie, détecte la stack, résout les placeholders. Trigger — "/crew-init", "initialise le scaffold crew".
 ---
 
 Ce skill exécute le bootstrap déjà décrit en prose dans le `README.md` du
