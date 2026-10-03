@@ -33,7 +33,7 @@ Numérotation entière obligatoire (le parser `TASK_LINE_RE` du hook ne reconna�
    plugin actif ET hooks locaux `crew/crew_hook.py` dans `.claude/settings.json`.
    Indépendante du code du hook, placée ici pour clore le lot « désynchro verrou » ;
    partage `skills/crew-*/SKILL.md` avec 7/8.
-4. `faux-positif-check-batches-claude-md.md` — quick win, parser `TASK_LINE_RE`.
+4. ~~`faux-positif-check-batches-claude-md.md`~~ — quick win, parser `TASK_LINE_RE`.
 5. `latence-hook-pretooluse-spawn-python.md` — marqueur `.gate_armed` + pré-filtre
    shell + `async` SessionEnd/PostToolUse. Dépend de 4 (même fonction de scan,
    mêmes tests) et de 1 (emplacement du verrou).
