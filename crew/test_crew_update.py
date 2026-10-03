@@ -275,3 +275,137 @@ def test_detect_mode_returns_plugin_when_no_local_crew_init_skill(tmp_path):
     (plugin_project / "crew" / "CLAUDE_CONTEXT").mkdir(parents=True)
     (plugin_project / "CLAUDE.md").write_text("claude\n", encoding="utf-8")
     assert u.detect_mode(plugin_project) == "plugin"
+
+
+# --- detect_double_hook() : plugin actif + hook local crew_hook.py ---------
+
+LOCAL_HOOK_CMD = 'python "$CLAUDE_PROJECT_DIR/crew/crew_hook.py"'
+PLUGIN_HOOK_CMD = 'python "${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py"'
+
+
+def _write_settings(root, name, data):
+    d = pathlib.Path(root) / ".claude"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(json.dumps(data), encoding="utf-8")
+
+
+def _hooks(cmd, *events):
+    return {"hooks": {e: [{"matcher": "", "hooks": [{"type": "command", "command": cmd}]}] for e in events}}
+
+
+def test_detect_double_hook_plugin_and_local(tmp_path):
+    settings = {"enabledPlugins": {"claude-crew@nakken13": True}}
+    settings.update(_hooks(LOCAL_HOOK_CMD, "PreToolUse", "Stop"))
+    _write_settings(tmp_path, "settings.json", settings)
+
+    found = u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json")
+
+    assert found == {"PreToolUse": [LOCAL_HOOK_CMD], "Stop": [LOCAL_HOOK_CMD]}
+
+
+def test_detect_double_hook_plugin_enabled_in_user_settings(tmp_path):
+    project = tmp_path / "proj"
+    _write_settings(project, "settings.json", _hooks(LOCAL_HOOK_CMD, "Stop"))
+    user = tmp_path / "user-settings.json"
+    user.write_text(json.dumps({"enabledPlugins": {"claude-crew@x": True}}), encoding="utf-8")
+
+    assert u.detect_double_hook(project, user_settings_path=user) == {"Stop": [LOCAL_HOOK_CMD]}
+
+
+@pytest.mark.parametrize("plugins,cmd", [
+    ({"claude-crew@nakken13": True}, PLUGIN_HOOK_CMD),  # plugin hook only
+    (None, LOCAL_HOOK_CMD),  # legacy local hook without plugin = normal
+    ({"claude-crew@nakken13": False}, LOCAL_HOOK_CMD),  # plugin disabled
+    ({"claude-crew@nakken13": True}, "python mycrew/crew_hook.py"),  # lookalike path
+])
+def test_no_double_hook_cases(tmp_path, plugins, cmd):
+    settings = _hooks(cmd, "Stop")
+    if plugins is not None:
+        settings["enabledPlugins"] = plugins
+    _write_settings(tmp_path, "settings.json", settings)
+
+    assert u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json") == {}
+
+
+def test_detect_double_hook_tolerates_missing_or_invalid_settings(tmp_path):
+    assert u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json") == {}
+
+    d = tmp_path / ".claude"
+    d.mkdir()
+    (d / "settings.json").write_text("{not json", encoding="utf-8")
+    (d / "settings.local.json").write_text('["wrong", "shape"]', encoding="utf-8")
+    assert u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json") == {}
+
+
+def test_double_hook_not_removed_without_confirmation(tmp_path, capsys, monkeypatch):
+    settings = {"enabledPlugins": {"claude-crew@nakken13": True}}
+    settings.update(_hooks(LOCAL_HOOK_CMD, "Stop"))
+    _write_settings(tmp_path, "settings.json", settings)
+    before = (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
+    source = tmp_path / "src"
+    source.mkdir()
+    monkeypatch.setattr(sys, "argv", ["crew_update.py", "--project", str(tmp_path), "--source", str(source)])
+    monkeypatch.setattr(u, "USER_SETTINGS_PATH", tmp_path / "none.json")
+
+    u._main()
+
+    out = capsys.readouterr().out
+    assert "crew/crew_hook.py" in out and "--remove-double-hook" in out
+    assert (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8") == before
+
+
+def test_remove_double_hook_with_flag_strips_only_local_crew_entries(tmp_path, monkeypatch):
+    settings = {"enabledPlugins": {"claude-crew@nakken13": True}}
+    settings["hooks"] = {
+        "Stop": [
+            {"matcher": "", "hooks": [{"type": "command", "command": LOCAL_HOOK_CMD}]},
+            {"matcher": "", "hooks": [{"type": "command", "command": "echo other"}]},
+        ],
+        "PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": LOCAL_HOOK_CMD}]}],
+    }
+    _write_settings(tmp_path, "settings.json", settings)
+    source = tmp_path / "src"
+    source.mkdir()
+    monkeypatch.setattr(sys, "argv", ["crew_update.py", "--project", str(tmp_path), "--source", str(source),
+                                      "--remove-double-hook"])
+    monkeypatch.setattr(u, "USER_SETTINGS_PATH", tmp_path / "none.json")
+
+    u._main()
+
+    after = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert after["enabledPlugins"] == {"claude-crew@nakken13": True}
+    assert "PreToolUse" not in after["hooks"]
+    assert after["hooks"]["Stop"] == [{"matcher": "", "hooks": [{"type": "command", "command": "echo other"}]}]
+
+
+def test_detect_double_hook_windows_backslash_command(tmp_path):
+    win_cmd = r'python "%CLAUDE_PROJECT_DIR%\crew\crew_hook.py"'
+    settings = {"enabledPlugins": {"claude-crew@nakken13": True}}
+    settings.update(_hooks(win_cmd, "Stop"))
+    _write_settings(tmp_path, "settings.json", settings)
+
+    assert u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json") == {"Stop": [win_cmd]}
+
+
+def test_double_hook_detected_and_removed_via_settings_local(tmp_path):
+    _write_settings(tmp_path, "settings.json", {"enabledPlugins": {"claude-crew@nakken13": True}})
+    _write_settings(tmp_path, "settings.local.json", {**_hooks(LOCAL_HOOK_CMD, "Stop"), "model": "x"})
+
+    assert u.detect_double_hook(tmp_path, user_settings_path=tmp_path / "none.json") == {"Stop": [LOCAL_HOOK_CMD]}
+    changed = u.remove_double_hook(tmp_path)
+
+    assert [pathlib.Path(c).name for c in changed] == ["settings.local.json"]
+    after = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert after == {"model": "x"}
+    assert u.remove_double_hook(tmp_path) == []  # idempotent
+
+
+def test_remove_double_hook_keeps_preexisting_empty_groups(tmp_path):
+    settings = {"hooks": {"Stop": [{"matcher": "", "hooks": []},
+                                   {"matcher": "", "hooks": [{"type": "command", "command": LOCAL_HOOK_CMD}]}]}}
+    _write_settings(tmp_path, "settings.json", settings)
+
+    u.remove_double_hook(tmp_path)
+
+    after = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert after["hooks"]["Stop"] == [{"matcher": "", "hooks": []}]
