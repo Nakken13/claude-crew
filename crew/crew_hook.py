@@ -38,6 +38,44 @@ blocage volontaire exit(2) de gate_pretooluse).
 import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
+
+
+def _resolve_main_root(root):
+    """Racine du checkout principal pour `root`, sans spawn git : `root/.git`
+    dossier -> `root` ; fichier (worktree) -> ligne `gitdir:` puis `commondir`
+    de ce gitdir, dont le parent (`.git`) donne le principal. Repli silencieux
+    sur `root` si la lecture echoue, repo bare, ou pas de `crew/CLAUDE_CONTEXT/` dans le
+    principal resolu — ne leve jamais."""
+    try:
+        git = root / ".git"
+        if not git.is_file():
+            return root
+        line = next((l for l in git.read_text(encoding="utf-8").splitlines()
+                     if l.startswith("gitdir:")), None)
+        if line is None:
+            return root
+        gitdir = pathlib.Path(line[len("gitdir:"):].strip().replace("\\", "/"))
+        if not gitdir.is_absolute():
+            gitdir = root / gitdir
+        common_rel = (gitdir / "commondir").read_text(encoding="utf-8").strip().replace("\\", "/")
+        common = (gitdir / common_rel).resolve()
+        if common.name != ".git":
+            return root
+        main = common.parent
+        return main if (main / "crew" / "CLAUDE_CONTEXT").is_dir() else root
+    except Exception:
+        return root
+
+
+def _shared_lock_paths(root):
+    """(MAIN_ROOT, crew_lock.json, mutex) du verrou partage entre le checkout
+    principal et tous ses worktrees de batch."""
+    main = _resolve_main_root(root)
+    ctx = main / "crew" / "CLAUDE_CONTEXT"
+    return main, ctx / "crew_lock.json", ctx / ".crew_lock.mutex"
+
+
+MAIN_ROOT, LOCKS_FILE, LOCKS_MUTEX = _shared_lock_paths(ROOT)
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
@@ -53,8 +91,8 @@ CTX = CREW / "CLAUDE_CONTEXT"
 SNAP = CTX / ".task_state.json"
 CHANGELOG = CTX / "CHANGELOG_TACHES.md"
 BATCH_FILE = CREW / "CLAUDE_BATCH.md"
-LOCKS_FILE = CTX / "crew_lock.json"  # remplace .batch_locks.json (schema session->{batch,tasks,worktree,branch,since})
-LOCKS_MUTEX = CTX / ".crew_lock.mutex"
+# LOCKS_FILE/LOCKS_MUTEX : verrou partage dans le checkout principal (cf.
+# _shared_lock_paths ci-dessus), schema session->{batch,tasks,worktree,branch,since}.
 BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
 HISTORIQUE = CTX / "HISTORIQUE.md"
 HISTORIQUE_ARCHIVE = CTX / "HISTORIQUE_ARCHIVE.md"
@@ -350,6 +388,30 @@ def save_locks(locks):
 WARNING_COOLDOWN_MINUTES = 30
 
 
+def migrate_legacy_worktree_lock():
+    """Fusionne dans le verrou partage l'ancien `crew_lock.json` local d'un
+    worktree (avant centralisation dans le principal), sous mutex, puis le
+    supprime. Par session, le `since` le plus recent gagne. No-op depuis le
+    principal ou sans fichier legacy ; jamais d'exception."""
+    try:
+        legacy = CTX / "crew_lock.json"
+        if ROOT == MAIN_ROOT or not legacy.exists() or legacy.resolve() == LOCKS_FILE.resolve():
+            return
+        old = json.loads(legacy.read_text(encoding="utf-8")).get("sessions", {})
+        with LocksMutex():
+            locks = load_locks()
+            sessions = locks["sessions"]
+            for sid, info in old.items():
+                if not isinstance(info, dict):
+                    continue
+                if sid not in sessions or str(info.get("since", "")) > str(sessions[sid].get("since", "")):
+                    sessions[sid] = info
+            save_locks(locks)
+        legacy.unlink()
+    except Exception:
+        pass
+
+
 def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNING_COOLDOWN_MINUTES):
     """Ne remonte un avertissement non bloquant (check_batches/check_zone_overlaps)
     qu'une fois, puis au plus une fois par `cooldown_minutes` tant que la
@@ -361,7 +423,10 @@ def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNI
     fichier verrous. Une cle dont la condition a disparu est purgee (pas de
     fuite memoire) et re-avertit immediatement si elle reapparait plus tard
     plutot que d'heriter un cooldown perime."""
-    bucket = locks.setdefault("warned", {}).setdefault(category, {})
+    # Scope par checkout (le verrou est partage) : sinon deux checkouts se
+    # masquent mutuellement leurs avertissements. Cle inchangee pour le principal.
+    key = category if ROOT == MAIN_ROOT else f"{category}@{ROOT.name}"
+    bucket = locks.setdefault("warned", {}).setdefault(key, {})
     current = set(warnings)
     for stale in set(bucket) - current:
         del bucket[stale]
@@ -438,7 +503,7 @@ def _worktree_paths_for(header):
     """Chemin worktree (sibling du checkout principal) + nom de branche
     deterministes pour un batch, derives de son header (cf. _batch_slug)."""
     slug = _batch_slug(header)
-    return f"../{ROOT.name}-batch-{slug}", f"crew/batch-{slug}"
+    return f"../{MAIN_ROOT.name}-batch-{slug}", f"crew/batch-{slug}"
 
 
 def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
@@ -697,18 +762,20 @@ def _repo_relative_path(path, locks=None):
         return str(path).replace("\\", "/").lstrip("./")
     if not p.is_absolute():
         return str(p).replace("\\", "/").lstrip("./")
-    try:
-        return p.resolve().relative_to(ROOT.resolve()).as_posix()
-    except Exception:
-        pass
+    rp = p.resolve()
+    for base in ((ROOT,) if ROOT == MAIN_ROOT else (ROOT, MAIN_ROOT)):
+        try:
+            return rp.relative_to(base.resolve()).as_posix()
+        except Exception:
+            pass
     locks = locks if locks is not None else load_locks()
     for info in locks.get("sessions", {}).values():
         wt = info.get("worktree")
         if not wt:
             continue
         try:
-            wt_root = (ROOT / wt).resolve()
-            return p.resolve().relative_to(wt_root).as_posix()
+            wt_root = (MAIN_ROOT / wt).resolve()
+            return rp.relative_to(wt_root).as_posix()
         except Exception:
             continue
     return str(p).replace("\\", "/").lstrip("./")
@@ -906,7 +973,7 @@ def purge_closed_task_locks(locks):
     for sid, info in list(sessions.items()):
         live = set(main_live)
         if info.get("worktree"):
-            wt = ROOT / info["worktree"]
+            wt = MAIN_ROOT / info["worktree"]
             for rel in rel_dirs:
                 if (wt / rel).exists():
                     live |= {f.name for f in (wt / rel).glob("*.md")}
@@ -1066,7 +1133,10 @@ def check_context_budget(payload):
 def regen_batch_locks_md(sections, locks, active):
     """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
     batch ayant au moins une tache actuellement en TODO/, CURRENT_TASKS/ ou
-    PAUSED/. Colonne `worktree` affichee quand l'entree session en porte une."""
+    PAUSED/. Colonne `worktree` affichee quand l'entree session en porte une.
+    No-op hors checkout principal : la vue d'un worktree peut etre en retard."""
+    if ROOT != MAIN_ROOT:
+        return
     lines = ["# Verrous batch (temps reel)\n\n",
               "> Regenere automatiquement par `crew/crew_hook.py` a chaque tour. "
               "Ne pas editer a la main.\n\n"]
@@ -1231,6 +1301,7 @@ def main():
         return
 
     rotate_graphify_snapshots()
+    migrate_legacy_worktree_lock()
     now_dt = datetime.datetime.now()
 
     state = {name: regen_index(name, d) for name, d in DIRS.items()}

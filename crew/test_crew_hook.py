@@ -101,6 +101,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, "BATCH_LOCKS_MD", batch_locks_md)
     monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
     monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
+    monkeypatch.setattr(h, "MAIN_ROOT", root)
     return root, dirs, ctx
 
 
@@ -461,7 +462,8 @@ def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
     assert sha_before == sha_after
 
 
-def test_throttle_warnings_emits_new_warning_and_records_it():
+def test_throttle_warnings_emits_new_warning_and_records_it(monkeypatch):
+    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # cle `batch` = cas checkout principal
     locks = {"sessions": {}}
     now = datetime.datetime(2026, 8, 29, 10, 0, 0)
     due = h._throttle_warnings("batch", ["[batch] warning A"], locks, now)
@@ -487,7 +489,8 @@ def test_throttle_warnings_re_emits_after_cooldown_elapsed():
     assert due == ["[batch] warning A"]
 
 
-def test_throttle_warnings_drops_state_for_resolved_warning():
+def test_throttle_warnings_drops_state_for_resolved_warning(monkeypatch):
+    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # cle `batch` = cas checkout principal
     """Une condition disparue (tache categorisee, chevauchement resolu) ne
     doit pas laisser une entree morte grossir locks['warned'] indefiniment,
     et si elle reapparait plus tard elle doit re-avertir immediatement."""
@@ -993,3 +996,191 @@ def test_check_zone_overlaps_observer_view_blocks_cross_session(repo):
         h.load_sections(), h.in_progress_task_slugs(locks), locks, observer=True)
 
     assert blocking and not warnings
+
+
+# --- Verrou partage entre checkout principal et worktrees (tache verrou-partage-worktrees) ---
+
+def _fake_main(tmp_path, with_crew=True):
+    main = tmp_path / "main"
+    (main / ".git").mkdir(parents=True)
+    if with_crew:
+        (main / "crew" / "CLAUDE_CONTEXT").mkdir(parents=True)
+    return main
+
+
+def _fake_worktree(tmp_path, main, gitdir_text=None, commondir="../.."):
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    gitdir = main / ".git" / "worktrees" / "wt"
+    gitdir.mkdir(parents=True)
+    (gitdir / "commondir").write_text(commondir + "\n", encoding="utf-8")
+    (wt / ".git").write_text(f"gitdir: {gitdir_text or gitdir}\n", encoding="utf-8")
+    return wt
+
+
+def test_main_root_from_worktree_git_file(tmp_path):
+    main = _fake_main(tmp_path)
+    wt = _fake_worktree(tmp_path, main)
+    assert h._resolve_main_root(wt) == main.resolve()
+
+
+def test_main_root_is_root_when_git_is_dir(tmp_path):
+    main = _fake_main(tmp_path)
+    assert h._resolve_main_root(main) == main
+
+
+def test_main_root_relative_gitdir_and_backslashes(tmp_path):
+    main = _fake_main(tmp_path)
+    wt = _fake_worktree(tmp_path, main, gitdir_text=r"..\main\.git\worktrees\wt", commondir=r"..\..")
+    assert h._resolve_main_root(wt) == main.resolve()
+
+
+def test_main_root_fallback_no_git(tmp_path):
+    assert h._resolve_main_root(tmp_path) == tmp_path
+
+
+def test_main_root_fallback_bare_repo(tmp_path):
+    bare = tmp_path / "bare.git"
+    (bare / "worktrees" / "wt").mkdir(parents=True)
+    (bare / "worktrees" / "wt" / "commondir").write_text("../..\n", encoding="utf-8")
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {bare / 'worktrees' / 'wt'}\n", encoding="utf-8")
+    assert h._resolve_main_root(wt) == wt
+
+
+def test_main_root_fallback_main_without_crew(tmp_path):
+    main = _fake_main(tmp_path, with_crew=False)
+    wt = _fake_worktree(tmp_path, main)
+    assert h._resolve_main_root(wt) == wt
+
+
+def test_main_root_fallback_unreadable_git_file(tmp_path):
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text("garbage\n", encoding="utf-8")
+    assert h._resolve_main_root(wt) == wt
+
+
+def _as_checkout(monkeypatch, root, main):
+    """Fait pointer le module sur `root` (checkout principal ou worktree) comme
+    si le hook y tournait : ROOT/CTX/BATCH_FILE locaux, verrou partage."""
+    monkeypatch.setattr(h, "ROOT", root)
+    monkeypatch.setattr(h, "MAIN_ROOT", main)
+    monkeypatch.setattr(h, "CTX", root / "crew" / "CLAUDE_CONTEXT")
+    monkeypatch.setattr(h, "BATCH_FILE", root / "crew" / "CLAUDE_BATCH.md")
+    _, locks_file, locks_mutex = h._shared_lock_paths(root)
+    monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
+    monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
+
+
+def _two_checkouts(tmp_path):
+    main = _fake_main(tmp_path)
+    wt = _fake_worktree(tmp_path, main)
+    (wt / "crew" / "CLAUDE_CONTEXT").mkdir(parents=True)
+    for r in (main, wt):
+        (r / "crew" / "CLAUDE_BATCH.md").write_text(
+            "# Batching\n\n## Batch Zone1\n\nZone : `zone1/`\n\n- `t.md`\n", encoding="utf-8")
+    return main.resolve(), wt
+
+
+def _seed_lock(session_id, now=None):
+    since = (now or datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    h.save_locks({"sessions": {session_id: {
+        "batch": "Batch Zone1", "tasks": ["t.md"],
+        "worktree": "../main-batch-zone1", "branch": "crew/batch-zone1", "since": since}}})
+
+
+def test_worktree_session_writes_main_lock(tmp_path):
+    main, wt = _two_checkouts(tmp_path)
+    resolved_main, locks_file, mutex = h._shared_lock_paths(wt)
+    assert resolved_main == main
+    assert locks_file == main / "crew" / "CLAUDE_CONTEXT" / "crew_lock.json"
+    assert mutex.parent == locks_file.parent
+
+
+def test_gate_main_blocks_zone_claimed_from_worktree(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    _as_checkout(monkeypatch, wt, main)
+    _seed_lock("WT")
+    _as_checkout(monkeypatch, main, main)
+    with pytest.raises(SystemExit) as ei:
+        h.gate_pretooluse({"tool_name": "Edit", "session_id": "MAIN",
+                           "tool_input": {"file_path": str(main / "zone1" / "x.py")}})
+    assert ei.value.code == 2
+
+
+def test_gate_worktree_blocks_zone_claimed_from_main(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    _as_checkout(monkeypatch, main, main)
+    _seed_lock("MAIN")
+    _as_checkout(monkeypatch, wt, main)
+    with pytest.raises(SystemExit) as ei:
+        h.gate_pretooluse({"tool_name": "Edit", "session_id": "WT",
+                           "tool_input": {"file_path": str(wt / "zone1" / "x.py")}})
+    assert ei.value.code == 2
+
+
+def test_worktree_paths_use_main_root_name(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    _as_checkout(monkeypatch, wt, main)
+    assert h._worktree_paths_for("Batch X") == ("../main-batch-x", "crew/batch-x")
+
+
+def test_throttle_warned_scoped_per_checkout(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    locks = {"sessions": {}}
+    now = datetime.datetime(2026, 8, 29, 10, 0, 0)
+    _as_checkout(monkeypatch, main, main)
+    assert h._throttle_warnings("batch", ["same"], locks, now) == ["same"]
+    _as_checkout(monkeypatch, wt, main)
+    assert h._throttle_warnings("batch", ["same"], locks, now) == ["same"]
+    assert h._throttle_warnings("batch", ["same"], locks, now) == []
+
+
+def test_batch_locks_md_not_written_from_worktree(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    _as_checkout(monkeypatch, wt, main)
+    out = wt / "crew" / "CLAUDE_CONTEXT" / "BATCH_LOCKS.md"
+    monkeypatch.setattr(h, "BATCH_LOCKS_MD", out)
+    h.regen_batch_locks_md([], {"sessions": {}}, set())
+    assert not out.exists()
+    _as_checkout(monkeypatch, main, main)
+    out_main = main / "crew" / "CLAUDE_CONTEXT" / "BATCH_LOCKS.md"
+    monkeypatch.setattr(h, "BATCH_LOCKS_MD", out_main)
+    h.regen_batch_locks_md([], {"sessions": {}}, set())
+    assert out_main.exists()
+
+
+def test_legacy_worktree_lock_merged_then_removed(tmp_path, monkeypatch):
+    main, wt = _two_checkouts(tmp_path)
+    _as_checkout(monkeypatch, main, main)
+    old = (datetime.datetime.now() - datetime.timedelta(minutes=30)).isoformat()
+    new = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
+    h.save_locks({"sessions": {"A": {"tasks": ["a.md"], "since": old},
+                               "B": {"tasks": ["old-b.md"], "since": old}}})
+    legacy = wt / "crew" / "CLAUDE_CONTEXT" / "crew_lock.json"
+    legacy.write_text(json.dumps({"sessions": {"B": {"tasks": ["new-b.md"], "since": new},
+                                               "C": {"tasks": ["c.md"], "since": new}}}), encoding="utf-8")
+    _as_checkout(monkeypatch, wt, main)
+
+    h.migrate_legacy_worktree_lock()
+
+    sessions = h.load_locks()["sessions"]
+    assert sessions["A"]["tasks"] == ["a.md"]
+    assert sessions["B"]["tasks"] == ["new-b.md"]  # since le plus recent gagne
+    assert sessions["C"]["tasks"] == ["c.md"]
+    assert not legacy.exists()
+
+
+def test_task_state_snapshot_stays_local():
+    """SNAP (diff d'etat par checkout) reste sous ROOT ; seul le verrou migre."""
+    assert h.SNAP == h.ROOT / "crew" / "CLAUDE_CONTEXT" / ".task_state.json"
+    assert h.LOCKS_FILE == h.MAIN_ROOT / "crew" / "CLAUDE_CONTEXT" / "crew_lock.json"
+
+
+def test_main_root_fallback_main_without_claude_context(tmp_path):
+    main = _fake_main(tmp_path, with_crew=False)
+    (main / "crew").mkdir()
+    wt = _fake_worktree(tmp_path, main)
+    assert h._resolve_main_root(wt) == wt
