@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Hook Stop/SessionEnd/PreToolUse — gestion des tâches du projet.
+"""Hook Stop/SessionEnd/SessionStart/PreToolUse — gestion des tâches du projet.
 À chaque fin de tour (Stop) :
   1. régénère crew/<dir>/INDEX.md (titres + liens),
   2. journalise les transitions (démarrée / terminée / ajoutée) dans
@@ -1373,6 +1373,110 @@ def auto_commit_closure(finished, now_dt):
                 pass
 
 
+DIGEST_CAP = 2000
+DIGEST_LINE_MAX = 160
+_CHECKBOX_RE = re.compile(r"^[ \t]*[-*]\s*\[( |x|X)\]", re.MULTILINE)
+
+
+def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP):
+    """Digest crew <= `cap` caracteres (fonction pure). Ordre fixe : CURRENT_TASKS,
+    PAUSED, batchs actifs, verrous d'autres sessions, warnings, HISTORIQUE. Quand
+    une ligne ne tient plus, tout le reste est remplace par « … (+N) » : les
+    sections de tete ne sont donc jamais sacrifiees au profit des suivantes."""
+    items = [
+        "[%s] %s — %s (%d/%d)" % (tag, slug, title, done, total)
+        for tag, rows in (("en cours", current), ("pause", paused))
+        for slug, title, done, total in rows
+    ]
+    items += ["[batch actif] %s — Zone : %s" % (header, zone) for header, zone in batches]
+    items += ["[verrou] %s" % lock for lock in other_locks]
+    items += list(warnings)
+    items += ["[historique] %s" % t for t in history]
+    if not items:
+        return "crew : aucune tâche en cours ni en pause."
+    items = [i if len(i) <= DIGEST_LINE_MAX else i[:DIGEST_LINE_MAX - 1] + "…" for i in items]
+    lines = ["Digest crew (vue dérivée — vérifier sur fichier avant d'écrire) :"] + items
+    dropped = 0
+    while len("\n".join(lines)) > cap and len(lines) > 1:
+        lines.pop()
+        dropped += 1
+    if dropped:
+        # le marqueur remplace au moins la derniere ligne gardee s'il ne tient pas
+        while len("\n".join(lines + ["… (+%d)" % dropped])) > cap and len(lines) > 1:
+            lines.pop()
+            dropped += 1
+        lines.append("… (+%d)" % dropped)
+    return "\n".join(lines)[:cap]
+
+
+def _digest_task_rows(d):
+    """(fichier, titre, cases cochees, cases totales) par tache, en une lecture."""
+    rows = []
+    for f in sorted(d.glob("*.md")) if d.exists() else []:
+        if f.name in ("INDEX.md", "README.md") or f.name.startswith("_"):
+            continue
+        text = f.read_text(encoding="utf-8")
+        title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
+        marks = _CHECKBOX_RE.findall(text)
+        rows.append((f.name, title, sum(1 for m in marks if m != " "), len(marks)))
+    return rows
+
+
+def _safe(fn, default):
+    """Une source illisible ne doit pas tuer tout le digest : repli sur `default`."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
+def _digest_batches(active):
+    return [
+        (_batch_key(sec["header"]), ", ".join(sorted(sec["zone_paths"])) or "?")
+        for sec in load_sections() if sec["slugs"] & active
+    ]
+
+
+def _digest_locks(session_id):
+    now_dt = datetime.datetime.now()
+    out = []
+    for sid, info in sorted(load_locks().get("sessions", {}).items()):
+        if sid == session_id or _session_expired(info, now_dt):
+            continue
+        tasks = info.get("tasks")
+        out.append("%s: %s" % (str(sid)[:8], ", ".join(tasks) if isinstance(tasks, list) else "?"))
+    return out
+
+
+def _digest_history(n=3):
+    # HISTORIQUE.md est trie du plus recent au plus ancien : on s'arrete au n-ieme titre.
+    titles = []
+    with open(HISTORIQUE, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("## "):
+                titles.append(line[3:].strip())
+                if len(titles) == n:
+                    break
+    return titles
+
+
+def session_digest(session_id):
+    """Lit crew/ (lecture seule : aucune ecriture, aucun save_locks) et rend le
+    digest ; None si le projet n'a pas de crew/ (rien a injecter)."""
+    if not CREW.is_dir():
+        return None
+    current = _safe(lambda: _digest_task_rows(DIRS["CURRENT_TASKS"]), [])
+    paused = _safe(lambda: _digest_task_rows(DIRS["PAUSED"]), [])
+    active = {r[0] for r in current + paused}
+    return build_session_digest(
+        current, paused,
+        _safe(lambda: _digest_batches(active), []),
+        _safe(lambda: _digest_locks(session_id), []),
+        _safe(check_batches, []),
+        _safe(_digest_history, []),
+    )
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -1384,6 +1488,20 @@ def main():
         payload = {}
     session_id = payload.get("session_id")
     hook_event = payload.get("hook_event_name")
+
+    if hook_event == "SessionStart":
+        # Digest en lecture seule (additionalContext) ; CREW_SESSION_DIGEST=off le coupe.
+        # Volontairement avant toute la plomberie Stop/SessionEnd (purge, verrous, index) :
+        # ce chemin ne doit rien ecrire.
+        if os.environ.get("CREW_SESSION_DIGEST", "").strip().lower() == "off":
+            return
+        digest = session_digest(session_id)
+        if digest:
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": digest,
+            }}))
+        return
 
     if hook_event == "PreToolUse":
         # Escape hatch : CREW_HOOK_PROFILE=minimal desactive la garde (latence).
