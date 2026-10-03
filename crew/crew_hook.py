@@ -386,6 +386,62 @@ def save_locks(locks):
     tmp = LOCKS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(str(tmp), str(LOCKS_FILE))
+    _sync_gate_marker(locks)
+
+
+GATE_MARKER = ".gate_armed"
+
+
+def _sync_gate_marker(locks):
+    """Marqueur `crew/CLAUDE_CONTEXT/.gate_armed` : present ssi >= 2 sessions dans
+    `locks`, sinon la garde anti-collision est sans objet et la commande shell de
+    hooks.json saute le spawn Python (cf. PreToolUse). Le pre-filtre teste
+    `$CLAUDE_PROJECT_DIR/...` (= worktree courant) alors que le verrou vit dans le
+    principal : le marqueur est pose dans le principal ET dans chaque worktree
+    enregistre. Son contenu liste les worktrees armes, pour pouvoir les desarmer
+    meme apres la disparition de leur session du lock. Best-effort : jamais
+    d'exception."""
+    try:
+        main_marker = LOCKS_FILE.parent / GATE_MARKER
+        previous = []
+        try:
+            previous = json.loads(main_marker.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        sessions = locks.get("sessions", {})
+        armed = len(sessions) >= 2
+        wanted = []
+        for info in sessions.values() if armed else ():
+            wt = info.get("worktree") if isinstance(info, dict) else None
+            ctx = str((MAIN_ROOT / wt).resolve() / "crew" / "CLAUDE_CONTEXT") if wt else None
+            if ctx and pathlib.Path(ctx).is_dir() and ctx not in wanted:
+                wanted.append(ctx)
+        for ctx in previous if isinstance(previous, list) else []:
+            if ctx not in wanted:
+                _unlink_quiet(pathlib.Path(ctx) / GATE_MARKER)
+        if armed:
+            for ctx in wanted:
+                _write_quiet(pathlib.Path(ctx) / GATE_MARKER, "[]")
+            _write_quiet(main_marker, json.dumps(wanted))
+        else:
+            _unlink_quiet(main_marker)
+    except Exception:
+        pass
+
+
+def _unlink_quiet(path):
+    try:
+        path.unlink()
+    except Exception:
+        pass
+
+
+def _write_quiet(path, text):
+    try:
+        if not (path.is_file() and path.read_text(encoding="utf-8") == text):
+            path.write_text(text, encoding="utf-8")
+    except Exception:
+        pass
 
 
 WARNING_COOLDOWN_MINUTES = 30
@@ -1305,6 +1361,10 @@ def main():
     hook_event = payload.get("hook_event_name")
 
     if hook_event == "PreToolUse":
+        # Escape hatch : CREW_HOOK_PROFILE=minimal desactive la garde (latence).
+        # Stop/SessionEnd restent actifs (index, verrous).
+        if os.environ.get("CREW_HOOK_PROFILE", "").strip().lower() == "minimal":
+            return
         # Garde preventive uniquement (git mv TODO->CURRENT_TASKS) : pas de sync
         # d'index/journal/verrous ici, ça reste le travail du hook Stop.
         gate_pretooluse(payload)
@@ -1474,7 +1534,12 @@ def main():
     due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
     due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
     with LocksMutex():
-        save_locks(locks)
+        # Recharge : seul `warned` est a persister ici. Re-sauver l'objet `locks`
+        # charge plus haut ecraserait une session enregistree entre-temps (et
+        # desarmerait a tort le marqueur .gate_armed).
+        fresh = load_locks()
+        fresh["warned"] = locks.get("warned", {})
+        save_locks(fresh)
 
     if entries and prev:  # ne pas journaliser le premier snapshot de référence
         head = ""

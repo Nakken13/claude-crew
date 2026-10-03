@@ -19,6 +19,7 @@ crew/CLAUDE_CONTEXT/.task_state.json
 crew/CLAUDE_CONTEXT/.hook_debug_dump.json
 crew/CLAUDE_CONTEXT/crew_lock.json
 crew/CLAUDE_CONTEXT/.crew_lock.mutex
+crew/CLAUDE_CONTEXT/.gate_armed
 crew/CLAUDE_CONTEXT/BATCH_LOCKS.md
 
 # Venv du crew-dashboard (bootstrap projet-local via crew/dashboard.bat ;
