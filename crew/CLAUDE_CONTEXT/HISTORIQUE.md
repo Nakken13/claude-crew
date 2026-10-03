@@ -4,6 +4,19 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## faux-positif-check-batches-claude-md — 2026-10-03
+Quoi : `check_batches()` ne parse plus que les lignes de liste de
+`CLAUDE_BATCH.md` via `TASK_LINE_RE` (déjà utilisée par `_task_line_counts`/
+`prune_closed_batches`) au lieu d'un `re.findall` générique sur tous les
+backticks `*.md`. Supprime le faux positif « référence une tâche inexistante :
+`CLAUDE.md` » (prose d'en-tête / ligne `Zone :`) dans chaque projet bootstrapé.
+Refs barrées (`~~`) toujours exclues, placeholders `<slug>.md` ignorés. Limite
+assumée (revue) : un 2e ref sur la même ligne ou une ligne décorée
+(`- **`x.md`**`) n'est plus vue — même convention que la purge de batch.
+Fichiers : `scripts/crew_hook.py` + copie `crew/crew_hook.py`,
+`crew/test_crew_hook.py` (+2 tests). Commit `1541ab8`. Note : `verify_plugin_package.py`
+échoue déjà sur main (CLAUDE.md, crew-status SKILL, agents/manager.md) — hors périmètre.
+
 ## detecter-double-hook-projet-cible — 2026-10-03
 Quoi : `/crew-update` détecte un projet cible qui exécute DEUX hooks crew sur le
 même `crew_lock.json` (cas voyageo : plugin `claude-crew` actif ET
