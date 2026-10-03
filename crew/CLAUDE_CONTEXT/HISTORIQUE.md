@@ -4,6 +4,25 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## claude-md-template-2955-mots-toujours-charge — 2026-10-03
+Quoi : `template/CLAUDE.md` et `CLAUDE.md` (identiques, `cmp`) ramenés de 3248/3256 à **1197 mots** ; une ligne
+par obligation (schéma d'états + règle d'or, démarrage = `manager`/`crew-start` jamais de `mv` nu, zones de batchs
+actifs disjointes, clause personas 1 %, routage skills, règle des 100 lignes, seuils 150k/100k/recap, `crew/`
+ancré racine). Titres `§` référencés par les skills conservés (Batching, Gestion des tâches/2bis, Personas,
+Guides AGENTS.md segmentés, Efficience de contexte, Routage des skills, graphify). `description:` des 8 skills
+`crew-*` (+ miroirs `.claude/skills/`) : 3411 → 1684 caractères, 23-33 mots, YAML validé.
+Resynchro préalable : `CLAUDE.md` et template avaient DIVERGÉ (le template n'avait ni PAUSED/`crew-count`/seuils
+par rôle/ancrage mono-subtree, la racine n'avait pas `designer`) → union, pas de diff résiduel.
+Décision `ceo` (migration des CLAUDE.md personnalisés) : opt-in. Le `classify` existant (`conflict` jamais écrasé)
+la garantit déjà ; documentée dans `skills/crew-update/SKILL.md` § « Cas particulier : CLAUDE.md allégé », flux
+`.new`/`.bak` **manuel** (aucun changement de code ; `--migrate-claude-md` non implémenté, à rouvrir si besoin).
+Revue : aucun problème (obligations, renvois `§`, YAML) ; `simplify` : section `crew-update` resserrée et flux
+déclaré manuel. Écart connu : `verify_plugin_package.py` FAIL inchangé (5 problèmes avant/après : dérive vs
+`~/.claude/templates/project-scaffold/` CLAUDE.md + .gitignore, miroirs `crew-status`/`agents/manager.md`).
+Réf. : `crew-close-task/SKILL.md:8` cite un `§ Modularité du code` absent de CLAUDE.md (préexistant).
+Mesures : `pytest crew scripts` 144 verts.
+Fichiers/commit : b50b0f0 — `CLAUDE.md`, `template/CLAUDE.md`, `skills/crew-*/SKILL.md` (+ miroirs).
+
 ## continuite-session-sessionstart-precompact — 2026-10-03
 Quoi : hook `SessionStart` (matcher `startup|resume|compact`, timeout 10, non async) qui renvoie
 `hookSpecificOutput.additionalContext` ≤ 2000 chars : tâches en cours/en pause (`n/m` cases), batchs actifs +
