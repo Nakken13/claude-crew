@@ -4,6 +4,23 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## identite-batch-sans-statut — 2026-10-03
+Quoi : l'identité d'un batch n'embarque plus le statut affiché du header
+(`## Batch X · 🔄 en cours (prochaine : 04)`). `_batch_key(header)` tronque au
+premier ` · ` ; `_batch_slug`/`_worktree_paths_for` et le champ `batch` du lock
+en partent, et `_register_task_lock` compare des clés normalisées des deux
+côtés (un ancien lock à clé longue reste reconnu, sa valeur n'est pas réécrite).
+Plus de faux `[crew_lock] incoherence` ni de slug worktree/branche qui dérive
+quand le statut change. Seul consommateur de header à corriger : le reste
+(`check_zone_overlaps`, gate, `_section_lock_sessions`) compare des slugs/zones ;
+dashboard n'affiche que la valeur. `crew-start` (2A-ter) + miroir : troncature
+documentée et réutilisation d'un worktree à ancien slug (pas de doublon).
+Revue : séparateur exact ` · ` (un header avec ` · ` dans son vrai nom
+collisionnerait) — non traité, aucun cas existant.
+Fichiers : `crew/crew_hook.py`, `scripts/crew_hook.py`, `crew/test_crew_hook.py`
+(+5 tests), `skills/crew-start/SKILL.md` + `.claude/skills/crew-start/SKILL.md`
+— commit `d63912e` (branche `crew/batch-a-audit-ecc-tokens-r-activit-du-plugin`).
+
 ## verrou-partage-worktrees — 2026-10-03
 Quoi : `crew_lock.json` + son mutex vivent désormais dans le checkout principal
 (`MAIN_ROOT/crew/CLAUDE_CONTEXT/`), partagés par toutes les sessions, y compris
