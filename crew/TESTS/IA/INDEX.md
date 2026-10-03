@@ -11,6 +11,7 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [corriger-purge-batch-clos](corriger-purge-batch-clos.md)
 - [crew-count-batches](crew-count-batches.md)
 - [crew-dashboard](crew-dashboard.md)
+- [detecter-double-hook-projet-cible](detecter-double-hook-projet-cible.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
 - [fix-zone-overlap-faux-positifs](fix-zone-overlap-faux-positifs.md)
 - [identite-batch-sans-statut](identite-batch-sans-statut.md)

@@ -4,6 +4,27 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## detecter-double-hook-projet-cible — 2026-10-03
+Quoi : `/crew-update` détecte un projet cible qui exécute DEUX hooks crew sur le
+même `crew_lock.json` (cas voyageo : plugin `claude-crew` actif ET
+`.claude/settings.json` appelant la copie locale `crew/crew_hook.py`).
+`detect_double_hook(project_root, user_settings_path=None)` (lecture seule) :
+plugin actif = clé `claude-crew[@…]` à `true` dans `enabledPlugins` du projet
+(`settings.json`/`settings.local.json`) ou de `~/.claude/settings.json` ; hook
+local = commande matchant `crew[/\]crew_hook.py` sans `CLAUDE_PLUGIN_ROOT`
+(backslashes Windows inclus). Legacy sans plugin = normal, non signalé.
+`_main()` avertit (événements + commandes) et propose le retrait ;
+`--remove-double-hook` seul retire ces entrées (reste du settings conservé,
+fichier reformaté ; écriture atomique via `_write_json_atomic`, factorisée avec
+`save_scaffold_version`). Tolère settings absents/invalides/formes inattendues.
+Décision : `/crew-status` ne le signale pas (reste centré tâches) ; le garde-fou
+vit dans `/crew-update`. Revue : backslashes Windows et formes malformées
+(Important) corrigés ; regex resserrée (`mycrew/crew_hook.py` non matché).
+Fichiers : `scripts/crew_update.py` + `crew/crew_update.py` (copies identiques),
+`crew/test_crew_update.py` (+14 cas), `skills/crew-update/SKILL.md` + miroir
+`.claude/skills/crew-update/SKILL.md` — commit `732335e` (branche
+`crew/batch-a-audit-ecc-tokens-r-activit-du-plugin`).
+
 ## identite-batch-sans-statut — 2026-10-03
 Quoi : l'identité d'un batch n'embarque plus le statut affiché du header
 (`## Batch X · 🔄 en cours (prochaine : 04)`). `_batch_key(header)` tronque au
