@@ -26,7 +26,7 @@ Numérotation entière obligatoire (le parser `TASK_LINE_RE` du hook ne reconna�
    legacy. **Avant 5** : change l'emplacement du verrou, donc du marqueur
    `.gate_armed` que 5 introduit (à poser dans le principal ET chaque worktree
    enregistré).
-2. `identite-batch-sans-statut.md` — clé de batch = header tronqué au premier ` · ` ;
+2. ~~`identite-batch-sans-statut.md`~~ — clé de batch = header tronqué au premier ` · ` ;
    lock, comparaisons, slug worktree/branche (+ `crew-start`). Après 1 : touche
    `_worktree_paths_for` que 1 fait passer sur `MAIN_ROOT.name`.
 3. `detecter-double-hook-projet-cible.md` — `crew_update.py` (+ copie) avertit si
