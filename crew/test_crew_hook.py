@@ -1439,3 +1439,85 @@ def test_profile_minimal_keeps_stop_sync(repo, monkeypatch):
     except SystemExit:
         pass
     assert called
+
+
+# --- SessionStart : digest crew (tache continuite-session-sessionstart-precompact) ---
+
+def _digest_kwargs(**over):
+    base = dict(current=[], paused=[], batches=[], other_locks=[], warnings=[], history=[])
+    base.update(over)
+    return base
+
+
+def test_digest_content_and_order():
+    d = h.build_session_digest(**_digest_kwargs(
+        current=[("a.md", "Tache A", 1, 4)],
+        paused=[("p.md", "Tache P", 0, 2)],
+        batches=[("Batch X", "`src/`")],
+        other_locks=["S2: b.md"],
+        warnings=["[batch] Tache non categorisee : `z.md`"],
+        history=["2026-10-01 — fait Y"],
+    ))
+    for needle in ("a.md", "Tache A", "1/4", "p.md", "Batch X", "`src/`", "S2: b.md", "z.md", "fait Y"):
+        assert needle in d
+    pos = [d.index(n) for n in ("a.md", "p.md", "Batch X", "S2: b.md", "z.md", "fait Y")]
+    assert pos == sorted(pos)
+
+
+def test_digest_cap_truncates_and_keeps_head_sections():
+    current = [(f"t{i}.md", "T" * 120, 0, 3) for i in range(20)]
+    d = h.build_session_digest(**_digest_kwargs(current=current, history=["HISTORIQUE-ENTRY"]))
+    assert len(d) <= 2000
+    assert "t0.md" in d
+    assert "(+" in d
+    assert "HISTORIQUE-ENTRY" not in d
+
+
+def test_digest_empty_crew_is_one_line():
+    d = h.build_session_digest(**_digest_kwargs())
+    assert d.strip() and "\n" not in d.strip()
+
+
+def test_session_digest_reads_files_readonly(repo, monkeypatch):
+    root, dirs, ctx = repo
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n\n- [x] one\n- [ ] two\n", encoding="utf-8")
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A — X\n\nZone : `src/`\n\n1. `a.md` — t\n", encoding="utf-8")
+    (ctx / "HISTORIQUE.md").write_text("# Historique\n\n## H4 newest\n\n## H3\n\n## H2\n\n## H1 oldest\n", encoding="utf-8")
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    d = h.session_digest("S1")
+    assert "a.md" in d and "1/2" in d and "H4 newest" in d and "H1 oldest" not in d and "Batch A" in d
+    after = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    assert before == after
+
+
+def test_main_sessionstart_emits_additional_context(repo, monkeypatch, capsys):
+    monkeypatch.delenv("CREW_SESSION_DIGEST", raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "SessionStart", "session_id": "S1"})))
+    h.main()
+    out = json.loads(capsys.readouterr().out)
+    hso = out["hookSpecificOutput"]
+    assert hso["hookEventName"] == "SessionStart" and hso["additionalContext"]
+
+
+def test_main_sessionstart_off_switch_is_silent(repo, monkeypatch, capsys):
+    monkeypatch.setenv("CREW_SESSION_DIGEST", "off")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "SessionStart", "session_id": "S1"})))
+    h.main()
+    assert capsys.readouterr().out == ""
+
+
+def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
+    monkeypatch.setattr(h, "CREW", tmp_path / "absent")
+    assert h.session_digest("S1") is None
+
+
+def test_session_digest_survives_unreadable_batch_file(repo):
+    root, dirs, ctx = repo
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n- [ ] x\n", encoding="utf-8")
+    h.BATCH_FILE.write_bytes(bytes([0xff, 0xfe, 0, 0x62]))
+    assert "a.md" in h.session_digest("S1")
+
+
+def test_digest_tiny_cap_never_exceeds():
+    d = h.build_session_digest(**_digest_kwargs(current=[("a.md", "T", 0, 1)]), cap=10)
+    assert len(d) <= 10

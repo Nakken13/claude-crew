@@ -94,6 +94,11 @@ writer, present only while ≥ 2 sessions hold locks) or the `Bash` call is a cl
 of ~270 ms per `Edit`/`Write`. Set `CREW_HOOK_PROFILE=minimal` to disable the
 `PreToolUse` gate entirely (`Stop`/`SessionEnd` keep syncing indexes and locks).
 
+A `SessionStart` hook (`startup|resume|compact`) injects a read-only crew digest (≤ 2000 chars:
+active/paused tasks with `n/m` checkboxes, active batches, other sessions' locks, last 3
+`HISTORIQUE.md` entries) so a resume or compaction doesn't re-read `crew/` by hand. Set
+`CREW_SESSION_DIGEST=off` to disable it.
+
 A `Stop` hook still regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks
 zone overlaps every turn, but now purely as a retroactive fallback (a
 `git mv` run outside a tracked `Bash` call, or the `PreToolUse` gate getting
