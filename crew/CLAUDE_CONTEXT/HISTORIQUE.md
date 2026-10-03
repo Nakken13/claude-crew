@@ -4,6 +4,22 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## latence-hook-pretooluse-spawn-python — 2026-10-03
+Quoi : le hook PreToolUse ne spawn plus Python en session solo. `save_locks()` maintient
+`crew/CLAUDE_CONTEXT/.gate_armed` (≥ 2 sessions) dans le principal ET chaque worktree enregistré
+(`_sync_gate_marker`) ; `hooks/hooks.json` : entrée `Edit|Write|MultiEdit` (pré-filtre marqueur) +
+entrée `Bash` (marqueur OU claim `crew-resume:` / `mv … CURRENT_TASKS`, via `case` builtin) ;
+`CREW_HOOK_PROFILE=minimal` (shell + `main()`) ; `async` sur PostToolUse(spec_to_task) ;
+sauvegarde finale du Stop recharge le lock (ne persiste que `warned`, évite un lost update).
+Mesures (médiane/10, Git Bash) : Edit 274 → ~32 ms solo ; Bash non-claim → ~58 ms ; marqueur
+présent ≈ 240-310 ms (inchangé).
+Décisions : `SessionEnd` laissé synchrone (async = risque de verrou/marqueur périmé à la sortie du CLI) ;
+seuil « ≥ 2 sessions » conservé (arbitrage architect) → une session non enregistrée n'est pas gardée
+face à une session unique ; marqueur du worktree posé au prochain `save_locks` si le worktree n'existe
+pas encore au claim (Cas A).
+Fichiers/commit : 76a86ef — `hooks/hooks.json`, `scripts/crew_hook.py`, `crew/crew_hook.py`,
+`crew/test_crew_hook.py`, `README.md`, `.gitignore`, `template/.gitignore`.
+
 ## faux-positif-check-batches-claude-md — 2026-10-03
 Quoi : `check_batches()` ne parse plus que les lignes de liste de
 `CLAUDE_BATCH.md` via `TASK_LINE_RE` (déjà utilisée par `_task_line_counts`/
