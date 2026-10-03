@@ -37,7 +37,7 @@ blocage volontaire exit(2) de gate_pretooluse).
 """
 import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent  # racine du projet
+ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet
 
 
 def _resolve_main_root(root):
@@ -165,30 +165,33 @@ def process_completed_tests():
     return moved
 
 
+TASK_LINE_RE = re.compile(
+    r"^[ \t]*(?:\d+\.|[-*])\s*(~~)?`(?:[\w\-./]*/)?([\w\-.]+\.md)`(~~)?",
+    re.MULTILINE,
+)
+
+
 def check_batches():
     """Avertit (non bloquant) si une tâche TODO/CURRENT/PAUSED n'est pas catégorisée
     dans CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
-    entre backticks (`slug.md`) → les placeholders `<...>.md` sont ignorés. Les
-    refs barrées (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par
-    convention du projet : leur fichier a normalement été supprimé, donc elles
-    sont exclues du scan pour ne pas générer un faux positif à chaque clôture."""
+    des seules lignes de liste (TASK_LINE_RE) → la prose d'en-tête (`CLAUDE.md`), la
+    ligne Zone et les placeholders `<...>.md` sont ignorés. Les refs barrées
+    (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par convention du
+    projet : leur fichier a normalement été supprimé, donc elles sont exclues du
+    scan pour ne pas générer un faux positif à chaque clôture."""
     warnings = []
     if not BATCH_FILE.exists():
         return warnings
-    text = re.sub(r"~~.*?~~", "", BATCH_FILE.read_text(encoding="utf-8"), flags=re.DOTALL)
-    referenced = set(re.findall(r"`([\w\-.]+\.md)`", text))
+    text = BATCH_FILE.read_text(encoding="utf-8")
+    referenced = {
+        m.group(2) for m in TASK_LINE_RE.finditer(text) if not (m.group(1) and m.group(3))
+    }
     actual = active_task_slugs()  # meme scan TODO/CURRENT_TASKS/PAUSED, source unique
     for f in sorted(actual - referenced):
         warnings.append(f"[batch] Tache non categorisee dans CLAUDE_BATCH.md : `{f}`")
     for f in sorted(referenced - actual):
         warnings.append(f"[batch] CLAUDE_BATCH.md reference une tache inexistante : `{f}`")
     return warnings
-
-
-TASK_LINE_RE = re.compile(
-    r"^[ \t]*(?:\d+\.|[-*])\s*(~~)?`(?:[\w\-./]*/)?([\w\-.]+\.md)`(~~)?",
-    re.MULTILINE,
-)
 
 
 def _task_line_counts(body):
