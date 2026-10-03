@@ -59,7 +59,9 @@ pas déjà connue — pas besoin de revérifier à chaque `Read`/`Write`/`Edit`/
     isolation-design.md`) : déterminer le batch de la tâche (section de
     `crew/CLAUDE_BATCH.md` qui la référence), en dériver le nom de worktree
     et de branche de façon déterministe — même algorithme que
-    `_batch_slug`/`_worktree_paths_for` dans `crew/crew_hook.py` : retirer le
+    `_batch_key`/`_batch_slug`/`_worktree_paths_for` dans `crew/crew_hook.py` :
+    tronquer l'en-tête au premier ` · ` (le suffixe est un statut affiché qui
+    change, pas l'identité du batch), retirer le
     préfixe `Batch` (+ ponctuation qui suit) de l'en-tête, remplacer toute
     suite de caractères non alphanumériques par `-`, mettre en minuscules →
     `<slug>` ; worktree = `../<nom-repo>-batch-<slug>/` (sibling du checkout
@@ -67,7 +69,11 @@ pas déjà connue — pas besoin de revérifier à chaque `Read`/`Write`/`Edit`/
     `crew/batch-<slug>`. Si le worktree n'existe pas encore :
     `git worktree add -b crew/batch-<slug> ../<nom-repo>-batch-<slug> main`.
     S'il existe déjà (reprise, ou 2e tâche du même batch) : le réutiliser tel
-    quel (`git worktree list` pour vérifier), ne pas le recréer. `cd` dans ce
+    quel (`git worktree list` pour vérifier), ne pas le recréer. Un worktree
+    créé avant la troncature au ` · ` peut porter un ancien slug contenant le
+    statut (`…-batch-<slug>-en-cours-…`) : si `git worktree list` montre un
+    `…-batch-<slug>*` qui commence par le slug normalisé, le réutiliser (ou le
+    signaler à l'utilisateur) plutôt que d'en créer un doublon silencieux. `cd` dans ce
     worktree pour le reste du tour, et utiliser des chemins absolus pointant
     dans cette copie (pas le checkout principal) pour tout `Read`/`Edit`/
     `Write` qui suit. Aucune écriture manuelle dans `crew_lock.json` n'est

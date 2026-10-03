@@ -490,11 +490,18 @@ def _slug_session_map(locks):
     return out
 
 
+def _batch_key(header):
+    """Identite stable d'un batch : header tronque au premier ' · ' (le suffixe
+    est un statut affiche — 'pas demarre', 'en cours (prochaine : 04)' — qui
+    change sans que le batch change)."""
+    return (header or "").split(" · ", 1)[0].strip()
+
+
 def _batch_slug(header):
-    """Slug filesystem/branch-safe derive du header de section batch (ex.
+    """Slug filesystem/branch-safe derive de la cle du batch (ex.
     'Batch plugin-packaging' -> 'plugin-packaging'), utilise pour nommer le
     worktree et la branche dediee de ce batch de facon deterministe."""
-    text = re.sub(r"^Batch\b\s*[:\-—]?\s*", "", header or "", flags=re.IGNORECASE).strip()
+    text = re.sub(r"^Batch\b\s*[:\-—]?\s*", "", _batch_key(header), flags=re.IGNORECASE).strip()
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return slug or "batch"
 
@@ -525,9 +532,9 @@ def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
                                               "branch": None, "since": now_dt.isoformat()})
     info["since"] = now_dt.isoformat()
     if section and info.get("batch") is None:
-        info["batch"] = section["header"]
+        info["batch"] = _batch_key(section["header"])
         info["worktree"], info["branch"] = _worktree_paths_for(section["header"])
-    elif section and info.get("batch") != section["header"]:
+    elif section and _batch_key(info.get("batch")) != _batch_key(section["header"]):
         sys.stderr.write(
             f"[crew_lock] incoherence : session `{session_id}` enregistre `{slug}` "
             f"(batch « {section['header']} ») alors qu'elle detient deja le batch "
