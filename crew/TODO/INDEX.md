@@ -9,4 +9,3 @@ Tâches pas commencées. Démarrer = déplacer le fichier vers `crew/CURRENT_TAS
 - [Identité de batch indépendante du statut affiché dans le header](identite-batch-sans-statut.md)
 - [Latence PreToolUse : pré-filtre shell + marqueur `.gate_armed` avant le spawn Python](latence-hook-pretooluse-spawn-python.md)
 - [Moniteur de contexte : `systemMessage` JSON, seuil scalé à la fenêtre, répétition par palier](moniteur-contexte-seuil-fixe-stderr.md)
-- [Verrou anti-collision partagé entre checkout principal et worktrees de batch](verrou-partage-worktrees.md)

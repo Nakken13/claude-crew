@@ -4,6 +4,25 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## verrou-partage-worktrees — 2026-10-03
+Quoi : `crew_lock.json` + son mutex vivent désormais dans le checkout principal
+(`MAIN_ROOT/crew/CLAUDE_CONTEXT/`), partagés par toutes les sessions, y compris
+celles des worktrees de batch (avant : un lock par worktree → garde aveugle
+entre worktrees). `_resolve_main_root(root)` lit `.git` (fichier → `gitdir:` →
+`commondir`) sans spawn git ; repli sur ROOT si illisible/bare/principal sans
+`crew/CLAUDE_CONTEXT/` (revue : sinon `save_locks` plantait en worktree).
+Reste local : DIRS, SNAP, BATCH_FILE, HISTORIQUE, INDEX. `_worktree_paths_for`
+→ `MAIN_ROOT.name` ; `_repo_relative_path`/`purge_closed_task_locks` résolvent
+depuis MAIN_ROOT ; `_throttle_warnings` scopé par checkout (clé `cat@root` hors
+principal, clé inchangée dans le principal) ; `BATCH_LOCKS.md` écrit seulement
+depuis le principal ; `migrate_legacy_worktree_lock` fusionne l'ancien lock
+local d'un worktree (since le plus récent gagne, sous mutex) puis le supprime.
+Hors scope noté : `CLAUDE_BATCH.md` d'un worktree peut être en retard sur celui
+du principal. Revue : mutex TTL à deux waiters et `.json.tmp` unique sous
+Windows (préexistants, risque faible) non traités.
+Fichiers : `crew/crew_hook.py`, `scripts/crew_hook.py`, `crew/test_crew_hook.py`
+(+13 tests) — commit `ebddb1e` (branche `crew/batch-a-audit-ecc-tokens-r-activit-du-plugin`).
+
 ## fix-zone-overlap-faux-positifs — 2026-10-02
 Quoi : faux positifs `[zone]` constatés dans voyageo/time2cook (avertissements,
 voire blocages Stop, entre batchs « ⏳ pas démarré »). Cause :
