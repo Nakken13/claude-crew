@@ -20,11 +20,17 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import shutil
 import sys
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+
+USER_SETTINGS_PATH = pathlib.Path.home() / ".claude" / "settings.json"
+PROJECT_SETTINGS_FILES = ("settings.json", "settings.local.json")
+PLUGIN_NAME = "claude-crew"
+LOCAL_HOOK_RE = re.compile(r"(^|[\s\"'/\\=])crew[/\\]crew_hook\.py")
 
 SCAFFOLD_VERSION_REL = pathlib.Path("crew") / "CLAUDE_CONTEXT" / "SCAFFOLD_VERSION.json"
 
@@ -100,6 +106,13 @@ def load_scaffold_version(project_root):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def _write_json_atomic(path, data, **dumps_kw):
+    """temp file + os.replace : jamais de JSON tronque si le process est tue."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False, **dumps_kw) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+
+
 def save_scaffold_version(project_root, data):
     """Ecriture atomique (temp file + os.replace), meme idiome que
     crew_hook.save_locks() : evite un SCAFFOLD_VERSION.json tronque si le
@@ -107,9 +120,7 @@ def save_scaffold_version(project_root, data):
     suivant pour decider apply vs conflict)."""
     p = pathlib.Path(project_root) / SCAFFOLD_VERSION_REL
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(str(tmp), str(p))
+    _write_json_atomic(p, data, sort_keys=True)
 
 
 def plan(project_root, source_root, whitelist):
@@ -199,6 +210,131 @@ def record_version(project_root, source_version, decisions):
     return data
 
 
+def _read_settings(path):
+    """JSON d'un settings.json, {} si absent/illisible/de forme inattendue."""
+    try:
+        data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _plugin_enabled(settings):
+    plugins = settings.get("enabledPlugins")
+    if not isinstance(plugins, dict):
+        return False
+    return any(k.split("@")[0] == PLUGIN_NAME and v is True for k, v in plugins.items())
+
+
+def _is_local_crew_hook(hook):
+    command = hook.get("command") if isinstance(hook, dict) else None
+    return (isinstance(command, str) and "CLAUDE_PLUGIN_ROOT" not in command
+            and LOCAL_HOOK_RE.search(command) is not None)
+
+
+def _group_hooks(group):
+    inner = group.get("hooks") if isinstance(group, dict) else None
+    return inner if isinstance(inner, list) else []
+
+
+def _hook_groups(settings):
+    """(evenement, groupes) pour chaque evenement de `hooks` bien forme."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return
+    for event, groups in hooks.items():
+        if isinstance(groups, list):
+            yield event, groups
+
+
+def _iter_local_hook_commands(settings):
+    for event, groups in _hook_groups(settings):
+        for group in groups:
+            for hook in _group_hooks(group):
+                if _is_local_crew_hook(hook):
+                    yield event, hook["command"]
+
+
+def _strip_local_hooks(settings):
+    """Retire de `settings` (en place) les hooks locaux crew ; ne supprime
+    que les groupes/evenements vides *a cause* du retrait. True si modifie."""
+    modified = False
+    for event, groups in list(_hook_groups(settings)):
+        kept = []
+        for group in groups:
+            inner = _group_hooks(group)
+            remaining = [h for h in inner
+                         if not _is_local_crew_hook(h)]
+            if len(remaining) != len(inner):
+                modified = True
+                group["hooks"] = remaining
+                if not remaining:
+                    continue
+            kept.append(group)
+        if kept:
+            settings["hooks"][event] = kept
+        else:
+            del settings["hooks"][event]
+    if modified and not settings["hooks"]:
+        del settings["hooks"]
+    return modified
+
+
+def detect_double_hook(project_root, user_settings_path=None):
+    """{evenement: [commandes locales]} quand le plugin claude-crew est actif
+    (`enabledPlugins` du projet ou de l'utilisateur) ET que les settings du
+    projet appellent aussi la copie locale `crew/crew_hook.py` : deux hooks
+    sur le meme crew_lock.json. {} sinon (legacy sans plugin = normal).
+    Lecture seule."""
+    claude_dir = pathlib.Path(project_root) / ".claude"
+    project_settings = [_read_settings(claude_dir / name) for name in PROJECT_SETTINGS_FILES]
+    found = {}
+    for settings in project_settings:
+        for event, cmd in _iter_local_hook_commands(settings):
+            found.setdefault(event, []).append(cmd)
+    if not found:
+        return {}
+    if not any(_plugin_enabled(s) for s in project_settings) and not _plugin_enabled(
+            _read_settings(user_settings_path or USER_SETTINGS_PATH)):
+        return {}
+    return found
+
+
+def remove_double_hook(project_root):
+    """Retire des settings du projet les seules entrees hook locales
+    `crew/crew_hook.py` (le reste du fichier est conserve, mais reformate en
+    JSON indente). Ecrit : a n'appeler que sur confirmation explicite.
+    Retourne les fichiers modifies."""
+    changed = []
+    claude_dir = pathlib.Path(project_root) / ".claude"
+    for name in PROJECT_SETTINGS_FILES:
+        path = claude_dir / name
+        settings = _read_settings(path)
+        if _strip_local_hooks(settings):
+            _write_json_atomic(path, settings)
+            changed.append(str(path))
+    return changed
+
+
+def _handle_double_hook(project_root, remove):
+    """Avertit (et ne retire que si `remove`) un double hook plugin + local."""
+    double = detect_double_hook(project_root)
+    if double:
+        print("ATTENTION : plugin claude-crew actif ET hooks locaux crew/crew_hook.py "
+              "(deux hooks sur le meme crew_lock.json) :")
+        for event, cmds in double.items():
+            for cmd in cmds:
+                print(f"  {event}: {cmd}")
+        if remove:
+            for f in remove_double_hook(project_root):
+                print(f"Hooks locaux retires de {f}")
+        else:
+            print("Relancer avec --remove-double-hook pour les retirer (aucune modification faite).")
+        print()
+    elif remove:
+        print("--remove-double-hook : aucun double hook detecte, rien a retirer.")
+
+
 def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True, help="racine du projet cible")
@@ -214,7 +350,12 @@ def _main():
                               "(accepte le contenu local actuel comme baseline), puis quitte sans comparer a la source")
     parser.add_argument("--force", action="store_true",
                          help="avec --seed, reamorce volontairement une baseline deja enregistree")
+    parser.add_argument("--remove-double-hook", action="store_true",
+                         help="retire des settings du projet les hooks locaux crew/crew_hook.py "
+                              "quand le plugin claude-crew est aussi actif (sinon : avertissement seul)")
     args = parser.parse_args()
+
+    _handle_double_hook(args.project, args.remove_double_hook)
 
     whitelist = list(ENGINE_FILES_COMMON)
     if args.legacy or detect_mode(args.project) == "legacy":

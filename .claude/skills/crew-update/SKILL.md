@@ -96,9 +96,24 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
    enregistrée avance quand même (elle reflète "ce qu'on a pu synchroniser"),
    mais certains fichiers restent en attente de résolution manuelle.
 
+## Double hook (plugin + copie locale)
+
+8. `detect_double_hook(project_root)` (appelé en tête de `_main()`, lecture
+   seule) signale un projet où le plugin `claude-crew` est actif
+   (`enabledPlugins` du projet ou de `~/.claude/settings.json`) ET dont
+   `.claude/settings.json`/`settings.local.json` appellent aussi la copie
+   locale `crew/crew_hook.py` : deux hooks sur le même `crew_lock.json`,
+   logiques potentiellement divergentes. Un projet legacy **sans** plugin
+   actif est normal, pas signalé.
+   - Par défaut : avertissement (événements + commandes en double) et
+     proposition de retrait, **aucune modification**.
+   - Retrait seulement sur confirmation explicite de l'utilisateur : relancer
+     avec `--remove-double-hook` (ne retire que ces entrées hook, le reste
+     du settings est conservé, mais le fichier est reformaté en JSON indenté).
+
 ## Rapporter
 
-8. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
+9. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
    conflit ou en `removed` (avec rappel qu'ils seront re-proposés au
    prochain `/crew-update` tant qu'ils ne sont pas résolus), nouvelle
    version enregistrée.
@@ -117,3 +132,5 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
   sans le signaler dans le rapport.
 - Ne tente pas de synchroniser skills/agents/hooks sur un projet en mode
   plugin — redirige vers `/plugin update claude-crew`.
+- Ne retire jamais un hook local en double sans `--remove-double-hook`
+  confirmé par l'utilisateur.
