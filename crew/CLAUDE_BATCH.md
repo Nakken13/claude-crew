@@ -29,7 +29,7 @@ Numérotation entière obligatoire (le parser `TASK_LINE_RE` du hook ne reconna�
 2. ~~`identite-batch-sans-statut.md`~~ — clé de batch = header tronqué au premier ` · ` ;
    lock, comparaisons, slug worktree/branche (+ `crew-start`). Après 1 : touche
    `_worktree_paths_for` que 1 fait passer sur `MAIN_ROOT.name`.
-3. `detecter-double-hook-projet-cible.md` — `crew_update.py` (+ copie) avertit si
+3. ~~`detecter-double-hook-projet-cible.md`~~ — `crew_update.py` (+ copie) avertit si
    plugin actif ET hooks locaux `crew/crew_hook.py` dans `.claude/settings.json`.
    Indépendante du code du hook, placée ici pour clore le lot « désynchro verrou » ;
    partage `skills/crew-*/SKILL.md` avec 7/8.
