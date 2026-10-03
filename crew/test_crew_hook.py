@@ -538,6 +538,30 @@ def test_stop_hook_does_not_renag_same_batch_warning_next_turn(repo, monkeypatch
     assert "orpheline.md" not in second_err
 
 
+def test_check_batches_ignores_md_refs_outside_list_lines(repo):
+    """Refs `.md` en prose d'en-tete (`CLAUDE.md`) ou dans la ligne Zone ne sont
+    pas des taches : seules les lignes de liste comptent."""
+    root, dirs, ctx = repo
+    (dirs["TODO"] / "vraie-tache.md").write_text("# t\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(
+        "# Batching\n\nVoir § Batching dans `CLAUDE.md` racine.\n\n"
+        "## Batch A\n\nZone : `src/`, `README.md`\n\n- `vraie-tache.md`\n",
+        encoding="utf-8",
+    )
+    assert h.check_batches() == []
+
+
+def test_check_batches_still_flags_vanished_and_uncategorized_tasks(repo):
+    root, dirs, ctx = repo
+    (dirs["TODO"] / "orpheline.md").write_text("# o\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(
+        "## Batch A\n\nZone : `src/`\n\n- `disparue.md`\n", encoding="utf-8"
+    )
+    warnings = h.check_batches()
+    assert any("inexistante" in w and "disparue.md" in w for w in warnings)
+    assert any("non categorisee" in w and "orpheline.md" in w for w in warnings)
+
+
 def test_prune_closed_batches_removes_fully_closed_section():
     text = (
         "# Batching\n\n"
