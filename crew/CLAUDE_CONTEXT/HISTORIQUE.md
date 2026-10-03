@@ -4,6 +4,21 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## moniteur-contexte-seuil-fixe-stderr — 2026-10-03
+Quoi : `check_context_budget(payload, state)` — alerte dans le JSON Stop sous `systemMessage` (plus de
+stderr), seuil 150k (fenêtre 200k) / 800k (fenêtre 1M : `model` contient `[1m]` ou total > 210k),
+répétition seulement tous les 50k par session ; état dans `crew_lock.json` → `warned.context`
+(`{session_id: total}`, fusionné sous mutex avec les entrées concurrentes, purgé au SessionEnd et au
+retour sous le seuil ; sans session_id → pas de mémoire). Sortie Stop = un seul JSON fusionné
+(`decision`/`reason` + `systemMessage`). `CLAUDE.md` + `template/CLAUDE.md` § Reset de session mis à jour.
+Ré-arbitrage de `alerte-contexte-150k` (2026-08-25) : canal stderr → `systemMessage` (stderr non
+visible/affiché de façon fiable par le harness), seuil fixe → scalé à la fenêtre (faux positifs en 1M),
+alerte à chaque Stop → palier 50k (audit ECC § 4.D : bruit de contexte).
+Décisions : cas (d) de la spec (160k puis 215k = 2 alertes) contradictoire avec « > 210k ⇒ 1M » →
+palier testé en fenêtre 1M ; faux positif 150k possible si le transcript porte l'id modèle nu.
+Fichiers/commit : 2a23838 — `scripts/crew_hook.py`, `crew/crew_hook.py`, `crew/test_crew_hook.py`,
+`CLAUDE.md`, `template/CLAUDE.md`.
+
 ## latence-hook-pretooluse-spawn-python — 2026-10-03
 Quoi : le hook PreToolUse ne spawn plus Python en session solo. `save_locks()` maintient
 `crew/CLAUDE_CONTEXT/.gate_armed` (≥ 2 sessions) dans le principal ET chaque worktree enregistré
