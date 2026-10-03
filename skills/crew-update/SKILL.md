@@ -1,6 +1,6 @@
 ---
 name: crew-update
-description: Met à jour les fichiers "moteur" d'un projet déjà bootstrapé via `/crew-init` vers la dernière version du scaffold (CLAUDE.md/AGENTS.md/PRODUCT.md/CONTRIBUTING.md/SECURITY.md/check_placeholders.py, et en mode legacy crew_hook.py/spec_to_task_hook.py/skills/agents locaux) — sans jamais toucher aux données utilisateur (crew/TODO, CURRENT_TASKS, PROBLEMS, ICEBOX, TESTS, HISTORIQUE.md) ni écraser silencieusement un fichier personnalisé. Trigger — "/crew-update", "mets à jour le scaffold", "récupère les dernières règles crew", "il y a une nouvelle version du scaffold".
+description: Met à jour les fichiers moteur d'un projet bootstrapé vers la dernière version du scaffold, sans toucher aux données ni écraser un fichier personnalisé. Trigger — "/crew-update", "mets à jour le scaffold".
 ---
 
 Ce skill exécute `crew/crew_update.py` (ou `scripts/crew_update.py` en mode
@@ -73,6 +73,24 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
      le fichier a été déplacé ailleurs dans la source avant de le supprimer
      soi-même, ne jamais le supprimer silencieusement.
 
+### Cas particulier : `CLAUDE.md` allégé (opt-in)
+
+Depuis le slimming du template, un `CLAUDE.md` d'ancienne génération reste **valide** :
+les skills y renvoient par titres de section (`§ Batching`, `§ Gestion des tâches`,
+`§ Personas`, `§ Guides AGENTS.md segmentés`, `§ 2bis`) présents dans les deux versions.
+
+- `apply` → sans risque ; `conflict` (personnalisé) → **jamais touché par défaut**, le
+  rapport signale seulement « version allégée disponible ». Migration **sur demande
+  explicite** uniquement.
+- Si migration demandée (flux **manuel**, `crew_update.py` n'a pas de mode dédié) :
+  écrire `CLAUDE.md.new`, garder `CLAUDE.md.bak`, montrer le diff, lister les sections
+  locales absentes du template (règles projet à réinjecter à la main). Rien n'est
+  appliqué sans confirmation.
+- Vérifier que les ancres obligatoires sont présentes dans le résultat : anti-collision,
+  clause personas 1 %, règle des 100 lignes, seuils 150k/100k, `crew/` ancré racine.
+- Ne jamais retirer un renvoi `§` des skills tant que des projets dérivés peuvent
+  porter l'ancienne version.
+
 ## Confirmation obligatoire
 
 5. **Ne jamais appeler `apply()` sans confirmation explicite.** Utiliser
@@ -96,9 +114,24 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
    enregistrée avance quand même (elle reflète "ce qu'on a pu synchroniser"),
    mais certains fichiers restent en attente de résolution manuelle.
 
+## Double hook (plugin + copie locale)
+
+8. `detect_double_hook(project_root)` (appelé en tête de `_main()`, lecture
+   seule) signale un projet où le plugin `claude-crew` est actif
+   (`enabledPlugins` du projet ou de `~/.claude/settings.json`) ET dont
+   `.claude/settings.json`/`settings.local.json` appellent aussi la copie
+   locale `crew/crew_hook.py` : deux hooks sur le même `crew_lock.json`,
+   logiques potentiellement divergentes. Un projet legacy **sans** plugin
+   actif est normal, pas signalé.
+   - Par défaut : avertissement (événements + commandes en double) et
+     proposition de retrait, **aucune modification**.
+   - Retrait seulement sur confirmation explicite de l'utilisateur : relancer
+     avec `--remove-double-hook` (ne retire que ces entrées hook, le reste
+     du settings est conservé, mais le fichier est reformaté en JSON indenté).
+
 ## Rapporter
 
-8. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
+9. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
    conflit ou en `removed` (avec rappel qu'ils seront re-proposés au
    prochain `/crew-update` tant qu'ils ne sont pas résolus), nouvelle
    version enregistrée.
@@ -117,3 +150,5 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
   sans le signaler dans le rapport.
 - Ne tente pas de synchroniser skills/agents/hooks sur un projet en mode
   plugin — redirige vers `/plugin update claude-crew`.
+- Ne retire jamais un hook local en double sans `--remove-double-hook`
+  confirmé par l'utilisateur.

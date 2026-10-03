@@ -538,6 +538,30 @@ def test_stop_hook_does_not_renag_same_batch_warning_next_turn(repo, monkeypatch
     assert "orpheline.md" not in second_err
 
 
+def test_check_batches_ignores_md_refs_outside_list_lines(repo):
+    """Refs `.md` en prose d'en-tete (`CLAUDE.md`) ou dans la ligne Zone ne sont
+    pas des taches : seules les lignes de liste comptent."""
+    root, dirs, ctx = repo
+    (dirs["TODO"] / "vraie-tache.md").write_text("# t\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(
+        "# Batching\n\nVoir § Batching dans `CLAUDE.md` racine.\n\n"
+        "## Batch A\n\nZone : `src/`, `README.md`\n\n- `vraie-tache.md`\n",
+        encoding="utf-8",
+    )
+    assert h.check_batches() == []
+
+
+def test_check_batches_still_flags_vanished_and_uncategorized_tasks(repo):
+    root, dirs, ctx = repo
+    (dirs["TODO"] / "orpheline.md").write_text("# o\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(
+        "## Batch A\n\nZone : `src/`\n\n- `disparue.md`\n", encoding="utf-8"
+    )
+    warnings = h.check_batches()
+    assert any("inexistante" in w and "disparue.md" in w for w in warnings)
+    assert any("non categorisee" in w and "orpheline.md" in w for w in warnings)
+
+
 def test_prune_closed_batches_removes_fully_closed_section():
     text = (
         "# Batching\n\n"
@@ -590,7 +614,7 @@ def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
     assert new_text.strip() == ""
 
 
-def _write_transcript(tmp_path, usages):
+def _write_transcript(tmp_path, usages, model=None):
     """Ecrit un transcript JSONL minimal : un message assistant par usage
     donne (dans l'ordre), entrelace de lignes non-assistant/vides/corrompues
     pour verifier que seule la DERNIERE entree assistant valide est retenue."""
@@ -600,7 +624,10 @@ def _write_transcript(tmp_path, usages):
         lines.append('{"message": {"role": "user", "content": "hi"}}')
         lines.append("")  # ligne vide, doit etre ignoree
         lines.append("not json")  # ligne corrompue, doit etre ignoree
-        lines.append(json.dumps({"message": {"role": "assistant", "usage": u}}))
+        msg = {"role": "assistant", "usage": u}
+        if model:
+            msg["model"] = model
+        lines.append(json.dumps({"message": msg}))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return str(path)
 
@@ -639,6 +666,94 @@ def test_check_context_budget_uses_last_assistant_usage_not_first(tmp_path):
         {"input_tokens": 1000},
     ])
     assert h.check_context_budget({"transcript_path": transcript}) == []
+
+
+def _ctx(tokens):
+    return {"input_tokens": tokens}
+
+
+def test_check_context_budget_200k_window_alerts_at_160k(tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": transcript})) == 1
+
+
+def test_check_context_budget_1m_model_threshold_800k(tmp_path):
+    model = "claude-opus-5-5[1m]"
+    low = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
+    assert h.check_context_budget({"transcript_path": low}) == []
+    high = _write_transcript(tmp_path, [_ctx(810_000)], model=model)
+    assert len(h.check_context_budget({"transcript_path": high})) == 1
+
+
+def test_check_context_budget_infers_1m_window_above_210k(tmp_path):
+    """Total > 210k sans [1m] : impossible en fenetre 200k -> fenetre 1M inferee,
+    seuil 800k (pas d'alerte a 215k)."""
+    mid = _write_transcript(tmp_path, [_ctx(215_000)], model="claude-sonnet-5-5")
+    assert h.check_context_budget({"transcript_path": mid}) == []
+    high = _write_transcript(tmp_path, [_ctx(820_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": high})) == 1
+
+
+def test_check_context_budget_repeats_only_every_50k_per_session(tmp_path):
+    state = {}
+    payload = lambda t, sid="S1": {"transcript_path": _write_transcript(
+        tmp_path, [_ctx(t)], model="claude-opus-5-5[1m]"), "session_id": sid}
+    assert len(h.check_context_budget(payload(810_000), state)) == 1
+    assert h.check_context_budget(payload(830_000), state) == []  # < +50k
+    assert len(h.check_context_budget(payload(865_000), state)) == 1  # palier +50k
+    # autre session : etat independant
+    assert len(h.check_context_budget(payload(830_000, "S2"), state)) == 1
+
+
+def test_check_context_budget_state_resets_when_back_under_threshold(tmp_path):
+    state = {}
+    p = lambda t: {"transcript_path": _write_transcript(tmp_path, [_ctx(t)]), "session_id": "S1"}
+    assert len(h.check_context_budget(p(160_000), state)) == 1
+    assert h.check_context_budget(p(20_000), state) == []  # /clear ou compaction
+    assert len(h.check_context_budget(p(160_000), state)) == 1  # re-alerte
+
+
+def test_stop_context_alert_goes_to_system_message_not_stderr(repo, monkeypatch, capsys, tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    payload = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    cap = capsys.readouterr()
+    assert "[contexte]" not in cap.err
+    out = json.loads(cap.out.strip())
+    assert "[contexte]" in out["systemMessage"]
+    assert "decision" not in out
+
+    # 2e Stop, meme niveau : pas de re-alerte (palier 50k par session)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    assert "systemMessage" not in capsys.readouterr().out
+
+
+def test_stop_context_state_keeps_concurrent_session_entry(repo, monkeypatch, capsys, tmp_path):
+    """Un autre Stop a ecrit warned.context['S2'] entre-temps : le save de S1 ne l'ecrase pas."""
+    locks = h.load_locks()
+    locks.setdefault("warned", {})["context"] = {"S2": 900_000}
+    h.save_locks(locks)
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    payload = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    ctx = h.load_locks()["warned"]["context"]
+    assert ctx == {"S2": 900_000, "S1": 160_000}
+
+
+def test_session_end_purges_context_state_without_alert(repo, monkeypatch, capsys, tmp_path):
+    transcript = _write_transcript(tmp_path, [_ctx(160_000)])
+    stop = {"hook_event_name": "Stop", "session_id": "S1", "transcript_path": transcript}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(stop)))
+    h.main()
+    capsys.readouterr()
+    end = dict(stop, hook_event_name="SessionEnd")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(end)))
+    h.main()
+    assert "systemMessage" not in capsys.readouterr().out
+    assert "S1" not in h.load_locks()["warned"]["context"]
 
 
 def _run_stop(monkeypatch, capsys, session_id="S1"):
@@ -1230,3 +1345,179 @@ def test_different_batch_still_triggers_incoherence(capsys):
     h._register_task_lock("a.md", "S1", locks, now, _status_sections("pas démarré"))
     assert "incoherence" in capsys.readouterr().err
     assert locks["sessions"]["S1"]["batch"] == "Batch Other · pas démarré"
+
+
+# --- marqueur .gate_armed (pre-filtre shell du hook PreToolUse) -------------
+
+def _sess(worktree=None):
+    return {"batch": None, "tasks": [], "worktree": worktree, "branch": None,
+            "since": datetime.datetime.now().isoformat()}
+
+
+@pytest.mark.parametrize("n_sessions,armed", [(1, False), (2, True)])
+def test_save_locks_arms_gate_marker_from_two_sessions(repo, n_sessions, armed):
+    root, dirs, ctx = repo
+    h.save_locks({"sessions": {f"S{i}": _sess() for i in range(n_sessions)}})
+    assert (ctx / ".gate_armed").exists() is armed
+
+
+def test_save_locks_back_to_one_or_zero_sessions_removes_marker(repo):
+    root, dirs, ctx = repo
+    h.save_locks({"sessions": {"A": _sess(), "B": _sess()}})
+    h.save_locks({"sessions": {"A": _sess()}})
+    assert not (ctx / ".gate_armed").exists()
+    h.save_locks({"sessions": {"A": _sess(), "B": _sess()}})
+    h.save_locks({"sessions": {}})
+    assert not (ctx / ".gate_armed").exists()
+
+
+def test_gate_marker_idempotent_and_tolerates_errors(repo, monkeypatch):
+    root, dirs, ctx = repo
+    two = {"sessions": {"A": _sess(), "B": _sess()}}
+    h.save_locks(two)
+    h.save_locks(two)  # re-armer ne leve rien
+    assert (ctx / ".gate_armed").exists()
+    # Marqueur illisible/impossible a ecrire : best-effort, jamais d'exception.
+    (ctx / ".gate_armed").unlink()
+    (ctx / ".gate_armed").mkdir()  # un dossier a la place du fichier -> unlink/write echouent
+    h.save_locks({"sessions": {"A": _sess()}})
+    h.save_locks(two)  # ne leve pas non plus
+
+
+def test_gate_marker_armed_in_main_and_each_registered_worktree(repo):
+    """Le pre-filtre shell teste $CLAUDE_PROJECT_DIR/... (= worktree courant) alors
+    que le verrou vit dans le principal : le marqueur doit etre pose aux deux."""
+    root, dirs, ctx = repo
+    wt_a = root.parent / f"{root.name}-batch-a"
+    wt_b = root.parent / f"{root.name}-batch-b"
+    for wt in (wt_a, wt_b):
+        (wt / "crew" / "CLAUDE_CONTEXT").mkdir(parents=True)
+    locks = {"sessions": {"A": _sess(f"../{root.name}-batch-a"),
+                          "B": _sess(f"../{root.name}-batch-b")}}
+    h.save_locks(locks)
+    for wt in (wt_a, wt_b):
+        assert (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
+    assert (ctx / ".gate_armed").exists()
+    # Retour a 1 session : marqueurs retires partout, y compris le worktree
+    # de la session qui vient de disparaitre du lock.
+    h.save_locks({"sessions": {"A": _sess(f"../{root.name}-batch-a")}})
+    for wt in (wt_a, wt_b):
+        assert not (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
+    assert not (ctx / ".gate_armed").exists()
+
+
+# --- escape hatch CREW_HOOK_PROFILE=minimal --------------------------------
+
+def _run_main_pretooluse(monkeypatch):
+    calls = []
+    monkeypatch.setattr(h, "gate_pretooluse", lambda payload: calls.append(payload))
+    stdin = json.dumps({"hook_event_name": "PreToolUse", "session_id": "S",
+                        "tool_name": "Edit", "tool_input": {"file_path": "x"}})
+    monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+    h.main()
+    return calls
+
+
+def test_profile_minimal_skips_pretooluse_gate(repo, monkeypatch):
+    monkeypatch.setenv("CREW_HOOK_PROFILE", "minimal")
+    assert _run_main_pretooluse(monkeypatch) == []
+
+
+def test_profile_default_runs_pretooluse_gate(repo, monkeypatch):
+    monkeypatch.delenv("CREW_HOOK_PROFILE", raising=False)
+    assert len(_run_main_pretooluse(monkeypatch)) == 1
+
+
+def test_profile_minimal_keeps_stop_sync(repo, monkeypatch):
+    """Stop/SessionEnd continuent sous `minimal` (index, verrous) : seul PreToolUse saute."""
+    monkeypatch.setenv("CREW_HOOK_PROFILE", "minimal")
+    called = []
+    monkeypatch.setattr(h, "regen_index", lambda name, d: called.append(name) or [])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "Stop", "session_id": "S"})))
+    try:
+        h.main()
+    except SystemExit:
+        pass
+    assert called
+
+
+# --- SessionStart : digest crew (tache continuite-session-sessionstart-precompact) ---
+
+def _digest_kwargs(**over):
+    base = dict(current=[], paused=[], batches=[], other_locks=[], warnings=[], history=[])
+    base.update(over)
+    return base
+
+
+def test_digest_content_and_order():
+    d = h.build_session_digest(**_digest_kwargs(
+        current=[("a.md", "Tache A", 1, 4)],
+        paused=[("p.md", "Tache P", 0, 2)],
+        batches=[("Batch X", "`src/`")],
+        other_locks=["S2: b.md"],
+        warnings=["[batch] Tache non categorisee : `z.md`"],
+        history=["2026-10-01 — fait Y"],
+    ))
+    for needle in ("a.md", "Tache A", "1/4", "p.md", "Batch X", "`src/`", "S2: b.md", "z.md", "fait Y"):
+        assert needle in d
+    pos = [d.index(n) for n in ("a.md", "p.md", "Batch X", "S2: b.md", "z.md", "fait Y")]
+    assert pos == sorted(pos)
+
+
+def test_digest_cap_truncates_and_keeps_head_sections():
+    current = [(f"t{i}.md", "T" * 120, 0, 3) for i in range(20)]
+    d = h.build_session_digest(**_digest_kwargs(current=current, history=["HISTORIQUE-ENTRY"]))
+    assert len(d) <= 2000
+    assert "t0.md" in d
+    assert "(+" in d
+    assert "HISTORIQUE-ENTRY" not in d
+
+
+def test_digest_empty_crew_is_one_line():
+    d = h.build_session_digest(**_digest_kwargs())
+    assert d.strip() and "\n" not in d.strip()
+
+
+def test_session_digest_reads_files_readonly(repo, monkeypatch):
+    root, dirs, ctx = repo
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n\n- [x] one\n- [ ] two\n", encoding="utf-8")
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A — X\n\nZone : `src/`\n\n1. `a.md` — t\n", encoding="utf-8")
+    (ctx / "HISTORIQUE.md").write_text("# Historique\n\n## H4 newest\n\n## H3\n\n## H2\n\n## H1 oldest\n", encoding="utf-8")
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    d = h.session_digest("S1")
+    assert "a.md" in d and "1/2" in d and "H4 newest" in d and "H1 oldest" not in d and "Batch A" in d
+    after = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    assert before == after
+
+
+def test_main_sessionstart_emits_additional_context(repo, monkeypatch, capsys):
+    monkeypatch.delenv("CREW_SESSION_DIGEST", raising=False)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "SessionStart", "session_id": "S1"})))
+    h.main()
+    out = json.loads(capsys.readouterr().out)
+    hso = out["hookSpecificOutput"]
+    assert hso["hookEventName"] == "SessionStart" and hso["additionalContext"]
+
+
+def test_main_sessionstart_off_switch_is_silent(repo, monkeypatch, capsys):
+    monkeypatch.setenv("CREW_SESSION_DIGEST", "off")
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "SessionStart", "session_id": "S1"})))
+    h.main()
+    assert capsys.readouterr().out == ""
+
+
+def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
+    monkeypatch.setattr(h, "CREW", tmp_path / "absent")
+    assert h.session_digest("S1") is None
+
+
+def test_session_digest_survives_unreadable_batch_file(repo):
+    root, dirs, ctx = repo
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n- [ ] x\n", encoding="utf-8")
+    h.BATCH_FILE.write_bytes(bytes([0xff, 0xfe, 0, 0x62]))
+    assert "a.md" in h.session_digest("S1")
+
+
+def test_digest_tiny_cap_never_exceeds():
+    d = h.build_session_digest(**_digest_kwargs(current=[("a.md", "T", 0, 1)]), cap=10)
+    assert len(d) <= 10

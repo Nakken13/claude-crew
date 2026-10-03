@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Hook Stop/SessionEnd/PreToolUse — gestion des tâches du projet.
+"""Hook Stop/SessionEnd/SessionStart/PreToolUse — gestion des tâches du projet.
 À chaque fin de tour (Stop) :
   1. régénère crew/<dir>/INDEX.md (titres + liens),
   2. journalise les transitions (démarrée / terminée / ajoutée) dans
@@ -165,30 +165,33 @@ def process_completed_tests():
     return moved
 
 
+TASK_LINE_RE = re.compile(
+    r"^[ \t]*(?:\d+\.|[-*])\s*(~~)?`(?:[\w\-./]*/)?([\w\-.]+\.md)`(~~)?",
+    re.MULTILINE,
+)
+
+
 def check_batches():
     """Avertit (non bloquant) si une tâche TODO/CURRENT/PAUSED n'est pas catégorisée
     dans CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
-    entre backticks (`slug.md`) → les placeholders `<...>.md` sont ignorés. Les
-    refs barrées (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par
-    convention du projet : leur fichier a normalement été supprimé, donc elles
-    sont exclues du scan pour ne pas générer un faux positif à chaque clôture."""
+    des seules lignes de liste (TASK_LINE_RE) → la prose d'en-tête (`CLAUDE.md`), la
+    ligne Zone et les placeholders `<...>.md` sont ignorés. Les refs barrées
+    (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par convention du
+    projet : leur fichier a normalement été supprimé, donc elles sont exclues du
+    scan pour ne pas générer un faux positif à chaque clôture."""
     warnings = []
     if not BATCH_FILE.exists():
         return warnings
-    text = re.sub(r"~~.*?~~", "", BATCH_FILE.read_text(encoding="utf-8"), flags=re.DOTALL)
-    referenced = set(re.findall(r"`([\w\-.]+\.md)`", text))
+    text = BATCH_FILE.read_text(encoding="utf-8")
+    referenced = {
+        m.group(2) for m in TASK_LINE_RE.finditer(text) if not (m.group(1) and m.group(3))
+    }
     actual = active_task_slugs()  # meme scan TODO/CURRENT_TASKS/PAUSED, source unique
     for f in sorted(actual - referenced):
         warnings.append(f"[batch] Tache non categorisee dans CLAUDE_BATCH.md : `{f}`")
     for f in sorted(referenced - actual):
         warnings.append(f"[batch] CLAUDE_BATCH.md reference une tache inexistante : `{f}`")
     return warnings
-
-
-TASK_LINE_RE = re.compile(
-    r"^[ \t]*(?:\d+\.|[-*])\s*(~~)?`(?:[\w\-./]*/)?([\w\-.]+\.md)`(~~)?",
-    re.MULTILINE,
-)
 
 
 def _task_line_counts(body):
@@ -383,6 +386,62 @@ def save_locks(locks):
     tmp = LOCKS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(str(tmp), str(LOCKS_FILE))
+    _sync_gate_marker(locks)
+
+
+GATE_MARKER = ".gate_armed"
+
+
+def _sync_gate_marker(locks):
+    """Marqueur `crew/CLAUDE_CONTEXT/.gate_armed` : present ssi >= 2 sessions dans
+    `locks`, sinon la garde anti-collision est sans objet et la commande shell de
+    hooks.json saute le spawn Python (cf. PreToolUse). Le pre-filtre teste
+    `$CLAUDE_PROJECT_DIR/...` (= worktree courant) alors que le verrou vit dans le
+    principal : le marqueur est pose dans le principal ET dans chaque worktree
+    enregistre. Son contenu liste les worktrees armes, pour pouvoir les desarmer
+    meme apres la disparition de leur session du lock. Best-effort : jamais
+    d'exception."""
+    try:
+        main_marker = LOCKS_FILE.parent / GATE_MARKER
+        previous = []
+        try:
+            previous = json.loads(main_marker.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        sessions = locks.get("sessions", {})
+        armed = len(sessions) >= 2
+        wanted = []
+        for info in sessions.values() if armed else ():
+            wt = info.get("worktree") if isinstance(info, dict) else None
+            ctx = str((MAIN_ROOT / wt).resolve() / "crew" / "CLAUDE_CONTEXT") if wt else None
+            if ctx and pathlib.Path(ctx).is_dir() and ctx not in wanted:
+                wanted.append(ctx)
+        for ctx in previous if isinstance(previous, list) else []:
+            if ctx not in wanted:
+                _unlink_quiet(pathlib.Path(ctx) / GATE_MARKER)
+        if armed:
+            for ctx in wanted:
+                _write_quiet(pathlib.Path(ctx) / GATE_MARKER, "[]")
+            _write_quiet(main_marker, json.dumps(wanted))
+        else:
+            _unlink_quiet(main_marker)
+    except Exception:
+        pass
+
+
+def _unlink_quiet(path):
+    try:
+        path.unlink()
+    except Exception:
+        pass
+
+
+def _write_quiet(path, text):
+    try:
+        if not (path.is_file() and path.read_text(encoding="utf-8") == text):
+            path.write_text(text, encoding="utf-8")
+    except Exception:
+        pass
 
 
 WARNING_COOLDOWN_MINUTES = 30
@@ -1066,6 +1125,10 @@ def check_zone_overlaps(sections, active, locks, session_id=None, observer=False
 
 
 CONTEXT_BUDGET_TOKENS = 150_000
+CONTEXT_BUDGET_TOKENS_1M = 800_000
+# Au-dela, une fenetre 200k est impossible : fenetre 1M inferee meme sans `[1m]`.
+CONTEXT_WINDOW_200K_MAX = 210_000
+CONTEXT_REPEAT_STEP = 50_000
 
 
 def _iter_lines_reverse(path, chunk_size=65536):
@@ -1091,16 +1154,25 @@ def _iter_lines_reverse(path, chunk_size=65536):
             yield carry
 
 
-def check_context_budget(payload):
+def check_context_budget(payload, state=None):
     """Avertit (non bloquant) quand le contexte de la session principale
-    depasse ~150k tokens (cf. CLAUDE.md § Efficience de contexte / Reset de
-    session). Aucune API de comptage de tokens dediee n'est exposee aux hooks
-    Claude Code : approxime via le dernier message assistant du transcript
-    (`transcript_path` du payload Stop) — usage.input_tokens +
-    cache_read_input_tokens + cache_creation_input_tokens, proxy raisonnable
-    puisque chaque tour renvoie l'historique complet en entree. Best-effort :
-    toute erreur (transcript absent, format inattendu, ligne corrompue) ->
-    pas d'avertissement."""
+    depasse ~150k tokens (800k en fenetre 1M ; cf. CLAUDE.md § Efficience de
+    contexte / Reset de session). Aucune API de comptage de tokens dediee
+    n'est exposee aux hooks Claude Code : approxime via le dernier message
+    assistant du transcript (`transcript_path` du payload Stop) —
+    usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens,
+    proxy raisonnable puisque chaque tour renvoie l'historique complet en
+    entree. Fenetre 1M detectee par `model` contenant `[1m]` ou par un total
+    > CONTEXT_WINDOW_200K_MAX. `state` ({session_id -> total au dernier
+    avertissement}, mute en place) limite la repetition a un palier de
+    CONTEXT_REPEAT_STEP tokens ; repasse sous le seuil (/clear, compaction)
+    -> entree purgee, re-avertit au prochain franchissement. state=None ->
+    sans memoire (un avertissement a chaque appel au-dessus du seuil).
+    Limite connue : le transcript porte souvent l'id modele nu (sans `[1m]`) ;
+    une session 1M n'est alors reconnue qu'au-dela de 210k (alerte 150k possible
+    avant, faux positif accepte).
+    Best-effort : toute erreur (transcript absent, format inattendu, ligne
+    corrompue) -> pas d'avertissement."""
     transcript_path = payload.get("transcript_path")
     if not transcript_path:
         return []
@@ -1109,6 +1181,7 @@ def check_context_budget(payload):
         return []
     try:
         last_usage = None
+        model = ""
         for raw_line in _iter_lines_reverse(path):
             line = raw_line.strip()
             if not line:
@@ -1117,6 +1190,7 @@ def check_context_budget(payload):
             msg = entry.get("message") or {}
             if msg.get("role") == "assistant" and msg.get("usage"):
                 last_usage = msg["usage"]
+                model = str(msg.get("model") or "")
                 break
     except Exception:
         return []
@@ -1127,11 +1201,21 @@ def check_context_budget(payload):
         + (last_usage.get("cache_read_input_tokens") or 0)
         + (last_usage.get("cache_creation_input_tokens") or 0)
     )
-    if total <= CONTEXT_BUDGET_TOKENS:
+    window_1m = "[1m]" in model.lower() or total > CONTEXT_WINDOW_200K_MAX
+    threshold = CONTEXT_BUDGET_TOKENS_1M if window_1m else CONTEXT_BUDGET_TOKENS
+    sid = str(payload.get("session_id"))
+    if total <= threshold:
+        if state is not None:
+            state.pop(sid, None)
         return []
+    if state is not None:
+        last = state.get(sid)
+        if isinstance(last, int) and total < last + CONTEXT_REPEAT_STEP:
+            return []
+        state[sid] = total
     return [
         f"[contexte] ~{total:,} tokens de contexte estimes (seuil "
-        f"{CONTEXT_BUDGET_TOKENS:,}) — /clear ou nouvelle session "
+        f"{threshold:,}) — /clear ou nouvelle session "
         "recommande avant de continuer (cf. CLAUDE.md § Efficience de "
         "contexte)."
     ]
@@ -1289,6 +1373,110 @@ def auto_commit_closure(finished, now_dt):
                 pass
 
 
+DIGEST_CAP = 2000
+DIGEST_LINE_MAX = 160
+_CHECKBOX_RE = re.compile(r"^[ \t]*[-*]\s*\[( |x|X)\]", re.MULTILINE)
+
+
+def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP):
+    """Digest crew <= `cap` caracteres (fonction pure). Ordre fixe : CURRENT_TASKS,
+    PAUSED, batchs actifs, verrous d'autres sessions, warnings, HISTORIQUE. Quand
+    une ligne ne tient plus, tout le reste est remplace par « … (+N) » : les
+    sections de tete ne sont donc jamais sacrifiees au profit des suivantes."""
+    items = [
+        "[%s] %s — %s (%d/%d)" % (tag, slug, title, done, total)
+        for tag, rows in (("en cours", current), ("pause", paused))
+        for slug, title, done, total in rows
+    ]
+    items += ["[batch actif] %s — Zone : %s" % (header, zone) for header, zone in batches]
+    items += ["[verrou] %s" % lock for lock in other_locks]
+    items += list(warnings)
+    items += ["[historique] %s" % t for t in history]
+    if not items:
+        return "crew : aucune tâche en cours ni en pause."
+    items = [i if len(i) <= DIGEST_LINE_MAX else i[:DIGEST_LINE_MAX - 1] + "…" for i in items]
+    lines = ["Digest crew (vue dérivée — vérifier sur fichier avant d'écrire) :"] + items
+    dropped = 0
+    while len("\n".join(lines)) > cap and len(lines) > 1:
+        lines.pop()
+        dropped += 1
+    if dropped:
+        # le marqueur remplace au moins la derniere ligne gardee s'il ne tient pas
+        while len("\n".join(lines + ["… (+%d)" % dropped])) > cap and len(lines) > 1:
+            lines.pop()
+            dropped += 1
+        lines.append("… (+%d)" % dropped)
+    return "\n".join(lines)[:cap]
+
+
+def _digest_task_rows(d):
+    """(fichier, titre, cases cochees, cases totales) par tache, en une lecture."""
+    rows = []
+    for f in sorted(d.glob("*.md")) if d.exists() else []:
+        if f.name in ("INDEX.md", "README.md") or f.name.startswith("_"):
+            continue
+        text = f.read_text(encoding="utf-8")
+        title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
+        marks = _CHECKBOX_RE.findall(text)
+        rows.append((f.name, title, sum(1 for m in marks if m != " "), len(marks)))
+    return rows
+
+
+def _safe(fn, default):
+    """Une source illisible ne doit pas tuer tout le digest : repli sur `default`."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
+def _digest_batches(active):
+    return [
+        (_batch_key(sec["header"]), ", ".join(sorted(sec["zone_paths"])) or "?")
+        for sec in load_sections() if sec["slugs"] & active
+    ]
+
+
+def _digest_locks(session_id):
+    now_dt = datetime.datetime.now()
+    out = []
+    for sid, info in sorted(load_locks().get("sessions", {}).items()):
+        if sid == session_id or _session_expired(info, now_dt):
+            continue
+        tasks = info.get("tasks")
+        out.append("%s: %s" % (str(sid)[:8], ", ".join(tasks) if isinstance(tasks, list) else "?"))
+    return out
+
+
+def _digest_history(n=3):
+    # HISTORIQUE.md est trie du plus recent au plus ancien : on s'arrete au n-ieme titre.
+    titles = []
+    with open(HISTORIQUE, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("## "):
+                titles.append(line[3:].strip())
+                if len(titles) == n:
+                    break
+    return titles
+
+
+def session_digest(session_id):
+    """Lit crew/ (lecture seule : aucune ecriture, aucun save_locks) et rend le
+    digest ; None si le projet n'a pas de crew/ (rien a injecter)."""
+    if not CREW.is_dir():
+        return None
+    current = _safe(lambda: _digest_task_rows(DIRS["CURRENT_TASKS"]), [])
+    paused = _safe(lambda: _digest_task_rows(DIRS["PAUSED"]), [])
+    active = {r[0] for r in current + paused}
+    return build_session_digest(
+        current, paused,
+        _safe(lambda: _digest_batches(active), []),
+        _safe(lambda: _digest_locks(session_id), []),
+        _safe(check_batches, []),
+        _safe(_digest_history, []),
+    )
+
+
 def main():
     try:
         raw = sys.stdin.read()
@@ -1301,7 +1489,25 @@ def main():
     session_id = payload.get("session_id")
     hook_event = payload.get("hook_event_name")
 
+    if hook_event == "SessionStart":
+        # Digest en lecture seule (additionalContext) ; CREW_SESSION_DIGEST=off le coupe.
+        # Volontairement avant toute la plomberie Stop/SessionEnd (purge, verrous, index) :
+        # ce chemin ne doit rien ecrire.
+        if os.environ.get("CREW_SESSION_DIGEST", "").strip().lower() == "off":
+            return
+        digest = session_digest(session_id)
+        if digest:
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": digest,
+            }}))
+        return
+
     if hook_event == "PreToolUse":
+        # Escape hatch : CREW_HOOK_PROFILE=minimal desactive la garde (latence).
+        # Stop/SessionEnd restent actifs (index, verrous).
+        if os.environ.get("CREW_HOOK_PROFILE", "").strip().lower() == "minimal":
+            return
         # Garde preventive uniquement (git mv TODO->CURRENT_TASKS) : pas de sync
         # d'index/journal/verrous ici, ça reste le travail du hook Stop.
         gate_pretooluse(payload)
@@ -1470,8 +1676,34 @@ def main():
     # longtemps pour ca.
     due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
     due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
+    # Alerte contexte : palier par session dans locks["warned"]["context"]
+    # (persiste avec le reste de `warned` ci-dessous, pas de nouveau fichier).
+    # Sans session_id : pas de memoire (cle partagee entre sessions sinon).
+    # SessionEnd : pas d'alerte, entree de la session purgee.
+    ctx_state = locks.setdefault("warned", {}).setdefault("context", {})
+    ctx_key = str(session_id)
+    if hook_event == "SessionEnd":
+        ctx_state.pop(ctx_key, None)
+        context_warnings = []
+    else:
+        context_warnings = check_context_budget(payload, ctx_state if session_id else None)
     with LocksMutex():
-        save_locks(locks)
+        # Recharge : seul `warned` est a persister ici. Re-sauver l'objet `locks`
+        # charge plus haut ecraserait une session enregistree entre-temps (et
+        # desarmerait a tort le marqueur .gate_armed).
+        fresh = load_locks()
+        fresh_ctx = (fresh.get("warned") or {}).get("context") or {}
+        fresh["warned"] = locks.get("warned", {})
+        # `context` : ne reporter que l'entree de CETTE session (celles des
+        # sessions concurrentes, relues sous mutex, sont conservees).
+        merged_ctx = dict(fresh_ctx)
+        if session_id:
+            if ctx_key in ctx_state:
+                merged_ctx[ctx_key] = ctx_state[ctx_key]
+            else:
+                merged_ctx.pop(ctx_key, None)
+        fresh["warned"]["context"] = merged_ctx
+        save_locks(fresh)
 
     if entries and prev:  # ne pas journaliser le premier snapshot de référence
         head = ""
@@ -1487,15 +1719,12 @@ def main():
 
     # Batching : avertissements non bloquants (stderr) — n'interfère pas avec le
     # JSON de décision émis sur stdout. Throttlés (cf. _throttle_warnings) pour
-    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé ;
-    # check_context_budget n'est PAS throttlé (le rappel doit persister tant
-    # que le contexte reste au-dessus du seuil, l'action attendue est un
-    # /clear, pas un simple accusé de réception).
+    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé.
+    # L'alerte contexte (context_warnings) part, elle, dans le JSON stdout sous
+    # "systemMessage" (palier de 50k par session, cf. check_context_budget).
     for w in due_batch_warnings:
         sys.stderr.write(w + "\n")
     for w in due_zone_warnings:
-        sys.stderr.write(w + "\n")
-    for w in check_context_budget(payload):
         sys.stderr.write(w + "\n")
 
     # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
@@ -1523,9 +1752,14 @@ def main():
                         "sessions différentes : " + " ; ".join(zone_blocking) +
                         " Attendre la fin de l'autre session avant de continuer.")
 
+    out = {}
     if reasons:
-        print(json.dumps({"decision": "block", "reason": "\n\n".join(reasons)}))
-        return
+        out["decision"] = "block"
+        out["reason"] = "\n\n".join(reasons)
+    if context_warnings:
+        out["systemMessage"] = "\n".join(context_warnings)
+    if out:
+        print(json.dumps(out))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,102 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## claude-md-template-2955-mots-toujours-charge — 2026-10-03
+Quoi : `template/CLAUDE.md` et `CLAUDE.md` (identiques, `cmp`) ramenés de 3248/3256 à **1197 mots** ; une ligne
+par obligation (schéma d'états + règle d'or, démarrage = `manager`/`crew-start` jamais de `mv` nu, zones de batchs
+actifs disjointes, clause personas 1 %, routage skills, règle des 100 lignes, seuils 150k/100k/recap, `crew/`
+ancré racine). Titres `§` référencés par les skills conservés (Batching, Gestion des tâches/2bis, Personas,
+Guides AGENTS.md segmentés, Efficience de contexte, Routage des skills, graphify). `description:` des 8 skills
+`crew-*` (+ miroirs `.claude/skills/`) : 3411 → 1684 caractères, 23-33 mots, YAML validé.
+Resynchro préalable : `CLAUDE.md` et template avaient DIVERGÉ (le template n'avait ni PAUSED/`crew-count`/seuils
+par rôle/ancrage mono-subtree, la racine n'avait pas `designer`) → union, pas de diff résiduel.
+Décision `ceo` (migration des CLAUDE.md personnalisés) : opt-in. Le `classify` existant (`conflict` jamais écrasé)
+la garantit déjà ; documentée dans `skills/crew-update/SKILL.md` § « Cas particulier : CLAUDE.md allégé », flux
+`.new`/`.bak` **manuel** (aucun changement de code ; `--migrate-claude-md` non implémenté, à rouvrir si besoin).
+Revue : aucun problème (obligations, renvois `§`, YAML) ; `simplify` : section `crew-update` resserrée et flux
+déclaré manuel. Écart connu : `verify_plugin_package.py` FAIL inchangé (5 problèmes avant/après : dérive vs
+`~/.claude/templates/project-scaffold/` CLAUDE.md + .gitignore, miroirs `crew-status`/`agents/manager.md`).
+Réf. : `crew-close-task/SKILL.md:8` cite un `§ Modularité du code` absent de CLAUDE.md (préexistant).
+Mesures : `pytest crew scripts` 144 verts.
+Fichiers/commit : b50b0f0 — `CLAUDE.md`, `template/CLAUDE.md`, `skills/crew-*/SKILL.md` (+ miroirs).
+
+## continuite-session-sessionstart-precompact — 2026-10-03
+Quoi : hook `SessionStart` (matcher `startup|resume|compact`, timeout 10, non async) qui renvoie
+`hookSpecificOutput.additionalContext` ≤ 2000 chars : tâches en cours/en pause (`n/m` cases), batchs actifs +
+`Zone :`, verrous d'autres sessions non expirées, warnings `check_batches()`, 3 derniers titres de
+`HISTORIQUE.md` (plus récents d'abord). Lecture seule ; `CREW_SESSION_DIGEST=off` ou absence de `crew/` →
+sortie vide ; chaque source dégrade vers `[]` (`_safe`). `crew-start` étape 1 lit le digest (relecture de
+`crew/` si absent). Pas de PreCompact (redondant : `SessionStart` source `compact`).
+Revue : bug critique trouvé (HISTORIQUE pris à l'envers) + garde `crew/` absent + sources isolées, corrigés.
+Mesure : ≈ 0,9-1,15 s par spawn (Windows) ; vérif « nouvelle session affiche le digest » laissée en TESTS/DEV.
+Fichiers/commit : dbae500 — `crew/crew_hook.py`, `scripts/crew_hook.py`, `crew/test_crew_hook.py`,
+`hooks/hooks.json`, `scripts/dev/verify_plugin_package.py`, `README.md`, `skills/crew-start/SKILL.md` (+ miroir).
+
+## moniteur-contexte-seuil-fixe-stderr — 2026-10-03
+Quoi : `check_context_budget(payload, state)` — alerte dans le JSON Stop sous `systemMessage` (plus de
+stderr), seuil 150k (fenêtre 200k) / 800k (fenêtre 1M : `model` contient `[1m]` ou total > 210k),
+répétition seulement tous les 50k par session ; état dans `crew_lock.json` → `warned.context`
+(`{session_id: total}`, fusionné sous mutex avec les entrées concurrentes, purgé au SessionEnd et au
+retour sous le seuil ; sans session_id → pas de mémoire). Sortie Stop = un seul JSON fusionné
+(`decision`/`reason` + `systemMessage`). `CLAUDE.md` + `template/CLAUDE.md` § Reset de session mis à jour.
+Ré-arbitrage de `alerte-contexte-150k` (2026-08-25) : canal stderr → `systemMessage` (stderr non
+visible/affiché de façon fiable par le harness), seuil fixe → scalé à la fenêtre (faux positifs en 1M),
+alerte à chaque Stop → palier 50k (audit ECC § 4.D : bruit de contexte).
+Décisions : cas (d) de la spec (160k puis 215k = 2 alertes) contradictoire avec « > 210k ⇒ 1M » →
+palier testé en fenêtre 1M ; faux positif 150k possible si le transcript porte l'id modèle nu.
+Fichiers/commit : 2a23838 — `scripts/crew_hook.py`, `crew/crew_hook.py`, `crew/test_crew_hook.py`,
+`CLAUDE.md`, `template/CLAUDE.md`.
+
+## latence-hook-pretooluse-spawn-python — 2026-10-03
+Quoi : le hook PreToolUse ne spawn plus Python en session solo. `save_locks()` maintient
+`crew/CLAUDE_CONTEXT/.gate_armed` (≥ 2 sessions) dans le principal ET chaque worktree enregistré
+(`_sync_gate_marker`) ; `hooks/hooks.json` : entrée `Edit|Write|MultiEdit` (pré-filtre marqueur) +
+entrée `Bash` (marqueur OU claim `crew-resume:` / `mv … CURRENT_TASKS`, via `case` builtin) ;
+`CREW_HOOK_PROFILE=minimal` (shell + `main()`) ; `async` sur PostToolUse(spec_to_task) ;
+sauvegarde finale du Stop recharge le lock (ne persiste que `warned`, évite un lost update).
+Mesures (médiane/10, Git Bash) : Edit 274 → ~32 ms solo ; Bash non-claim → ~58 ms ; marqueur
+présent ≈ 240-310 ms (inchangé).
+Décisions : `SessionEnd` laissé synchrone (async = risque de verrou/marqueur périmé à la sortie du CLI) ;
+seuil « ≥ 2 sessions » conservé (arbitrage architect) → une session non enregistrée n'est pas gardée
+face à une session unique ; marqueur du worktree posé au prochain `save_locks` si le worktree n'existe
+pas encore au claim (Cas A).
+Fichiers/commit : 76a86ef — `hooks/hooks.json`, `scripts/crew_hook.py`, `crew/crew_hook.py`,
+`crew/test_crew_hook.py`, `README.md`, `.gitignore`, `template/.gitignore`.
+
+## faux-positif-check-batches-claude-md — 2026-10-03
+Quoi : `check_batches()` ne parse plus que les lignes de liste de
+`CLAUDE_BATCH.md` via `TASK_LINE_RE` (déjà utilisée par `_task_line_counts`/
+`prune_closed_batches`) au lieu d'un `re.findall` générique sur tous les
+backticks `*.md`. Supprime le faux positif « référence une tâche inexistante :
+`CLAUDE.md` » (prose d'en-tête / ligne `Zone :`) dans chaque projet bootstrapé.
+Refs barrées (`~~`) toujours exclues, placeholders `<slug>.md` ignorés. Limite
+assumée (revue) : un 2e ref sur la même ligne ou une ligne décorée
+(`- **`x.md`**`) n'est plus vue — même convention que la purge de batch.
+Fichiers : `scripts/crew_hook.py` + copie `crew/crew_hook.py`,
+`crew/test_crew_hook.py` (+2 tests). Commit `1541ab8`. Note : `verify_plugin_package.py`
+échoue déjà sur main (CLAUDE.md, crew-status SKILL, agents/manager.md) — hors périmètre.
+
+## detecter-double-hook-projet-cible — 2026-10-03
+Quoi : `/crew-update` détecte un projet cible qui exécute DEUX hooks crew sur le
+même `crew_lock.json` (cas voyageo : plugin `claude-crew` actif ET
+`.claude/settings.json` appelant la copie locale `crew/crew_hook.py`).
+`detect_double_hook(project_root, user_settings_path=None)` (lecture seule) :
+plugin actif = clé `claude-crew[@…]` à `true` dans `enabledPlugins` du projet
+(`settings.json`/`settings.local.json`) ou de `~/.claude/settings.json` ; hook
+local = commande matchant `crew[/\]crew_hook.py` sans `CLAUDE_PLUGIN_ROOT`
+(backslashes Windows inclus). Legacy sans plugin = normal, non signalé.
+`_main()` avertit (événements + commandes) et propose le retrait ;
+`--remove-double-hook` seul retire ces entrées (reste du settings conservé,
+fichier reformaté ; écriture atomique via `_write_json_atomic`, factorisée avec
+`save_scaffold_version`). Tolère settings absents/invalides/formes inattendues.
+Décision : `/crew-status` ne le signale pas (reste centré tâches) ; le garde-fou
+vit dans `/crew-update`. Revue : backslashes Windows et formes malformées
+(Important) corrigés ; regex resserrée (`mycrew/crew_hook.py` non matché).
+Fichiers : `scripts/crew_update.py` + `crew/crew_update.py` (copies identiques),
+`crew/test_crew_update.py` (+14 cas), `skills/crew-update/SKILL.md` + miroir
+`.claude/skills/crew-update/SKILL.md` — commit `732335e` (branche
+`crew/batch-a-audit-ecc-tokens-r-activit-du-plugin`).
+
 ## identite-batch-sans-statut — 2026-10-03
 Quoi : l'identité d'un batch n'embarque plus le statut affiché du header
 (`## Batch X · 🔄 en cours (prochaine : 04)`). `_batch_key(header)` tronque au

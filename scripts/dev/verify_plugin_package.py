@@ -191,6 +191,7 @@ def check_crew_scripts_copied(repo_root: Path) -> list[str]:
 
 
 EVENT_EXPECTED_SCRIPT = {
+    "SessionStart": "scripts/crew_hook.py",
     "Stop": "scripts/crew_hook.py",
     "SessionEnd": "scripts/crew_hook.py",
     "PostToolUse": "scripts/spec_to_task_hook.py",

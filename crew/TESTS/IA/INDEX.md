@@ -11,6 +11,7 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [corriger-purge-batch-clos](corriger-purge-batch-clos.md)
 - [crew-count-batches](crew-count-batches.md)
 - [crew-dashboard](crew-dashboard.md)
+- [Tests — détection double hook (plugin + copie locale)](detecter-double-hook-projet-cible.md)
 - [fix-worktree-gitmv-lock-registration-gap](fix-worktree-gitmv-lock-registration-gap.md)
 - [fix-zone-overlap-faux-positifs](fix-zone-overlap-faux-positifs.md)
 - [Tests — identité de batch indépendante du statut](identite-batch-sans-statut.md)
@@ -20,3 +21,4 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [reduire-tokens-subagents](reduire-tokens-subagents.md)
 - [Tests — verrou partagé entre checkout principal et worktrees](verrou-partage-worktrees.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)
+- [latence-hook-pretooluse-spawn-python](latence-hook-pretooluse-spawn-python.md)
