@@ -184,7 +184,7 @@ Ces règles limitent le gaspillage de tokens et les coupures de session prématu
 - Ne jamais coller dans le contexte la sortie complète d'une commande longue (ex. build) : extraire seulement les lignes d'erreur/warning utiles.
 
 ### Reset de session
-- Seuil de contexte : **~150k tokens** (session principale) — au-delà, **recommander un `/clear` ou une nouvelle session** plutôt que d'accumuler silencieusement. Un hook Stop best-effort avertit automatiquement (stderr) en cas de dépassement, mais la recommandation s'applique dès que la conversation *semble* volumineuse même sans cet avertissement.
+- Seuil de contexte : **~150k tokens** (session principale) — au-delà, **recommander un `/clear` ou une nouvelle session** plutôt que d'accumuler silencieusement. Un hook Stop best-effort avertit automatiquement (`systemMessage`; seuil 150k en fenêtre 200k, 800k en fenêtre 1M, répétition tous les 50k par session) en cas de dépassement, mais la recommandation s'applique dès que la conversation *semble* volumineuse même sans cet avertissement.
 - Si la session approche de la limite et que la tâche n'est pas finie : commit ce qui est fait, noter l'état dans HISTORIQUE ou CURRENT_TASKS, puis suggérer de relancer.
 - **Subagents** : seuil différencié par rôle plutôt qu'un ~150k uniforme —
   ~100k pour les agents d'implémentation (gros contexte code), sans
