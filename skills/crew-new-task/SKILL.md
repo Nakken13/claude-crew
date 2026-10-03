@@ -1,6 +1,6 @@
 ---
 name: crew-new-task
-description: Crée une nouvelle tâche crew (backlog TODO ou démarrage direct en CURRENT_TASKS) en appliquant le protocole complet du cycle de vie crew — fichier de tâche, INDEX.md, catégorisation CLAUDE_BATCH.md — via un prompt standardisé au persona manager. Trigger — "/crew-new-task", "crée une tâche", "ajoute au backlog", "nouvelle feature à planifier", "découpe ça en tâches".
+description: Crée une tâche crew (TODO ou CURRENT_TASKS) avec fichier, INDEX.md et batching via le persona manager. Trigger — "/crew-new-task", "crée une tâche", "ajoute au backlog", "découpe ça en tâches".
 ---
 
 Ce skill encode le protocole de création de tâche déjà défini dans
