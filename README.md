@@ -87,6 +87,13 @@ batch it doesn't belong to. Two layers, not one:
   main checkout — written under a mutex with an atomic file replace, so two
   sessions racing to claim the same batch can't both win.
 
+The `PreToolUse` hook only spawns Python when it can matter: a shell pre-filter
+skips it unless `crew/CLAUDE_CONTEXT/.gate_armed` exists (maintained by the lock
+writer, present only while ≥ 2 sessions hold locks) or the `Bash` call is a claim
+(`git mv` into `CURRENT_TASKS/`, `crew-resume:`). Solo sessions pay ~40 ms instead
+of ~270 ms per `Edit`/`Write`. Set `CREW_HOOK_PROFILE=minimal` to disable the
+`PreToolUse` gate entirely (`Stop`/`SessionEnd` keep syncing indexes and locks).
+
 A `Stop` hook still regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks
 zone overlaps every turn, but now purely as a retroactive fallback (a
 `git mv` run outside a tracked `Bash` call, or the `PreToolUse` gate getting

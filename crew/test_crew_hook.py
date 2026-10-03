@@ -1254,3 +1254,97 @@ def test_different_batch_still_triggers_incoherence(capsys):
     h._register_task_lock("a.md", "S1", locks, now, _status_sections("pas démarré"))
     assert "incoherence" in capsys.readouterr().err
     assert locks["sessions"]["S1"]["batch"] == "Batch Other · pas démarré"
+
+
+# --- marqueur .gate_armed (pre-filtre shell du hook PreToolUse) -------------
+
+def _sess(worktree=None):
+    return {"batch": None, "tasks": [], "worktree": worktree, "branch": None,
+            "since": datetime.datetime.now().isoformat()}
+
+
+@pytest.mark.parametrize("n_sessions,armed", [(1, False), (2, True)])
+def test_save_locks_arms_gate_marker_from_two_sessions(repo, n_sessions, armed):
+    root, dirs, ctx = repo
+    h.save_locks({"sessions": {f"S{i}": _sess() for i in range(n_sessions)}})
+    assert (ctx / ".gate_armed").exists() is armed
+
+
+def test_save_locks_back_to_one_or_zero_sessions_removes_marker(repo):
+    root, dirs, ctx = repo
+    h.save_locks({"sessions": {"A": _sess(), "B": _sess()}})
+    h.save_locks({"sessions": {"A": _sess()}})
+    assert not (ctx / ".gate_armed").exists()
+    h.save_locks({"sessions": {"A": _sess(), "B": _sess()}})
+    h.save_locks({"sessions": {}})
+    assert not (ctx / ".gate_armed").exists()
+
+
+def test_gate_marker_idempotent_and_tolerates_errors(repo, monkeypatch):
+    root, dirs, ctx = repo
+    two = {"sessions": {"A": _sess(), "B": _sess()}}
+    h.save_locks(two)
+    h.save_locks(two)  # re-armer ne leve rien
+    assert (ctx / ".gate_armed").exists()
+    # Marqueur illisible/impossible a ecrire : best-effort, jamais d'exception.
+    (ctx / ".gate_armed").unlink()
+    (ctx / ".gate_armed").mkdir()  # un dossier a la place du fichier -> unlink/write echouent
+    h.save_locks({"sessions": {"A": _sess()}})
+    h.save_locks(two)  # ne leve pas non plus
+
+
+def test_gate_marker_armed_in_main_and_each_registered_worktree(repo):
+    """Le pre-filtre shell teste $CLAUDE_PROJECT_DIR/... (= worktree courant) alors
+    que le verrou vit dans le principal : le marqueur doit etre pose aux deux."""
+    root, dirs, ctx = repo
+    wt_a = root.parent / f"{root.name}-batch-a"
+    wt_b = root.parent / f"{root.name}-batch-b"
+    for wt in (wt_a, wt_b):
+        (wt / "crew" / "CLAUDE_CONTEXT").mkdir(parents=True)
+    locks = {"sessions": {"A": _sess(f"../{root.name}-batch-a"),
+                          "B": _sess(f"../{root.name}-batch-b")}}
+    h.save_locks(locks)
+    for wt in (wt_a, wt_b):
+        assert (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
+    assert (ctx / ".gate_armed").exists()
+    # Retour a 1 session : marqueurs retires partout, y compris le worktree
+    # de la session qui vient de disparaitre du lock.
+    h.save_locks({"sessions": {"A": _sess(f"../{root.name}-batch-a")}})
+    for wt in (wt_a, wt_b):
+        assert not (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
+    assert not (ctx / ".gate_armed").exists()
+
+
+# --- escape hatch CREW_HOOK_PROFILE=minimal --------------------------------
+
+def _run_main_pretooluse(monkeypatch):
+    calls = []
+    monkeypatch.setattr(h, "gate_pretooluse", lambda payload: calls.append(payload))
+    stdin = json.dumps({"hook_event_name": "PreToolUse", "session_id": "S",
+                        "tool_name": "Edit", "tool_input": {"file_path": "x"}})
+    monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+    h.main()
+    return calls
+
+
+def test_profile_minimal_skips_pretooluse_gate(repo, monkeypatch):
+    monkeypatch.setenv("CREW_HOOK_PROFILE", "minimal")
+    assert _run_main_pretooluse(monkeypatch) == []
+
+
+def test_profile_default_runs_pretooluse_gate(repo, monkeypatch):
+    monkeypatch.delenv("CREW_HOOK_PROFILE", raising=False)
+    assert len(_run_main_pretooluse(monkeypatch)) == 1
+
+
+def test_profile_minimal_keeps_stop_sync(repo, monkeypatch):
+    """Stop/SessionEnd continuent sous `minimal` (index, verrous) : seul PreToolUse saute."""
+    monkeypatch.setenv("CREW_HOOK_PROFILE", "minimal")
+    called = []
+    monkeypatch.setattr(h, "regen_index", lambda name, d: called.append(name) or [])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"hook_event_name": "Stop", "session_id": "S"})))
+    try:
+        h.main()
+    except SystemExit:
+        pass
+    assert called
