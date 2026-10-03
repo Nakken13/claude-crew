@@ -72,3 +72,6 @@
 - 2026-10-02 🧹 **verrou de tâche close hors checkout principal purgé** : `fix-zone-overlap-faux-positifs.md`
 - 2026-10-02 ✅ **terminée** : `fix-zone-overlap-faux-positifs.md`
   ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` pour fix-zone-overlap-faux-positifs.md
+- 2026-10-02 ➕ **ajoutée au backlog** : `detecter-double-hook-projet-cible.md`
+- 2026-10-02 ➕ **ajoutée au backlog** : `identite-batch-sans-statut.md`
+- 2026-10-02 ➕ **ajoutée au backlog** : `verrou-partage-worktrees.md`
