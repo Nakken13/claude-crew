@@ -21,7 +21,7 @@ Numérotation entière obligatoire (le parser `TASK_LINE_RE` du hook ne reconna�
 
 0. ~~`fix-zone-overlap-faux-positifs.md`~~ — `check_zone_overlaps` ne compte que les
    batchs réellement en cours (pas TODO) ; 3e session non bloquée.
-1. `verrou-partage-worktrees.md` — `crew_lock.json` + mutex centralisés dans le
+1. ~~`verrou-partage-worktrees.md`~~ — `crew_lock.json` + mutex centralisés dans le
    checkout principal (`_resolve_main_root` sans spawn git), migration du lock local
    legacy. **Avant 5** : change l'emplacement du verrou, donc du marqueur
    `.gate_armed` que 5 introduit (à poser dans le principal ET chaque worktree
