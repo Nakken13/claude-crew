@@ -21,3 +21,4 @@ Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source u
 - [reduire-tokens-subagents](reduire-tokens-subagents.md)
 - [Tests — verrou partagé entre checkout principal et worktrees](verrou-partage-worktrees.md)
 - [worktree-batch-isolation](worktree-batch-isolation.md)
+- [latence-hook-pretooluse-spawn-python](latence-hook-pretooluse-spawn-python.md)
