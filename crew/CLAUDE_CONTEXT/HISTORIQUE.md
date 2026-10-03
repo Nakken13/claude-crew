@@ -4,6 +4,18 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## continuite-session-sessionstart-precompact — 2026-10-03
+Quoi : hook `SessionStart` (matcher `startup|resume|compact`, timeout 10, non async) qui renvoie
+`hookSpecificOutput.additionalContext` ≤ 2000 chars : tâches en cours/en pause (`n/m` cases), batchs actifs +
+`Zone :`, verrous d'autres sessions non expirées, warnings `check_batches()`, 3 derniers titres de
+`HISTORIQUE.md` (plus récents d'abord). Lecture seule ; `CREW_SESSION_DIGEST=off` ou absence de `crew/` →
+sortie vide ; chaque source dégrade vers `[]` (`_safe`). `crew-start` étape 1 lit le digest (relecture de
+`crew/` si absent). Pas de PreCompact (redondant : `SessionStart` source `compact`).
+Revue : bug critique trouvé (HISTORIQUE pris à l'envers) + garde `crew/` absent + sources isolées, corrigés.
+Mesure : ≈ 0,9-1,15 s par spawn (Windows) ; vérif « nouvelle session affiche le digest » laissée en TESTS/DEV.
+Fichiers/commit : dbae500 — `crew/crew_hook.py`, `scripts/crew_hook.py`, `crew/test_crew_hook.py`,
+`hooks/hooks.json`, `scripts/dev/verify_plugin_package.py`, `README.md`, `skills/crew-start/SKILL.md` (+ miroir).
+
 ## moniteur-contexte-seuil-fixe-stderr — 2026-10-03
 Quoi : `check_context_budget(payload, state)` — alerte dans le JSON Stop sous `systemMessage` (plus de
 stderr), seuil 150k (fenêtre 200k) / 800k (fenêtre 1M : `model` contient `[1m]` ou total > 210k),

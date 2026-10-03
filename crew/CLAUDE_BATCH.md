@@ -39,7 +39,7 @@ Numérotation entière obligatoire (le parser `TASK_LINE_RE` du hook ne reconna�
    mêmes tests) et de 1 (emplacement du verrou).
 6. ~~`moniteur-contexte-seuil-fixe-stderr.md`~~ — `systemMessage`, seuil scalé, palier
    50k. Touche la sortie JSON Stop (après 5 : stabiliser `hooks.json` d'abord).
-7. `continuite-session-sessionstart-precompact.md` — hook `SessionStart` + digest ;
+7. ~~`continuite-session-sessionstart-precompact.md`~~ — hook `SessionStart` + digest ;
    réutilise `check_batches()` corrigé en 4 et la forme de `hooks.json` issue de 5.
 8. `claude-md-template-2955-mots-toujours-charge.md` — slimming, **EN DERNIER** :
    reprend la formulation § Reset de session écrite en 6 et l'étape 1 de
