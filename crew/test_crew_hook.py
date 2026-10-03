@@ -1184,3 +1184,49 @@ def test_main_root_fallback_main_without_claude_context(tmp_path):
     (main / "crew").mkdir()
     wt = _fake_worktree(tmp_path, main)
     assert h._resolve_main_root(wt) == wt
+
+
+# --- identite de batch independante du statut (header tronque au premier " · ") ---
+
+def _status_sections(status):
+    header = f"Batch Yuna · {status}" if status else "Batch Yuna"
+    return [{"header": header, "slugs": ["a.md", "b.md"], "zone_paths": []}]
+
+
+def test_batch_key_strips_status_suffix():
+    assert h._batch_key("Batch Yuna déterminisme · 🔄 en cours (prochaine : 04)") == "Batch Yuna déterminisme"
+    assert h._batch_key("Batch A — Audit ECC : tokens") == "Batch A — Audit ECC : tokens"
+    assert h._batch_key("  Batch X  ·  pas démarré ") == "Batch X"
+
+
+def test_header_status_change_no_incoherence(capsys):
+    now = datetime.datetime(2026, 10, 3, 10, 0, 0)
+    locks = {"sessions": {}}
+    h._register_task_lock("a.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 04)"))
+    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 05)"))
+    assert "incoherence" not in capsys.readouterr().err
+    assert locks["sessions"]["S1"]["batch"] == "Batch Yuna"
+
+
+def test_worktree_slug_stable_across_status_change():
+    assert h._worktree_paths_for("Batch Yuna · pas démarré") == h._worktree_paths_for(
+        "Batch Yuna · 🔄 en cours (prochaine : 04)")
+    assert h._batch_slug("Batch Yuna · pas démarré") == "yuna"
+
+
+def test_legacy_long_batch_key_matches_normalized(capsys):
+    now = datetime.datetime(2026, 10, 3, 10, 0, 0)
+    legacy = "Batch Yuna · 🔄 en cours (prochaine : 04)"
+    locks = {"sessions": {"S1": {"batch": legacy, "tasks": ["a.md"], "worktree": None,
+                                  "branch": None, "since": now.isoformat()}}}
+    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 05)"))
+    assert "incoherence" not in capsys.readouterr().err
+
+
+def test_different_batch_still_triggers_incoherence(capsys):
+    now = datetime.datetime(2026, 10, 3, 10, 0, 0)
+    locks = {"sessions": {"S1": {"batch": "Batch Other · pas démarré", "tasks": ["x.md"],
+                                  "worktree": None, "branch": None, "since": now.isoformat()}}}
+    h._register_task_lock("a.md", "S1", locks, now, _status_sections("pas démarré"))
+    assert "incoherence" in capsys.readouterr().err
+    assert locks["sessions"]["S1"]["batch"] == "Batch Other · pas démarré"
