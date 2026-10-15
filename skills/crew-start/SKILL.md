@@ -4,150 +4,84 @@ description: Reprend le travail crew sans préciser quoi — continue la tâche 
 ---
 
 Point d'entrée unique pour reprendre une session crew sans avoir à dire
-quelle tâche. Combine `/crew-status` (lecture), le protocole de
-démarrage (`CLAUDE.md` § "Gestion des tâches" point 2 + § "Batching") et
-l'implémentation elle-même — jusqu'à `/crew-close-task` en fin de
-tâche.
+quelle tâche. Le **choix** de la tâche est fait par un script déterministe
+(`crew_hook.py next-task`) ; ce skill déroule ensuite le démarrage
+(verrou, worktree, `git mv`), l'implémentation, puis `/crew-close-task`.
 
-**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
-résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
-peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
-créerait un `crew/` fantôme dupliqué au lieu de toucher la racine
-(y compris le worktree de batch créé aux étapes 2A-ter/5B-bis : le
-`git worktree add`/`cd` s'exécute depuis la racine du checkout principal,
-jamais depuis un sous-dossier). Résoudre la racine une seule fois en début
-d'exécution (`git rev-parse --show-toplevel` ou équivalent) si elle n'est
-pas déjà connue — pas besoin de revérifier à chaque `Read`/`Write`/`Edit`/
-`Bash` suivant.
+**Ancrage racine obligatoire** : tout chemin `crew/...` se résout depuis la
+racine du repo (`git rev-parse --show-toplevel`), jamais depuis le cwd
+courant (sinon un `crew/` fantôme est créé dans un sous-dossier). Le
+`git worktree add`/`cd` des étapes 3-4 s'exécute depuis la racine du
+checkout principal.
 
 ## Étapes
 
-1. **Lire l'état** : lire le digest injecté par le hook `SessionStart`
-   (tâches en cours/en pause, batchs actifs, verrous) ; c'est une vue, pas la
-   source — vérifier sur fichier avant toute écriture. Digest absent
-   (`CREW_SESSION_DIGEST=off`, plugin non chargé) → lister
-   `crew/CURRENT_TASKS/*.md` (hors `INDEX.md`/`README.md`) comme avant.
-1bis. **Signaler les tâches en pause** : lister aussi `crew/PAUSED/*.md`
-    (hors `INDEX.md`/`README.md`). Si non vide, le signaler à l'utilisateur
-    (nom de la tâche + ce qui bloque) avant de continuer — une tâche en
-    `PAUSED/` est bloquée sur une validation visuelle/dev, ne JAMAIS la
-    reprendre automatiquement pour continuer à coder dessus (cf. `CLAUDE.md`
-    § 2bis). Ça n'empêche pas de démarrer/reprendre une autre tâche en
-    parallèle (Cas A/B ci-dessous) si elle n'est pas dans le même batch.
+1. **Choisir la tâche** (lecture seule, ~0 token de raisonnement) :
 
-### Cas A — `crew/CURRENT_TASKS/` non vide
+   ```bash
+   ROOT="$(git rev-parse --show-toplevel)"
+   HOOK="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"; HOOK="${HOOK:-$ROOT/crew}/crew_hook.py"
+   CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" next-task
+   ```
 
-2A. Une seule tâche → c'est elle qu'on reprend.
-    Plusieurs tâches → elles appartiennent forcément au même batch actif
-    (invariant de disjonction, cf. `CLAUDE.md` § Batching) ou à des batchs
-    actifs différents déjà lancés en parallèle par l'utilisateur : prendre
-    celle qui a le plus d'actions déjà cochées (la plus avancée) ; en cas
-    d'égalité, demander à l'utilisateur laquelle prioriser plutôt que
-    deviner.
-2A-bis. **Verrou live obligatoire avant de commencer à éditer** : exécuter
-    `Bash({command: ': "crew-resume:<slug>.md"'})` (no-op, aucun effet de
-    bord — sert uniquement à faire passer l'intention au hook `PreToolUse`).
-    Une tâche déjà en `CURRENT_TASKS/` n'a jamais transité par un `git mv`
-    pendant cette session : sans cette étape, une autre session qui reprend
-    la même tâche au même moment ne serait jamais détectée (le verrou
-    historique ne se pose qu'au moment du `git mv` TODO→CURRENT_TASKS, cf.
-    Cas B ci-dessous). Si le hook bloque (exit 2, message « déjà repris par
-    une autre session ») → NE PAS continuer sur cette tâche : rapporter le
-    conflit à l'utilisateur et s'arrêter (ou choisir une autre tâche d'un
-    batch différent si le contexte le permet). Pas de blocage → poursuivre
-    normalement.
-2A-ter. **Isolation physique par worktree** (Layer 1 du garde-fou
-    anti-collision, cf. `docs/superpowers/specs/2026-08-22-worktree-batch-
-    isolation-design.md`) : déterminer le batch de la tâche (section de
-    `crew/CLAUDE_BATCH.md` qui la référence), en dériver le nom de worktree
-    et de branche de façon déterministe — même algorithme que
-    `_batch_key`/`_batch_slug`/`_worktree_paths_for` dans `crew/crew_hook.py` :
-    tronquer l'en-tête au premier ` · ` (le suffixe est un statut affiché qui
-    change, pas l'identité du batch), retirer le
-    préfixe `Batch` (+ ponctuation qui suit) de l'en-tête, remplacer toute
-    suite de caractères non alphanumériques par `-`, mettre en minuscules →
-    `<slug>` ; worktree = `../<nom-repo>-batch-<slug>/` (sibling du checkout
-    principal, `<nom-repo>` = nom du dossier racine courant), branche =
-    `crew/batch-<slug>`. Si le worktree n'existe pas encore :
-    `git worktree add -b crew/batch-<slug> ../<nom-repo>-batch-<slug> main`.
-    S'il existe déjà (reprise, ou 2e tâche du même batch) : le réutiliser tel
-    quel (`git worktree list` pour vérifier), ne pas le recréer. Un worktree
-    créé avant la troncature au ` · ` peut porter un ancien slug contenant le
-    statut (`…-batch-<slug>-en-cours-…`) : si `git worktree list` montre un
-    `…-batch-<slug>*` qui commence par le slug normalisé, le réutiliser (ou le
-    signaler à l'utilisateur) plutôt que d'en créer un doublon silencieux. `cd` dans ce
-    worktree pour le reste du tour, et utiliser des chemins absolus pointant
-    dans cette copie (pas le checkout principal) pour tout `Read`/`Edit`/
-    `Write` qui suit. Aucune écriture manuelle dans `crew_lock.json` n'est
-    nécessaire ici : `crew/crew_hook.py` enregistre déjà cette session (batch,
-    tâche, worktree, branche) automatiquement à partir de `CLAUDE_BATCH.md`
-    (`_register_task_lock`, déclenché par le marqueur `crew-resume:` ci-dessus
-    ou par le `git mv` du Cas B).
-3A. Relire le fichier de la tâche choisie, reprendre les actions `- [ ]`
-    non cochées dans l'ordre. Appliquer les skills normalement pertinents
-    au travail lui-même (`test-driven-development`, `systematic-debugging`,
-    `graphify`, etc. — cf. § Routage des skills de `CLAUDE.md`) : ce skill
-    ne remplace pas ce routage, il sert juste à ne pas avoir à (re)choisir
-    la tâche.
-4A. Cocher chaque action au fur et à mesure qu'elle est réellement finie
-    (pas en avance, pas en lot à la fin).
-5A. Toutes les actions cochées → enchaîner directement sur le skill
-    `crew-close-task` (ne pas s'arrêter avant, ne pas demander
-    confirmation pour cette étape-là, elle fait partie du protocole).
+   (plugin : `scripts/crew_hook.py` du plugin ; clone manuel :
+   `crew/crew_hook.py`). Sortie JSON : `action`, `task`, `batch`,
+   `worktree`, `branch`, `skipped[{slug,reason}]`, `paused`,
+   `unclassified`, `ambiguous`. Il couvre déjà : verrous des autres sessions,
+   batchs actifs/en pause, chevauchement de `Zone :`, ICEBOX et « À classer »
+   ignorés. Ne pas refaire ce tri à la main.
 
-### Cas B — `crew/CURRENT_TASKS/` vide
+   Si `paused` n'est pas vide, le signaler à l'utilisateur (tâche + ce qui
+   bloque) — une tâche de `PAUSED/` n'est JAMAIS reprise automatiquement.
 
-2B. Lire `crew/CLAUDE_BATCH.md` : lister les batchs, et parmi eux ceux
-    **actifs** (≥1 tâche déjà en `CURRENT_TASKS/` — donc aucun ici par
-    définition puisqu'on est dans le cas B, sauf tâche d'un autre batch
-    lancée hors de ce skill : revérifier quand même). Un batch **inactif**
-    = pas de tâche en cours nulle part pour lui.
-3B. Choisir le premier batch inactif qui a au moins une tâche listée dans
-    `crew/TODO/` (ordre d'apparition dans `CLAUDE_BATCH.md` = priorité
-    par défaut ; si l'utilisateur a une préférence explicite en tête pour
-    cette session, la respecter à la place). Ignorer la section « À
-    classer » (zone d'impact inconnue = pas prêt à démarrer) et
-    `crew/ICEBOX/` (jamais démarré directement, cf. `CLAUDE.md`).
-    Aucun batch avec tâche TODO dispo → le dire à l'utilisateur et
-    s'arrêter (rien à démarrer automatiquement).
-4B. Dans ce batch, prendre la **première** tâche listée (ordre du batch =
-    séquencement voulu).
-5B. **Vérification anti-collision obligatoire** avant tout déplacement, y
-    compris son cas trivial sans batch actif (déjà vu aux étapes 1/1bis) qui
-    dispense de dispatcher `manager` — cf. `CLAUDE.md` § Batching pour la
-    condition exacte. Sinon, dispatcher `Agent({subagent_type: "manager"})`
-    avec la tâche + son batch, pour confirmer que sa zone de fichiers ne
-    chevauche aucun batch actif différent (cf. `CLAUDE.md` § Batching).
-    Chevauchement détecté →
-    ne pas démarrer, rapporter le conflit à l'utilisateur et s'arrêter.
-5B-bis. **Isolation physique par worktree** — même procédure que l'étape
-    2A-ter ci-dessus (créer ou réutiliser `../<nom-repo>-batch-<slug>/` sur
-    la branche `crew/batch-<slug>`, `cd` dedans). Le fait qu'un autre
-    `session_id` détienne déjà ce worktree/verrou pour ce batch est bloquant
-    (`exit 2`) au moment du `git mv` de l'étape 6B (même garde que
-    `_claim_resume_lock`/`check_batch_collisions` en Cas A) : ne pas
-    continuer sur cette tâche si ça se produit, rapporter le conflit à
-    l'utilisateur.
-6B. Pas de conflit → **depuis le worktree** (chemins du worktree, pas du
-    checkout principal), `git mv crew/TODO/<slug>.md
-    crew/CURRENT_TASKS/<slug>.md`, mettre à jour les deux `INDEX.md`.
-7B. Poursuivre en Cas A à partir de l'étape 3A (implémentation, cases
-    cochées au fur et à mesure, `crew-close-task` en fin de tâche).
+2. **Selon `action`** :
+   - `resume` → étape 3 (Cas reprise). Si `ambiguous` : demander à
+     l'utilisateur laquelle prioriser plutôt que deviner.
+   - `start` → étape 3 (Cas démarrage).
+   - `classify` → des tâches de `TODO/` n'ont ni batch ni zone
+     (`unclassified`) : dispatcher `Agent({subagent_type: "manager"})` pour
+     les classer (zone d'impact + batch, cf. `CLAUDE.md` § Batching), puis
+     relancer l'étape 1.
+   - `none` → rien de démarrable : dire pourquoi à l'utilisateur à partir de
+     `skipped` (verrou, batch actif, chevauchement) ou « TODO vide », et
+     s'arrêter. Seul cas où le skill s'arrête sans avoir codé.
+
+3. **Verrou + isolation** (à faire avant toute édition) :
+   - *Reprise* : exécuter `Bash({command: ': "crew-resume:<task>"'})` (no-op
+     qui pose le verrou via le hook `PreToolUse`).
+   - *Démarrage* : dispatcher `manager` seulement si `CURRENT_TASKS/` et
+     `PAUSED/` ne sont pas vides (cf. `CLAUDE.md` § Batching, cas trivial
+     sans batch actif exempté) pour confirmer l'absence de chevauchement.
+   - Créer ou réutiliser le worktree du batch :
+     `git worktree add -b <branch> <worktree> main` (valeurs du JSON ;
+     `git worktree list` d'abord : s'il existe déjà, ne pas le recréer, y
+     compris sous un ancien slug `…-batch-<slug>-…`). `cd` dedans et
+     utiliser des chemins absolus de cette copie pour tout `Read`/`Edit`/
+     `Write` suivant.
+   - *Démarrage* : depuis le worktree,
+     `git mv crew/TODO/<task> crew/CURRENT_TASKS/<task>`, mettre à jour les
+     deux `INDEX.md`.
+
+4. **Le hook bloque (exit 2)** — verrou pris ou batch occupé entre le choix
+   et le claim (course entre sessions) : ne pas insister. Relancer l'étape 1
+   (le script voit maintenant le verrou et propose la tâche suivante). Ne
+   s'arrêter que sur `action: none`.
+
+5. **Implémenter** : relire le fichier de la tâche, traiter les actions
+   `- [ ]` dans l'ordre, avec les skills du routage de `CLAUDE.md`
+   (`test-driven-development`, `systematic-debugging`, `graphify`…). Cocher
+   chaque action quand elle est réellement finie (pas en avance, pas en lot).
+
+6. Toutes les actions cochées → enchaîner directement sur `crew-close-task`
+   (sans demander confirmation, elle fait partie du protocole).
 
 ## Ce que ce skill ne fait pas
 
 - Ne démarre jamais deux tâches de batchs différents dans la même
   invocation — un `/crew-start` = une tâche jusqu'à sa clôture (ou
-  jusqu'à blocage réel).
-- Ne pioche jamais dans `crew/ICEBOX/` ni dans la section « À
-  classer » de `CLAUDE_BATCH.md` — ces tâches ne sont pas prêtes à être
-  démarrées automatiquement.
-- Ne coche pas d'actions non réellement terminées pour avancer plus vite.
-- Ne saute pas la vérification anti-collision `manager` avant un
-  déplacement TODO → CURRENT_TASKS, même si un seul batch semble actif.
-- Ne remplace pas `/crew-close-task` — l'appelle en fin de tâche
-  plutôt que de dérouler la clôture à la main.
-- Ne reprend jamais automatiquement une tâche de `crew/PAUSED/` pour coder
-  dessus — elle attend une action humaine (cf. étape 1bis), pas une reprise
-  IA.
+  blocage réel).
+- Ne pioche jamais dans `crew/ICEBOX/` ni dans « À classer » sans
+  classification par `manager`.
+- Ne reprend jamais automatiquement une tâche de `crew/PAUSED/`.
+- Ne coche pas d'actions non terminées, ne saute pas le verrou/anti-collision.
+- Ne remplace pas `/crew-close-task` — l'appelle en fin de tâche.

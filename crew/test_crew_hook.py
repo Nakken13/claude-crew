@@ -1521,3 +1521,144 @@ def test_session_digest_survives_unreadable_batch_file(repo):
 def test_digest_tiny_cap_never_exceeds():
     d = h.build_session_digest(**_digest_kwargs(current=[("a.md", "T", 0, 1)]), cap=10)
     assert len(d) <= 10
+
+
+# --- next-task : choix deterministe de la tache pour /crew-start -----------
+
+def _batch_md(*sections):
+    return "# Batching\n\n" + "\n".join(sections)
+
+
+def _sec(name, zone, *slugs):
+    refs = "\n".join(f"{i}. `{s}` — t" for i, s in enumerate(slugs, 1))
+    return f"## Batch {name}\n\nZone : `{zone}`\n\n{refs}\n"
+
+
+def _put(dirs, folder, slug, body="# T\n- [ ] x\n"):
+    (dirs[folder] / slug).write_text(body, encoding="utf-8")
+
+
+def _lock(ctx, sid, tasks):
+    data = {"sessions": {sid: {"batch": None, "tasks": tasks, "worktree": None, "branch": None,
+                               "since": datetime.datetime.now().isoformat()}}}
+    (ctx / "crew_lock.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_next_task_nothing_when_all_empty(repo):
+    assert h.next_task("S1")["action"] == "none"
+
+
+def test_next_task_starts_first_todo_of_first_inactive_batch(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    for s in ("a2.md", "a1.md", "b1.md"):
+        _put(dirs, "TODO", s)
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "a1.md")  # ordre du batch, pas alphabetique/inverse
+    assert r["batch"].startswith("Batch A")
+    assert r["worktree"].endswith("-batch-a") and r["branch"] == "crew/batch-a"
+
+
+def test_next_task_resumes_current_task_not_locked(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("resume", "a1.md")
+
+
+def test_next_task_resume_prefers_most_advanced(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n- [ ] z\n")
+    _put(dirs, "CURRENT_TASKS", "a2.md", "# T\n- [x] x\n- [x] y\n- [ ] z\n")
+    assert h.next_task("S1")["task"] == "a2.md"
+
+
+def test_next_task_locked_current_falls_back_to_independent_todo(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "TODO", "b1.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "b1.md")
+    assert any(s["slug"] == "a1.md" and "verrou" in s["reason"] for s in r["skipped"])
+
+
+def test_next_task_own_lock_is_not_a_conflict(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _lock(ctx, "S1", ["a1.md"])
+    assert h.next_task("S1")["action"] == "resume"
+
+
+def test_next_task_skips_batch_active_in_other_session_even_for_todo_sibling(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "TODO", "a2.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {s["slug"] for s in r["skipped"]} >= {"a1.md", "a2.md"}
+
+
+def test_next_task_skips_batch_with_paused_task(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "PAUSED", "a1.md")
+    _put(dirs, "TODO", "a2.md")
+    _put(dirs, "TODO", "b1.md")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "b1.md")
+    assert r["paused"] == ["a1.md"]
+
+
+def test_next_task_skips_candidate_whose_zone_overlaps_active_batch(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "src/b/", "b1.md"), _sec("C", "docs/", "c1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    _put(dirs, "TODO", "b1.md")
+    _put(dirs, "TODO", "c1.md")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "c1.md")
+    assert any(s["slug"] == "b1.md" and "chevauche" in s["reason"] for s in r["skipped"])
+
+
+def test_next_task_unclassified_todo_asks_classification(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/")) + "\n## À classer\n\n- `orphan.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "orphan.md")
+    _put(dirs, "TODO", "other-orphan.md")
+    r = h.next_task("S1")
+    assert r["action"] == "classify"
+    assert r["unclassified"] == ["orphan.md", "other-orphan.md"]
+
+
+def test_next_task_ignores_index_readme_and_icebox(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "ICEBOX", "a1.md")
+    assert h.next_task("S1")["action"] == "none"
+
+
+def test_next_task_is_readonly(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    h.next_task("S1")
+    assert before == {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+
+
+def test_main_next_task_cli_prints_json(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    monkeypatch.setattr(sys, "argv", ["crew_hook.py", "next-task"])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "S1")
+    h.main()
+    assert json.loads(capsys.readouterr().out)["task"] == "a1.md"

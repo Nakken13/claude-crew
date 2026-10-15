@@ -612,15 +612,22 @@ def slugs_by_batch_section(text):
     inter-batchs, cf. check_zone_overlaps)."""
     sections = []
     headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
+    # La section « À classer » (zone inconnue) n'est pas un batch : elle borne
+    # la derniere section au lieu d'etre avalee dedans.
+    unclassified = re.search(r"^#{2,3}\s*[AÀ] classer\b", text, re.MULTILINE | re.IGNORECASE)
     for i, m in enumerate(headers):
         start = m.end()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        if unclassified and start < unclassified.start() < end:
+            end = unclassified.start()
         body = text[start:end]
         raw_refs = re.findall(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`", body)
         slugs = set(raw_refs)
+        ordered = list(dict.fromkeys(raw_refs))  # ordre d'apparition = sequencement voulu du batch
         zone_match = re.search(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", body, re.MULTILINE)
         zone_paths = set(re.findall(r"`([^`]+)`", zone_match.group(1))) if zone_match else set()
-        sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths})
+        sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths,
+                         "ordered": ordered})
     return sections
 
 
@@ -1477,7 +1484,79 @@ def session_digest(session_id):
     )
 
 
+def _task_names(d):
+    return [f.name for f in sorted(d.glob("*.md"))
+            if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
+
+
+def next_task(session_id):
+    """Choix deterministe de la tache pour `/crew-start` (lecture seule : ni
+    verrou, ni deplacement — le skill les pose ensuite via le marqueur
+    `crew-resume:` ou le `git mv`, que gate_pretooluse verifie sous mutex).
+    Retourne un dict `action` in {resume, start, classify, none} + `task`,
+    `batch`, `worktree`, `branch` quand applicable, `skipped` [{slug, reason}]
+    pour tout candidat ecarte, `paused`, `unclassified` (TODO absentes de tout
+    batch) et `ambiguous` (ex-aequo sur la reprise)."""
+    sections = load_sections()
+    locks = load_locks()
+    now_dt = datetime.datetime.now()
+    locks = {"sessions": {sid: i for sid, i in locks.get("sessions", {}).items() if not _session_expired(i, now_dt)}}
+    owners = _slug_session_map(locks)
+    rows = _digest_task_rows(DIRS["CURRENT_TASKS"])
+    current = [r[0] for r in rows]
+    paused = _task_names(DIRS["PAUSED"])
+    todo = _task_names(DIRS["TODO"])
+    skipped = []
+    out = {"action": "none", "paused": paused, "skipped": skipped,
+           "unclassified": [t for t in todo if find_section_for(t, sections) is None]}
+
+    mine = []
+    for name, _title, done, _total in rows:
+        owner = owners.get(name)
+        if owner and owner != session_id:
+            skipped.append({"slug": name, "reason": f"verrou : repris par la session {str(owner)[:8]}"})
+        else:
+            mine.append((done, name))
+    if mine:
+        best = max(d for d, _ in mine)
+        tied = sorted(n for d, n in mine if d == best)
+        out.update(action="resume", task=tied[0])
+        if len(tied) > 1:
+            out["ambiguous"] = tied
+        sec = find_section_for(tied[0], sections)
+        if sec:
+            out["batch"] = _batch_key(sec["header"])
+            out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
+        return out
+
+    held = set(current) | set(paused)
+    active = [s for s in sections if s["slugs"] & held or _section_lock_sessions(s, locks, owners) - {session_id}]
+    for sec in sections:
+        cands = [t for t in sec["ordered"] if t in todo]
+        if not cands:
+            continue
+        if sec in active:
+            skipped += [{"slug": t, "reason": f"batch actif : {_batch_key(sec['header'])}"} for t in cands]
+            continue
+        if not sec["zone_paths"]:
+            skipped += [{"slug": t, "reason": f"zone inconnue : {_batch_key(sec['header'])}"} for t in cands]
+            continue
+        clash = next((a for a in active if any(_path_overlaps(x, y) for x in sec["zone_paths"] for y in a["zone_paths"])), None)
+        if clash:
+            skipped += [{"slug": t, "reason": f"zone chevauche le batch actif {_batch_key(clash['header'])}"} for t in cands]
+            continue
+        out.update(action="start", task=cands[0], batch=_batch_key(sec["header"]))
+        out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
+        return out
+    if out["unclassified"]:
+        out["action"] = "classify"
+    return out
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "next-task":
+        print(json.dumps(next_task(os.environ.get("CLAUDE_CODE_SESSION_ID")), ensure_ascii=False))
+        return
     try:
         raw = sys.stdin.read()
     except Exception:
