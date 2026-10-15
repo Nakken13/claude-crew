@@ -623,11 +623,12 @@ def slugs_by_batch_section(text):
         body = text[start:end]
         raw_refs = re.findall(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`", body)
         slugs = set(raw_refs)
+        struck = set(re.findall(r"~~\s*`(?:[\w\-./]*/)?([\w\-.]+\.md)`\s*~~", body))  # taches cloturees
         ordered = list(dict.fromkeys(raw_refs))  # ordre d'apparition = sequencement voulu du batch
         zone_match = re.search(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", body, re.MULTILINE)
         zone_paths = set(re.findall(r"`([^`]+)`", zone_match.group(1))) if zone_match else set()
         sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths,
-                         "ordered": ordered})
+                         "ordered": ordered, "struck": struck})
     return sections
 
 
@@ -1553,7 +1554,102 @@ def next_task(session_id):
     return out
 
 
+def _zones_overlap(a, b):
+    """Premiere paire de chemins qui se chevauchent entre deux sections (ou None)."""
+    return next(((x, y) for x in a["zone_paths"] for y in b["zone_paths"] if _path_overlaps(x, y)), None)
+
+
+def _is_placeholder_section(sec):
+    return "<" in sec["header"] or any("<" in z for z in sec["zone_paths"])
+
+
+def count_batches():
+    """Rapport lecture seule pour `/crew-count` : batchs actifs, lancables en
+    parallele (zones disjointes des actifs ET entre eux, ordre du fichier =
+    priorite), exclus (chevauchement). Un batch sans tache restante (toutes
+    barrees) ou a placeholder de template est ignore (le second est signale)."""
+    held = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+    active, launchable, excluded, placeholders = [], [], [], []
+    secs = []
+    for sec in load_sections():
+        if _is_placeholder_section(sec):
+            placeholders.append(_batch_key(sec["header"]))
+            continue
+        remaining = [t for t in sec["ordered"] if t not in sec["struck"]]
+        if remaining:
+            secs.append((sec, remaining))
+    info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem)}
+    taken = []  # sections actives puis lancables retenues, dans l'ordre
+    for sec, rem in secs:
+        if set(rem) & held:
+            active.append(info(sec, rem))
+            taken.append(sec)
+    for sec, rem in secs:
+        if set(rem) & held:
+            continue
+        clash = next(((o, _zones_overlap(sec, o)) for o in taken if _zones_overlap(sec, o)), None)
+        if not sec["zone_paths"]:
+            excluded.append({**info(sec, rem), "reason": "zone inconnue"})
+        elif clash:
+            o, (x, y) = clash
+            excluded.append({**info(sec, rem), "reason": f"chevauche {_batch_key(o['header'])} ({x} / {y})"})
+        else:
+            launchable.append(info(sec, rem))
+            taken.append(sec)
+    return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
+            "excluded": excluded, "placeholders": placeholders}
+
+
+def _orphan_worktrees(locks):
+    """Worktrees `*-batch-*` presents sur disque sans session qui les porte."""
+    try:
+        out = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=str(MAIN_ROOT),
+                             capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return []
+    norm = lambda x: str(pathlib.Path(x).resolve()).replace("\\", "/").lower()
+    known = {norm(MAIN_ROOT / i["worktree"]) for i in locks.get("sessions", {}).values() if i.get("worktree")}
+    paths = [l[len("worktree "):].strip() for l in out.splitlines() if l.startswith("worktree ")]
+    return [w for w in paths if "-batch-" in pathlib.Path(w).name and norm(w) not in known]
+
+
+def crew_status():
+    """Rapport lecture seule pour `/crew-status`."""
+    sections = [s for s in load_sections() if not _is_placeholder_section(s)]
+    current = _digest_task_rows(DIRS["CURRENT_TASKS"])
+    paused = _task_names(DIRS["PAUSED"])
+    held = {r[0] for r in current} | set(paused)
+    active = [s for s in sections if s["slugs"] & held]
+    overlaps = []
+    for i, a in enumerate(active):
+        for b in active[i + 1:]:
+            hit = _zones_overlap(a, b)
+            if hit:
+                overlaps.append({"batches": [_batch_key(a["header"]), _batch_key(b["header"])], "paths": list(hit)})
+    tests = []
+    for f in sorted(DIRS["TESTS/IA"].glob("*.md")) if DIRS["TESTS/IA"].exists() else []:
+        if f.name in ("INDEX.md", "README.md"):
+            continue
+        n = sum(1 for m in _CHECKBOX_RE.findall(f.read_text(encoding="utf-8")) if m == " ")
+        if n:
+            tests.append({"file": f.name, "unchecked": n})
+    return {
+        "active_batches": [{"name": _batch_key(s["header"]), "zone": sorted(s["zone_paths"])} for s in active],
+        "zone_overlaps": overlaps,
+        "current": [{"slug": r[0], "done": r[2], "total": r[3]} for r in current],
+        "paused": paused,
+        "tests_ia_unchecked": tests,
+        "todo_orphans": [t for t in _task_names(DIRS["TODO"]) if find_section_for(t, sections) is None],
+        "bootstrap_pending": (ROOT / "check_placeholders.py").exists(),
+        "orphan_worktrees": _orphan_worktrees(load_locks()),
+    }
+
+
 def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else None
+    if cmd in ("count", "status"):
+        print(json.dumps(count_batches() if cmd == "count" else crew_status(), ensure_ascii=False))
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "next-task":
         print(json.dumps(next_task(os.environ.get("CLAUDE_CODE_SESSION_ID")), ensure_ascii=False))
         return

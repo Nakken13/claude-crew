@@ -8,6 +8,17 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Token audit** — `crew_hook.py` gains read-only `next-task`, `count` and
+  `status` commands (JSON). `/crew-start`, `/crew-count` and `/crew-status`
+  now call them instead of re-deriving the logic in prose (`/crew-start`
+  154 → ~85 lines, count/status ~600/340 → ~230/260 words). `/crew-start` no
+  longer stops on a lock or zone collision: it skips that task and tries the
+  next independent one. Parser: the « À classer » section is no longer
+  swallowed by the last batch. `CLAUDE.md`: persona dispatch only when ≥2 real
+  options (was « 1 % chance, non-negotiable »), review/simplify conditional on
+  diff size, graphify block conditional, UI skill lines merged. Persona
+  descriptions shortened.
+
 ## [0.2.2] - 2026-10-02
 
 - **Fixed zone-overlap false positives** — `check_zone_overlaps` counted any

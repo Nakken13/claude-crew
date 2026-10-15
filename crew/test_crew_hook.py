@@ -1662,3 +1662,64 @@ def test_main_next_task_cli_prints_json(repo, monkeypatch, capsys):
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "S1")
     h.main()
     assert json.loads(capsys.readouterr().out)["task"] == "a1.md"
+
+
+# --- count / status : rapports deterministes (skills crew-count / crew-status) ---
+
+def test_count_launchable_active_and_overlap(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/a/", "a1.md"),
+        _sec("B", "src/", "b1.md"),          # chevauche A (actif) -> exclu
+        _sec("C", "docs/", "c1.md"),
+        _sec("D", "docs/guide/", "d1.md"),   # chevauche C (lancable) -> exclu
+        _sec("E", "x/", "e1.md") .replace("`e1.md`", "~~`e1.md`~~"),  # tout barre -> ignore
+    ), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    for s in ("b1.md", "c1.md", "d1.md"):
+        _put(dirs, "TODO", s)
+    r = h.count_batches()
+    assert r["launchable_count"] == 1
+    assert [b["name"] for b in r["launchable"]] == ["Batch C"]
+    assert [b["name"] for b in r["active"]] == ["Batch A"]
+    ex = {b["name"]: b["reason"] for b in r["excluded"]}
+    assert "chevauche" in ex["Batch B"] and "chevauche" in ex["Batch D"]
+    assert "Batch E" not in ex and r["launchable"][0]["remaining"] == 1
+
+
+def test_count_ignores_template_placeholders_and_reports_them(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("<A>", "<fichiers/modules>", "<slug>.md")), encoding="utf-8")
+    r = h.count_batches()
+    assert r["launchable_count"] == 0 and r["placeholders"] == ["Batch <A>"]
+
+
+def test_status_reports_current_paused_orphans_and_overlaps(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n")
+    _put(dirs, "PAUSED", "b1.md")
+    _put(dirs, "TODO", "orphan.md")
+    (dirs["TESTS/IA"] / "feat.md").write_text("- [x] ok\n- [ ] todo\n", encoding="utf-8")
+    (dirs["TESTS/IA"] / "done.md").write_text("- [x] ok\n", encoding="utf-8")
+    r = h.crew_status()
+    assert r["current"] == [{"slug": "a1.md", "done": 1, "total": 2}]
+    assert r["paused"] == ["b1.md"]
+    assert r["todo_orphans"] == ["orphan.md"]
+    assert r["tests_ia_unchecked"] == [{"file": "feat.md", "unchecked": 1}]
+    assert [b["name"] for b in r["active_batches"]] == ["Batch A", "Batch B"]
+    assert len(r["zone_overlaps"]) == 1
+
+
+def test_status_is_readonly(repo):
+    root, dirs, ctx = repo
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    h.crew_status(); h.count_batches()
+    assert before == {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("cmd", ["count", "status"])
+def test_main_report_cli_prints_json(repo, monkeypatch, capsys, cmd):
+    monkeypatch.setattr(sys, "argv", ["crew_hook.py", cmd])
+    h.main()
+    assert isinstance(json.loads(capsys.readouterr().out), dict)

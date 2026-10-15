@@ -1,28 +1,20 @@
 ## graphify
 
-Graphe de connaissance dans `graphify-out/` (créé par `graphify init`).
-
-- Questions sur le code : `graphify query "<question>"` d'abord dès que `graphify-out/graph.json` existe ; `graphify path "<A>" "<B>"` pour les relations, `graphify explain "<concept>"` pour un concept.
-- `graphify-out/wiki/index.md` (s'il existe) pour la navigation large.
-- **Ne jamais lire `graph.json` / `GRAPH_REPORT.md` en entier.**
-- Après modification de code : `graphify update .` (AST only, sans coût API).
+Si `graphify-out/graph.json` existe : `graphify query "<question>"` avant toute lecture brute (`path "<A>" "<B>"`, `explain "<concept>"`) ; `graphify-out/wiki/index.md` pour la vue large ; **jamais** `graph.json`/`GRAPH_REPORT.md` en entier ; `graphify update .` après modif de code (AST, sans coût API). Sinon, ignorer cette section.
 
 ## Routage des skills
 
 Adapter/retirer les lignes hors stack.
 
 - Architecture/exploration avant lecture brute → `graphify`.
-- Nouveau composant/page ou refonte visuelle → `designer` si parcours/specs non tranchés, puis `design-taste-frontend` (obligatoire, anti-slop), `frontend-design`, `ui-ux-pro-max`.
-- Audit/retouche d'un écran existant → `impeccable`.
-- Animation React Native → `motion-design-rn` + `accessibility-motion` (toujours les deux, reduced-motion obligatoire à chaque animation) ; `haptics` si retour tactile ; `sound-design-ui` seulement si un son est envisagé (défaut : pas de son).
-- Chart/graphique → `dataviz` avant le code.
+- UI (adapter à la stack) : nouveau composant/refonte → `designer` si parcours/specs non tranchés, puis `design-taste-frontend` (anti-slop), `frontend-design`, `ui-ux-pro-max` ; audit/retouche d'un écran → `impeccable` ; chart → `dataviz` avant le code ; animation RN → `motion-design-rn` + `accessibility-motion` (reduced-motion obligatoire), `haptics` si tactile, pas de son par défaut.
 - Bug/test qui échoue → `systematic-debugging` avant tout fix.
 - Feature ou fix → `test-driven-development` (test avant code). Feature ambiguë → `brainstorming` d'abord.
 - 2+ tâches indépendantes → `dispatching-parallel-agents` ; isolation du workspace → `using-git-worktrees` ; plan avec tâches indépendantes en session → `subagent-driven-development`.
 - Auth/tokens/chiffrement/secrets → `security-review` avant merge (`security-guidance` en complément).
 - Frontend créé ou retouché : testé responsive (mobile/tablette/desktop) et validé visuellement (`run` puis `playwright` ou `claude-in-chrome`) avant de déclarer fini — un build qui passe ne suffit pas.
 - Test navigateur scriptable avec `playwright` → `crew/TESTS/IA`, pas `DEV`.
-- Fin de tâche : `requesting-code-review` puis `simplify` avant de committer ; retour de review reçu → `receiving-code-review` ; branche prête → `finishing-a-development-branch`.
+- Fin de tâche : `requesting-code-review` puis `simplify` avant de committer **si le diff dépasse ~50 lignes ou touche un fichier moteur/auth/hook** (docs seules, renommage, typo : `verification-before-completion` suffit) ; retour de review reçu → `receiving-code-review` ; branche prête → `finishing-a-development-branch`.
 - Avant d'affirmer « fait/testé/ça marche » → `verification-before-completion` (lancer réellement les tests). Les diagnostics LSP ne remplacent pas la suite de tests/le build.
 - Après modif durable de `CLAUDE.md`/`AGENTS.md`/règles crew → `claude-md-management`.
 - LLM/agent : vérifier le provider réel (`grep`) avant `claude-api`.
@@ -30,17 +22,17 @@ Adapter/retirer les lignes hors stack.
 
 ## Personas (subagents `.claude/agents/`) — routage obligatoire
 
-Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. **S'il y a ne serait-ce que 1 % de chance qu'une persona s'applique, la dispatcher — non négociable.**
+Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. Dispatcher une persona quand la décision a ≥2 options réelles dans son domaine, ou que l'utilisateur la demande ; pas pour une question dont la réponse est évidente ou déjà tranchée (chaque dispatch ouvre un subagent complet). `legal` : dès qu'un déclencheur de sa liste est nouveau.
 
 - Arbitrage business/priorisation/scope, « ça vaut le coup ? » → `ceo` (lecture seule).
 - Découpage en tâches, batches, séquencement → `manager` (écrit sous `crew/`).
-- **Démarrage d'une tâche existante** (`TODO/` → `CURRENT_TASKS/`) → `manager` aussi, pour l'anti-collision de fichiers (cf. § Batching, cas trivial inclus) — jamais de déplacement de fichier nu.
+- **Démarrage d'une tâche existante** (`TODO/` → `CURRENT_TASKS/`) → `/crew-start` (son script `next-task` fait l'anti-collision de zones, sans persona) ; `manager` seulement pour classer une tâche sans batch. Jamais de déplacement de fichier nu.
 - Copy marketing/landing/email/ton de marque → `comms` (vérifier `AGENTS.md` pour le ton d'un agent produit).
 - Choix technique structurant (2+ approches, refactor maintenant ou plus tard) → `architect` (lecture seule).
 - Décision UX/UI (parcours, hiérarchie, rétention, specs chiffrées, conventions plateforme) → `designer` (lecture seule ; retouche d'un écran → `impeccable`).
 - Exposition juridique nouvelle (données perso, SDK tiers, paiement, mineurs, IA, contenu utilisateur, scraping, licence, secteur réglementé, nouveau pays) → `legal` (lecture seule) avant de coder.
 
-Rationalisations à rejeter (« c'est rapide », « question simple », « juste un écran », « sûrement aucun enjeu juridique ») → dispatcher quand même. Pas d'implémentation par les personas ; doute entre deux → la plus proche du cœur de la demande.
+Pas d'implémentation par les personas ; doute entre deux → la plus proche du cœur de la demande.
 
 ## Commandes dédiées crew (`/crew-*`)
 
@@ -65,14 +57,10 @@ Validée → cases cochées ; un test IA entièrement coché → crew/CLAUDE_CON
 
 Source unique = dossiers `crew/` (un `TODO.md`/`PROBLEMS.md` racine n'est qu'un pointeur).
 
-### 0. `PROBLEMS/` — inbox
-Un fichier par bug/friction (`🔴`/`🟡`/`✅`) ; devient une tâche `TODO/` quand planifié.
-
-### 1. `TODO/` — backlog
-Uniquement des tâches jamais commencées, actions en `- [ ]`. À l'ajout : catégoriser dans `crew/CLAUDE_BATCH.md`.
+### 0-1. `PROBLEMS/` (inbox : un fichier par bug/friction, `🔴`/`🟡`/`✅`) → `TODO/` (backlog : jamais commencées, actions en `- [ ]`, catégorisées dans `crew/CLAUDE_BATCH.md` à l'ajout)
 
 ### 2. Démarrer → déplacer vers `CURRENT_TASKS/`
-Anti-collision obligatoire avant tout déplacement (`manager`, cf. § Batching). Tenir les cases à jour. `ICEBOX/` : jamais démarrée directement, repasser par `TODO/`.
+Anti-collision obligatoire avant tout déplacement (`/crew-start`, cf. § Batching). Tenir les cases à jour. `ICEBOX/` : jamais démarrée directement, repasser par `TODO/`.
 
 ### 2bis. `PAUSED/` — bloquée en attente de validation dev
 Tâche déjà démarrée dont la suite dépend d'une action humaine (rendu visuel, device réel, réponse externe) : `git mv` vers `PAUSED/`, retour dans `CURRENT_TASKS/` une fois validée. Compte comme active pour l'anti-collision. Jamais reprise automatiquement par l'IA.
@@ -92,7 +80,7 @@ Supprimer le fichier de `CURRENT_TASKS/`, historiser dans `HISTORIQUE.md`, sorti
 **Invariant : les zones de deux batchs actifs (≥1 tâche en `CURRENT_TASKS/` ou `PAUSED/`) sont disjointes** ; fichiers partagés → même batch.
 
 ### Vérification anti-collision avant de démarrer une tâche
-Si `CURRENT_TASKS/` et `PAUSED/` sont vides, aucun batch actif : le vérifier par listing et démarrer sans `manager`. Sinon `manager` : (1) zone de la tâche ; (2) batchs actifs et leur `Zone :` ; (3) chevauchement avec un autre batch → ne pas démarrer, signaler au user ; (4) sinon démarrer. Le hook Stop avertit (non bloquant) des chevauchements manqués ; `/crew-status` pour une vue à la demande.
+`crew_hook.py next-task` (lancé par `/crew-start`) la fait de façon déterministe : verrous des autres sessions, batchs actifs (`CURRENT_TASKS/`, `PAUSED/`), chevauchement de `Zone :` → candidat écarté, suivant essayé ; rien de démarrable → signaler au user. Démarrage manuel hors `/crew-start` : appliquer les mêmes règles à la main. Le hook Stop avertit (non bloquant) des chevauchements manqués ; `/crew-status` pour une vue à la demande.
 
 ## Efficience de contexte
 

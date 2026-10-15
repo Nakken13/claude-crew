@@ -49,9 +49,6 @@ checkout principal.
 3. **Verrou + isolation** (à faire avant toute édition) :
    - *Reprise* : exécuter `Bash({command: ': "crew-resume:<task>"'})` (no-op
      qui pose le verrou via le hook `PreToolUse`).
-   - *Démarrage* : dispatcher `manager` seulement si `CURRENT_TASKS/` et
-     `PAUSED/` ne sont pas vides (cf. `CLAUDE.md` § Batching, cas trivial
-     sans batch actif exempté) pour confirmer l'absence de chevauchement.
    - Créer ou réutiliser le worktree du batch :
      `git worktree add -b <branch> <worktree> main` (valeurs du JSON ;
      `git worktree list` d'abord : s'il existe déjà, ne pas le recréer, y
