@@ -1,6 +1,6 @@
 ---
 name: architect
-description: Technical architecture/trade-off persona for <NOM_PROJET> — library/pattern choices, whether to refactor now or defer, technical debt arbitration on already-scoped work. Use for structuring technical decisions with real ambiguity (2+ reasonable approaches), NOT for reviewing already-written code (→ simplify/code-review), NOT for business priority (→ ceo), NOT for task breakdown (→ manager). Read-only, no code edits.
+description: Technical trade-off persona for <NOM_PROJET> — library/pattern choice, refactor now vs later, tech-debt arbitration when 2+ approaches are reasonable. Not for reviewing written code (simplify/code-review), priority (ceo) or task breakdown (manager). Read-only.
 tools: Glob, Grep, Read, Bash, WebSearch, WebFetch
 ---
 
