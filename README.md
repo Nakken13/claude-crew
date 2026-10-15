@@ -22,7 +22,7 @@
 > Claude Code forgets everything between sessions. Run two instances on the
 > same repo and they'll happily edit the same files at the same time, with no
 > warning. `claude-crew` fixes both — with markdown files and two stdlib-only
-> Python hooks. No server, no DB, no dashboard.
+> Python hooks. No server, no DB (the web dashboard is optional).
 >
 > **Install in one command, working in five minutes, nothing to host.**
 
@@ -195,6 +195,30 @@ Once it's running, four commands drive day-to-day work:
 - ✅ `/crew-close-task` — close a finished task: checks, history, tests moved out
 - 📊 `/crew-status` — read-only report: active batches, overlaps, orphaned tasks
 - 🔄 `/crew-update` — pull engine-file changes into an already-bootstrapped project
+
+<br>
+
+## 📊 Optional: local web dashboard
+
+A read/write web UI over your `crew/` folders (tasks, batches, tests). Local
+only (`127.0.0.1`), optional — the hooks work fine without it.
+
+**From Claude Code:** run `/crew-dashboard`.
+
+**Standalone (Windows, no Claude session):** double-click `crew/dashboard.bat`,
+or from the repo root:
+
+```bat
+crew\dashboard.bat
+```
+
+First run creates an isolated venv (`.dashboard-venv/`) and installs
+`scripts/dashboard/requirements.txt`; later runs reuse it. Needs Python 3 on
+the `PATH` (`py` or `python`).
+
+Then open the URL printed in the terminal — default `http://127.0.0.1:8943`;
+if that port is taken, a free one is picked and printed instead. `Ctrl+C` in
+the terminal stops the server.
 
 <br>
 
