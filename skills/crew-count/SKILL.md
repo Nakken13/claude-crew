@@ -14,21 +14,15 @@ ROOT="$(git rev-parse --show-toplevel)"; HOOK="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLU
 CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" count
 ```
 
-   Sortie JSON : `launchable_count`, `launchable[]`, `active[]`, `excluded[]`
-   (avec `reason`), `placeholders[]`. Chaque batch : `name`, `zone`,
-   `remaining`. Le script ignore déjà les tâches barrées (`~~…~~`), les
-   batchs sans tâche restante, la section « À classer » (zone inconnue) et
-   les placeholders de template (`<...>`), et vérifie la disjonction de
-   zones actifs + lançables entre eux.
+   Sortie JSON : `launchable_count`, `launchable[]` (`name`, `zone`, `remaining`,
+   `task` = titre de session), `active[]`, `excluded[]`, `placeholders[]` et
+   **`report`** : texte markdown déjà rendu (nombre exact + tableau
+   titre/batch/zone + actifs/exclus en une ligne).
 
-2. Répondre, dans cet ordre :
-   - le **nombre** `launchable_count` en tête (`0` dit explicitement, avec la
-     raison dominante : tout actif, tout clôturé ou tout en « À classer ») ;
-   - les batchs lançables : nom, `Zone :`, tâches restantes ;
-   - les batchs **déjà actifs** (informatif, hors du compte) ;
-   - les **exclus** : nom + `reason` (batchs et chemins en commun) —
-     avertissement explicite, jamais compté ;
-   - `placeholders` non vide : « placeholder non résolu, ignoré ».
+2. Répondre en affichant **`report` tel quel**, rien d'autre (pas de
+   reformulation, pas de rappel des règles). Chaque titre de la colonne
+   « Titre de session » est le slug de la tâche à donner au terminal
+   (`/rename` ou premier message) ; `/crew-start` la reprend.
 
 ## Ce que ce skill ne fait pas
 

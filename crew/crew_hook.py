@@ -1485,6 +1485,24 @@ def session_digest(session_id):
     )
 
 
+def session_title(session_id, payload):
+    """Titre (slug de la tache) pour le `sessionTitle` de SessionStart ; None si
+    la session est deja nommee, si la source n'est pas startup/resume/fork, ou si
+    la tache est ambigue. Verrou de cette session d'abord, sinon l'unique tache de
+    CURRENT_TASKS non verrouillee par une autre session. Lecture seule."""
+    if payload.get("session_title") or payload.get("source") not in ("startup", "resume", "fork"):
+        return None
+    now_dt = datetime.datetime.now()
+    sessions = load_locks().get("sessions", {})
+    names = [n for n in sessions.get(session_id, {}).get("tasks") or [] if isinstance(n, str)]
+    if not names:
+        taken = {t for sid, info in sessions.items()
+                 if sid != session_id and not _session_expired(info, now_dt)
+                 for t in info.get("tasks") or []}
+        names = [n for n in _task_names(DIRS["CURRENT_TASKS"]) if n not in taken]
+    return names[0].removesuffix(".md") if len(names) == 1 else None
+
+
 def _task_names(d):
     return [f.name for f in sorted(d.glob("*.md"))
             if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
@@ -1578,7 +1596,8 @@ def count_batches():
         remaining = [t for t in sec["ordered"] if t not in sec["struck"]]
         if remaining:
             secs.append((sec, remaining))
-    info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem)}
+    info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem),
+                                  "task": rem[0].removesuffix(".md")}
     taken = []  # sections actives puis lancables retenues, dans l'ordre
     for sec, rem in secs:
         if set(rem) & held:
@@ -1597,7 +1616,28 @@ def count_batches():
             launchable.append(info(sec, rem))
             taken.append(sec)
     return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
-            "excluded": excluded, "placeholders": placeholders}
+            "excluded": excluded, "placeholders": placeholders,
+            "report": _count_report(launchable, active, excluded, placeholders)}
+
+
+def _count_report(launchable, active, excluded, placeholders):
+    """Rendu texte compact de `/crew-count` : nombre de terminaux et, par terminal,
+    le titre de session (= slug de la prochaine tache du batch)."""
+    n = len(launchable)
+    if n:
+        lines = [f"**{n} {'terminaux' if n > 1 else 'terminal'} en parallele**", "",
+                 "| Titre de session | Batch | Zone |", "|---|---|---|"]
+        lines += [f"| `{b['task']}` | {b['name']} | {', '.join(b['zone'])} |" for b in launchable]
+    else:
+        why = "tout actif" if active else "rien de lancable (batchs clos, 'A classer' ou zones en conflit)"
+        lines = [f"**0 terminal** : {why}"]
+    if active:
+        lines.append("Actifs : " + ", ".join(b["name"] for b in active))
+    if excluded:
+        lines.append("Exclus : " + " ; ".join(f"{b['name']} ({b['reason']})" for b in excluded))
+    if placeholders:
+        lines.append("Placeholder non resolu, ignore : " + ", ".join(placeholders))
+    return "\n".join(lines)
 
 
 def _orphan_worktrees(locks):
@@ -1670,12 +1710,15 @@ def main():
         # ce chemin ne doit rien ecrire.
         if os.environ.get("CREW_SESSION_DIGEST", "").strip().lower() == "off":
             return
+        out = {"hookEventName": "SessionStart"}
         digest = session_digest(session_id)
         if digest:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": digest,
-            }}))
+            out["additionalContext"] = digest
+        title = _safe(lambda: session_title(session_id, payload), None)
+        if title:
+            out["sessionTitle"] = title
+        if len(out) > 1:
+            print(json.dumps({"hookSpecificOutput": out}))
         return
 
     if hook_event == "PreToolUse":

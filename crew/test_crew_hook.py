@@ -1506,6 +1506,42 @@ def test_main_sessionstart_off_switch_is_silent(repo, monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+def _run_sessionstart(monkeypatch, capsys, **extra):
+    monkeypatch.delenv("CREW_SESSION_DIGEST", raising=False)
+    payload = {"hook_event_name": "SessionStart", "session_id": "S1", "source": "startup", **extra}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    return json.loads(capsys.readouterr().out)["hookSpecificOutput"]
+
+
+def test_sessionstart_title_from_single_unlocked_current_task(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "a1"
+
+
+def test_sessionstart_title_prefers_own_lock_over_others(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "CURRENT_TASKS", "b1.md")
+    now = datetime.datetime.now().isoformat()
+    h.save_locks({"sessions": {
+        "S1": {"batch": None, "tasks": ["b1.md"], "worktree": None, "branch": None, "since": now},
+        "S2": {"batch": None, "tasks": ["a1.md"], "worktree": None, "branch": None, "since": now},
+    }})
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "b1"
+
+
+def test_sessionstart_no_title_when_ambiguous_or_user_named(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "CURRENT_TASKS", "b1.md")
+    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys)
+    (dirs["CURRENT_TASKS"] / "b1.md").unlink()
+    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, session_title="mon nom")
+    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, source="compact")
+
+
 def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
     monkeypatch.setattr(h, "CREW", tmp_path / "absent")
     assert h.session_digest("S1") is None
@@ -1723,3 +1759,13 @@ def test_main_report_cli_prints_json(repo, monkeypatch, capsys, cmd):
     monkeypatch.setattr(sys, "argv", ["crew_hook.py", cmd])
     h.main()
     assert isinstance(json.loads(capsys.readouterr().out), dict)
+
+
+def test_count_report_gives_exact_count_and_session_titles(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"),
+                                      _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    r = h.count_batches()
+    assert [b["task"] for b in r["launchable"]] == ["a1", "b1"]
+    assert r["report"].startswith("**2 terminaux en parallele**")
+    assert "| `a1` | Batch A | src/a/ |" in r["report"]
