@@ -254,6 +254,39 @@ one of four statuses before anything is written:
 
 <br>
 
+## 🎓 Tutorial: update claude-crew
+
+**Plugin install (Option A/B)**
+
+1. Update the plugin itself (skills, agents, hooks):
+   ```
+   /plugin update claude-crew
+   ```
+2. Restart Claude Code so the new version is loaded.
+3. In each bootstrapped project, sync the project-level files:
+   ```
+   /crew-update
+   ```
+4. Review the report: `new` and `apply` are written for you; for every
+   `conflict`, check the diff and say whether to overwrite or keep your version.
+
+**Manual clone (Option C)**
+
+1. Pull the latest scaffold in your clone of claude-crew:
+   ```bash
+   git pull
+   ```
+2. In each bootstrapped project, run `/crew-update` — it also refreshes
+   `crew_hook.py`, `spec_to_task_hook.py`, and the local `.claude/skills/crew-*`/
+   `.claude/agents/*` copies.
+3. Review the report as above.
+
+Your `crew/` task data is never modified. See
+[Updating an existing project](#-updating-an-existing-project) for what each
+status means.
+
+<br>
+
 ## 🙅 Not for you if
 
 > [!NOTE]
