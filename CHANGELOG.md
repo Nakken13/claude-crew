@@ -8,6 +8,13 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-16
+
+- **Session title** — `crew_hook.py` names the session after its task via the
+  SessionStart `sessionTitle`.
+- **`/crew-count`** — compact report with the terminal count and session titles.
+- **README** — new « update » tutorial section.
+
 ## [0.3.0] - 2026-10-16
 
 - **Portable `crew/dashboard.bat`** — now shipped in `template/crew/` (copied by
