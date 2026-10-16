@@ -42,7 +42,7 @@ Exécution outillée du cycle de vie et du batching (procédures dans chaque ski
 - `/crew-new-task` — crée une tâche (`TODO/` ou `CURRENT_TASKS/`) avec batching.
 - `/crew-start` — reprend ou démarre une tâche (anti-collision, worktree par batch) jusqu'à la clôture.
 - `/crew-close-task` — clôture (revue, `simplify`, historique, tests).
-- `/crew-status` — rapport lecture seule ; `/crew-count` — batchs lançables en parallèle ; `/crew-dashboard` — dashboard web local.
+- `/crew-status` — rapport lecture seule ; `/crew-count` — batchs lançables en parallèle ; `/crew-dashboard` — dashboard web local ; `/crew-version` — version de claude-crew.
 
 ## Gestion des tâches — cycle de vie unique (modèle par dossiers)
 

@@ -8,6 +8,8 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **`/crew-version`** — prints the installed claude-crew version (`vX.X.X`).
+
 ## [0.3.1] - 2026-10-16
 
 - **Session title** — `crew_hook.py` names the session after its task via the
