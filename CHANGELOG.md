@@ -8,6 +8,8 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-16
+
 - **`/crew-version`** — prints the installed claude-crew version (`vX.X.X`).
 
 ## [0.3.1] - 2026-10-16
