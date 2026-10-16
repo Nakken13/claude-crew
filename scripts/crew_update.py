@@ -43,6 +43,7 @@ ENGINE_FILES_COMMON = [
     "CONTRIBUTING.md",
     "SECURITY.md",
     "check_placeholders.py",
+    "crew/dashboard.bat",
 ]
 
 # Fichiers moteur supplementaires, uniquement pour les projets bootstrapes

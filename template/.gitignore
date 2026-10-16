@@ -33,3 +33,6 @@ Thumbs.db
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Venv du crew-dashboard (crew/dashboard.bat)
+.dashboard-venv/

@@ -39,6 +39,8 @@ même travail mais avec son propre venv à la racine du projet
 `${CLAUDE_PLUGIN_ROOT}/.dashboard-venv` ci-dessus — `CLAUDE_PLUGIN_ROOT`
 n'existe pas hors d'une session Claude, donc les deux chemins sont
 délibérément distincts, pas une incohérence à corriger.
+Le `.bat` est copié par `/crew-init` (dossier `crew/`) et retrouve `server.py`
+dans le plugin installé (`%CREW_DASHBOARD_DIR%` > `scripts/dashboard/` > cache plugin).
 
 ## Tests (dev uniquement, pas partie du bootstrap ci-dessus)
 
