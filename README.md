@@ -212,9 +212,15 @@ or from the repo root:
 crew\dashboard.bat
 ```
 
-First run creates an isolated venv (`.dashboard-venv/`) and installs
-`scripts/dashboard/requirements.txt`; later runs reuse it. Needs Python 3 on
-the `PATH` (`py` or `python`).
+`crew/dashboard.bat` is copied into every project by `/crew-init` (and kept
+current by `/crew-update`). It finds the server in this order: `%CREW_DASHBOARD_DIR%`
+(manual override), `scripts/dashboard/` in the repo (claude-crew itself), then the
+newest installed plugin under `%USERPROFILE%\.claude\plugins\cache\claude-crew\`.
+So the plugin must be installed for it to work in other projects.
+
+First run creates an isolated venv (`.dashboard-venv/`) and installs the
+dashboard requirements; later runs reuse it. Needs Python 3 on the `PATH`
+(`py` or `python`).
 
 Then open the URL printed in the terminal — default `http://127.0.0.1:8943`;
 if that port is taken, a free one is picked and printed instead. `Ctrl+C` in
