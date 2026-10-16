@@ -59,6 +59,11 @@ checkout principal.
      `git mv crew/TODO/<task> crew/CURRENT_TASKS/<task>`, mettre à jour les
      deux `INDEX.md`.
 
+   - *Nommer la session* (démarrage uniquement ; en reprise le hook
+     SessionStart l'a déjà fait) : afficher à l'utilisateur
+     `/rename <slug de la tâche sans .md>` — un hook ne peut pas renommer une
+     session en cours, seul SessionStart le peut.
+
 4. **Le hook bloque (exit 2)** — verrou pris ou batch occupé entre le choix
    et le claim (course entre sessions) : ne pas insister. Relancer l'étape 1
    (le script voit maintenant le verrou et propose la tâche suivante). Ne
