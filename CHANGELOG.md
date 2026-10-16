@@ -8,6 +8,14 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
+- **Portable `crew/dashboard.bat`** — now shipped in `template/crew/` (copied by
+  `/crew-init`, kept current by `/crew-update`). It finds `server.py` via
+  `%CREW_DASHBOARD_DIR%`, then the repo's `scripts/dashboard/`, then the highest
+  installed plugin version in the Claude plugin cache; pauses on error when
+  double-clicked. Previously it only worked inside the claude-crew repo.
+  `.dashboard-venv/` added to the template `.gitignore`; `*.bat` forced to CRLF.
 - **Token audit** — `crew_hook.py` gains read-only `next-task`, `count` and
   `status` commands (JSON). `/crew-start`, `/crew-count` and `/crew-status`
   now call them instead of re-deriving the logic in prose (`/crew-start`
