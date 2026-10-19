@@ -22,7 +22,7 @@ Adapter/retirer les lignes hors stack.
 
 ## Personas (subagents `.claude/agents/`) — routage obligatoire
 
-Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. Dispatcher une persona quand la décision a ≥2 options réelles dans son domaine, ou que l'utilisateur la demande ; pas pour une question dont la réponse est évidente ou déjà tranchée (chaque dispatch ouvre un subagent complet). Seuil par persona : `legal` et `architect` strictes (déclencheur nouveau ou choix qui engage la suite → dispatcher, et en cas de doute réel sur le caractère « évident » aussi) ; `designer`, `ceo`, `comms` au jugement (≥2 options réelles).
+Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. Dispatcher une persona quand la décision a ≥2 options réelles dans son domaine, ou que l'utilisateur la demande ; pas pour une question dont la réponse est évidente ou déjà tranchée (chaque dispatch ouvre un subagent complet). Seuil par persona : `legal` et `architect` strictes (déclencheur nouveau ou choix qui engage la suite → dispatcher, et en cas de doute réel sur le caractère « évident » aussi) ; `designer`, `ceo`, `comms`, `social`, `seo` au jugement (≥2 options réelles).
 
 - Arbitrage business/priorisation/scope, « ça vaut le coup ? » → `ceo` (lecture seule).
 - Découpage en tâches, batches, séquencement → `manager` (écrit sous `crew/`).
@@ -30,7 +30,9 @@ Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures te
 - Copy marketing/landing/email/ton de marque → `comms` (vérifier `AGENTS.md` pour le ton d'un agent produit).
 - Choix technique structurant (2+ approches, refactor maintenant ou plus tard) → `architect` (lecture seule).
 - Décision UX/UI (parcours, hiérarchie, rétention, specs chiffrées, conventions plateforme) → `designer` (lecture seule ; retouche d'un écran → `impeccable`).
-- Exposition juridique nouvelle (données perso, SDK tiers, paiement, mineurs, IA, contenu utilisateur, scraping, licence, secteur réglementé, nouveau pays) → `legal` (lecture seule) avant de coder.
+- Exposition juridique nouvelle (données perso, SDK tiers, paiement, mineurs, IA, contenu utilisateur, scraping, licence, secteur réglementé, nouveau pays, influence/jeu-concours/prospection/allégations comparatives) → `legal` (lecture seule) avant de coder.
+- Distribution organique sur les réseaux sociaux (plateforme/format, rythme, accroches, pourquoi une vidéo plafonne, plan de test) → `social` (lecture seule ; rend un brief à `comms`).
+- Visibilité dans la recherche (Google, stores, réponses d'IA : indexation, mots-clés, schema.org, Core Web Vitals, ASO) → `seo` (lecture seule ; rend un brief à `comms`) — sans surface web publique ni fiche store, ne pas l'invoquer ; réseaux sociaux → `social`.
 
 Pas d'implémentation par les personas ; doute entre deux → la plus proche du cœur de la demande.
 
