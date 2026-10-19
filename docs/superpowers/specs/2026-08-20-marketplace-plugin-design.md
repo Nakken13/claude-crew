@@ -176,10 +176,10 @@ packaging unblocks but does not implement.
 
 ## Out of scope / follow-ups
 
-- Scrubbing the already-public `nahel` Windows path in
-  `crew/CLAUDE_CONTEXT/TESTS_DONE/rename-organized-to-crew.md` (would need
-  history rewrite + force-push; left as-is per user decision during this
-  session's pre-flight check).
+- Scrubbing a personal Windows path from
+  `crew/CLAUDE_CONTEXT/TESTS_DONE/rename-organized-to-crew.md` (removed from
+  HEAD later; still present in older commits, which would need a history
+  rewrite + force-push to purge).
 - Renaming the GitHub remote itself from `organized` to `claude-crew`
   (currently `origin` still points at `Nakken13/organized.git`) — separate,
   optional cleanup, not required for the plugin/marketplace to work.

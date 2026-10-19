@@ -10,7 +10,7 @@ les items sont exécutables par l'IA seule (🤖 auto / 🔍 commande directe).
       `.superpowers/sdd/` (record historique d'une review passée, à ne pas
       toucher), et `crew/CLAUDE_CONTEXT/.task_state.json` (snapshot
       auto-régénéré par le hook, non versionné). Vérifié le 2026-08-17.
-- [x] 🔍 Même grep sur `C:\Users\nahel\.claude\templates\project-scaffold\`
+- [x] 🔍 Même grep sur `~/.claude\templates\project-scaffold\`
       ne retourne aucune occurrence de `organized|orga_hook|ORGA|orga-`.
       Vérifié le 2026-08-17.
 - [x] 🤖 `python -m py_compile crew/crew_hook.py crew/spec_to_task_hook.py`
