@@ -409,3 +409,84 @@ def test_remove_double_hook_keeps_preexisting_empty_groups(tmp_path):
 
     after = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert after["hooks"]["Stop"] == [{"matcher": "", "hooks": []}]
+# --- personas : liste derivee d'un glob, pas d'une liste codee en dur -------
+
+def _persona(root, name, text):
+    d = root / ".claude" / "agents"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(text, encoding="utf-8")
+
+
+def test_legacy_static_list_carries_no_hardcoded_persona():
+    assert not [p for p in u.ENGINE_FILES_LEGACY if p.startswith(".claude/agents/")]
+
+
+def test_legacy_persona_files_come_from_agents_glob_of_project_and_source(project_root, source_root):
+    _persona(source_root, "persona-jamais-listee.md", "v2\n")
+    _persona(project_root, "ancienne.md", "v1\n")
+    assert u.legacy_persona_files(project_root, source_root) == [
+        ".claude/agents/ancienne.md",
+        ".claude/agents/persona-jamais-listee.md",
+    ]
+
+
+def test_customized_persona_is_never_overwritten(project_root, source_root):
+    _persona(project_root, "ceo.md", "v1\n")
+    _persona(source_root, "ceo.md", "v1\n")
+    u.seed(project_root, u.legacy_persona_files(project_root), "1.0.0")
+    _persona(project_root, "ceo.md", "v1 + voix de marque perso\n")
+    _persona(source_root, "ceo.md", "v2\n")
+
+    whitelist = u.legacy_persona_files(project_root, source_root)
+    decisions = u.plan(project_root, source_root, whitelist)
+    u.apply(project_root, source_root, decisions)
+
+    assert {d["path"]: d["status"] for d in decisions}[".claude/agents/ceo.md"] == "conflict"
+    assert (project_root / ".claude" / "agents" / "ceo.md").read_text(encoding="utf-8") == "v1 + voix de marque perso\n"
+
+
+def _run_main(monkeypatch, *argv):
+    monkeypatch.setattr(sys, "argv", ["crew_update.py", *argv])
+    u._main()
+
+
+def test_main_apply_creates_new_persona_and_keeps_project_only_persona(project_root, source_root, monkeypatch):
+    _persona(source_root, "ceo.md", "v2\n")
+    _persona(project_root, "mine.md", "ma persona perso\n")
+
+    _run_main(monkeypatch, "--project", str(project_root), "--source", str(source_root),
+              "--legacy", "--apply")
+
+    agents = project_root / ".claude" / "agents"
+    assert (agents / "ceo.md").read_text(encoding="utf-8") == "v2\n"
+    # absente de la source -> "removed", mais jamais supprimee ni modifiee
+    assert (agents / "mine.md").read_text(encoding="utf-8") == "ma persona perso\n"
+
+
+def test_main_seed_records_local_personas_without_a_source(project_root, monkeypatch):
+    _persona(project_root, "mine.md", "ma persona perso\n")
+
+    _run_main(monkeypatch, "--project", str(project_root), "--legacy",
+              "--seed", "--source-version", "1.0.0")
+
+    recorded = u.load_scaffold_version(project_root)["files"]
+    assert ".claude/agents/mine.md" in recorded
+
+
+def test_renamed_persona_old_file_is_reported_removed_and_never_deleted(project_root, source_root):
+    # upgrade growth -> social : le nouveau fichier est cree, l'ancien est
+    # signale (`removed`) mais jamais supprime ni modifie silencieusement
+    _persona(project_root, "growth.md", "v1\n")
+    _persona(source_root, "social.md", "v2\n")
+    u.seed(project_root, u.legacy_persona_files(project_root), "1.0.0")
+
+    whitelist = u.legacy_persona_files(project_root, source_root)
+    decisions = u.plan(project_root, source_root, whitelist)
+    u.apply(project_root, source_root, decisions)
+
+    statuses = {d["path"]: d["status"] for d in decisions}
+    assert statuses[".claude/agents/growth.md"] == "removed"
+    assert statuses[".claude/agents/social.md"] == "new"
+    agents = project_root / ".claude" / "agents"
+    assert (agents / "growth.md").read_text(encoding="utf-8") == "v1\n"
+    assert (agents / "social.md").read_text(encoding="utf-8") == "v2\n"

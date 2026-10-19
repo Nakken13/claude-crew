@@ -57,13 +57,17 @@ ENGINE_FILES_LEGACY = [
     ".claude/skills/crew-close-task/SKILL.md",
     ".claude/skills/crew-status/SKILL.md",
     ".claude/skills/crew-start/SKILL.md",
-    ".claude/agents/ceo.md",
-    ".claude/agents/manager.md",
-    ".claude/agents/comms.md",
-    ".claude/agents/architect.md",
-    ".claude/agents/designer.md",
-    ".claude/agents/legal.md",
 ]
+
+def legacy_persona_files(project_root, source_root=None):
+    """Personas legacy (`.claude/agents/*.md`) derivees d'un glob sur le
+    projet cible et, si fournie, la source : ajouter une persona au scaffold
+    ne demande aucune edition de liste. Union des deux cotes pour qu'une
+    persona nouvelle (source seule) soit creee et qu'une persona retiree de
+    la source (projet seul) reste detectee comme `removed`."""
+    roots = [r for r in (project_root, source_root) if r is not None]
+    names = {p.name for r in roots for p in (pathlib.Path(r) / ".claude/agents").glob("*.md")}
+    return [f".claude/agents/{n}" for n in sorted(names)]
 
 
 def hash_file(path):
@@ -360,7 +364,7 @@ def _main():
 
     whitelist = list(ENGINE_FILES_COMMON)
     if args.legacy or detect_mode(args.project) == "legacy":
-        whitelist += ENGINE_FILES_LEGACY
+        whitelist += ENGINE_FILES_LEGACY + legacy_persona_files(args.project, args.source)
 
     if args.seed:
         if not args.source_version:
