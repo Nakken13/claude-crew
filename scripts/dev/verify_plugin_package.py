@@ -125,11 +125,8 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
-    (".claude/agents/architect.md", "agents/architect.md"),
-    (".claude/agents/ceo.md", "agents/ceo.md"),
-    (".claude/agents/comms.md", "agents/comms.md"),
-    (".claude/agents/legal.md", "agents/legal.md"),
-    (".claude/agents/manager.md", "agents/manager.md"),
+    # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in
+    # check_engine_files_copied, so adding one needs no entry here.
     # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally
     # excluded: the plugin-distributed copies under scripts/ must resolve
     # the target project's directory via CLAUDE_PROJECT_DIR (see Fix 1 /
@@ -143,7 +140,11 @@ ENGINE_FILE_PAIRS = [
 
 def check_engine_files_copied(repo_root: Path) -> list[str]:
     problems = []
-    for source_rel, target_rel in ENGINE_FILE_PAIRS:
+    personas = sorted(p.name for p in (repo_root / ".claude/agents").glob("*.md"))
+    if not personas:
+        problems.append(f"no persona found under {repo_root / '.claude/agents'}")
+    pairs = ENGINE_FILE_PAIRS + [(f".claude/agents/{n}", f"agents/{n}") for n in personas]
+    for source_rel, target_rel in pairs:
         source = repo_root / source_rel
         target = repo_root / target_rel
         if not target.exists():
