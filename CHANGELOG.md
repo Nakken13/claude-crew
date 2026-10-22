@@ -8,6 +8,8 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **`social` and `seo` personas** — organic social distribution and search/store/AI-answer discoverability, both read-only, dated sourcing, handing briefs to `comms`. `legal` now covers marketing moves (influence, contests, prospecting, comparative claims). Persona lists are derived by glob in `crew_update.py` and `verify_plugin_package.py`; descriptions are kept short.
+
 ## [0.4.0] - 2026-10-16
 
 - **`/crew-version`** — prints the installed claude-crew version (`vX.X.X`).
