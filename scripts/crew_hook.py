@@ -37,7 +37,17 @@ blocage volontaire exit(2) de gate_pretooluse).
 """
 import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
 
-ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet
+def _git_root(start):
+    """Premiere racine git (dossier ou fichier `.git` de worktree) en remontant
+    depuis `start`. Une session lancee dans un sous-dossier (backend/, frontend/)
+    ne doit pas y creer un `crew/` fantome : sans `.git` trouve, `start` tel quel."""
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
+ROOT = _git_root(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"])) if os.environ.get("CLAUDE_PROJECT_DIR") else pathlib.Path(__file__).resolve().parent.parent  # racine du projet
 
 
 def _resolve_main_root(root):

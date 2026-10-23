@@ -10,7 +10,17 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parent.parent)
+def _git_root(start):
+    """Premiere racine git (dossier ou fichier `.git` de worktree) en remontant
+    depuis `start`. Une session lancee dans un sous-dossier (backend/, frontend/)
+    ne doit pas y creer un `crew/` fantome : sans `.git` trouve, `start` tel quel."""
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
+ROOT = _git_root(Path(os.environ["CLAUDE_PROJECT_DIR"])) if os.environ.get("CLAUDE_PROJECT_DIR") else Path(__file__).resolve().parent.parent
 SPECS_DIR = ROOT / "docs" / "superpowers" / "specs"
 CURRENT = ROOT / "crew" / "CURRENT_TASKS"
 TODO = ROOT / "crew" / "TODO"
