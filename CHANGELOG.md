@@ -8,6 +8,10 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-24
+
+- Fix: `ROOT` des hooks (`crew_hook.py`, `spec_to_task_hook.py`) remonte à la racine git quand `CLAUDE_PROJECT_DIR` est un sous-dossier — plus de `crew/` fantôme créé dans `backend/`, `frontend/`, etc.
+
 ## [0.5.0] - 2026-10-22
 
 - **`social` and `seo` personas** — organic social distribution and search/store/AI-answer discoverability, both read-only, dated sourcing, handing briefs to `comms`. `legal` now covers marketing moves (influence, contests, prospecting, comparative claims). Persona lists are derived by glob in `crew_update.py` and `verify_plugin_package.py`; descriptions are kept short.
