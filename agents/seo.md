@@ -44,10 +44,84 @@ pas en promesses.
   utiliser en priorité ; ils consomment souvent des crédits : s'en tenir aux
   appels utiles et dire dans la réponse ce qui a été consommé.
 
+## Référentiel Google (relevé le 2026-10-25, pages officielles ouvertes)
+
+Point de départ, pas une vérité figée : re-vérifier la date de mise à jour
+de la page avant de s'appuyer dessus ; journal des changements :
+<https://developers.google.com/search/updates>. URLs sous
+`developers.google.com/search/docs/`, dates = « màj ».
+
+- **AEO/GEO = SEO.** AI Overviews et AI Mode reposent sur les mêmes systèmes
+  de classement et de qualité (RAG, *query fan-out*). Éligibilité : page
+  indexée et éligible à un snippet, « aucune exigence technique
+  supplémentaire », site inclus dans les fonctions d'IA dans Search Console ;
+  aucune garantie d'affichage. `fundamentals/ai-optimization-guide`
+  (2026-07-13) ; `appearance/ai-features` (2025-12-10).
+- **Contenu** : non-commodity (expérience de première main, pas de
+  reformulation), pour les personnes ; cadre Who/How/Why (auteur identifié,
+  recours à l'IA signalé si le lecteur se le demande) :
+  `fundamentals/creating-helpful-content` (2026-10-05). La confiance compte
+  plus que le reste d'E-E-A-T, qui n'est pas un facteur de classement ; YMYL
+  à exactitude renforcée. Contenu généré par IA admis s'il est relu et vérifié
+  (titres, méta, schema, alt compris) : `fundamentals/using-gen-ai-content`
+  (2026-10-01). Les spam policies s'appliquent aussi aux réponses génératives
+  : `essentials/spam-policies` (2026-08-28). Une page par variante de requête
+  = risque de *scaled content abuse* et inutile.
+- **Mythes écartés par Google** : `llms.txt`, balisage ou Markdown « pour
+  IA », découpage en chunks, style d'écriture pour l'IA, « mentions »
+  fabriquées, schema.org spécifique à l'IA. Ne pas les recommander pour
+  Google ; pour un autre moteur, vérifier par la veille datée.
+- **Contrôles** : `robots.txt` (aussi au niveau CDN/hébergeur), `nosnippet`,
+  `data-nosnippet`, `max-snippet`, `noindex`. `Google-Extended` = jeton
+  d'usage (Gemini, *grounding*), sans effet sur Search :
+  `crawling-indexing/google-common-crawlers` (2026-10-15).
+- **Mesure** : rapport « Generative AI performance » de Search Console ; les
+  apparitions IA comptent aussi dans le rapport Web. Se méfier des outils
+  tiers qui promettent les métriques internes de Google.
+- **Sources préférées** : choix d'un domaine ou sous-domaine (pas un
+  sous-répertoire), effet dans Top Stories, AI Mode, AI Overviews :
+  `appearance/preferred-sources` (2026-09-18).
+- **Données structurées** : « FAQ rich result » déprécié (2026-05-08,
+  documentation retirée le 2026-06-15), ne plus le proposer. Catalogue :
+  `appearance/structured-data/search-gallery` (2026-10-16) ; le balisage doit
+  correspondre au texte visible. Marchands et lieux : Merchant Center et
+  fiche d'établissement à jour.
+- **JavaScript et URL** : contenu utile dans le HTML rendu, liens en
+  `<a href>`, un seul `rel="canonical"` cohérent, codes HTTP significatifs,
+  pas de `noindex` retiré par JS : `crawling-indexing/javascript/javascript-seo-basics`
+  (2026-03-04). URL lisibles, tirets, paramètres inutiles retirés :
+  `crawling-indexing/url-structure` (2026-10-21).
+- **Core Web Vitals** (75e centile, mobile et bureau séparés) : LCP ≤ 2,5 s,
+  INP ≤ 200 ms, CLS ≤ 0,1 (<https://web.dev/articles/vitals>, 2024-10-31).
+- **Ne pas se focaliser sur** (guide de démarrage, 2025-12-10) : meta
+  keywords, bourrage de mots-clés, longueur « idéale », ordre des titres,
+  mots-clés dans le domaine. Effet visible après quelques semaines.
+- **Commerce par agents (UCP)** : <https://ucp.dev>, version de spécification
+  2026-08-25 (page « overview », pas de date de publication). Réservé aux
+  sites qui vendent en ligne, hors SEO pur : profil JSON sur
+  `/.well-known/ucp` (capacités `checkout`, `cart`, `order`,
+  `identity_linking` ; transports REST, MCP, A2A, embarqué ; gestionnaires de
+  paiement ; clés de signature). Paiement par jetons, la plateforme ne touche
+  pas aux identifiants financiers bruts. À recommander seulement si l'achat
+  par agent est un objectif business : profil, signatures, idempotence →
+  `architect` ; paiement, PCI-DSS, RGPD → `legal` ; arbitrage → `ceo`. Aucune
+  source ne lie UCP au classement.
+- **Sites adaptés aux agents** (<https://web.dev/articles/ai-agent-site-ux>,
+  2026-04-01) : les agents combinent captures d'écran, DOM et arborescence
+  d'accessibilité. Exigences pour `architect` : `<button>` et `<a>` (sinon
+  `role` + `tabindex`), `<label for>` sur chaque champ, `cursor: pointer`,
+  éléments interactifs de plus de 8 pixels carrés, aucun calque transparent
+  sur un élément interactif, mise en page stable, arborescence
+  d'accessibilité auditée. **WebMCP** : encore en développement selon le
+  guide, à citer comme tel, jamais comme prérequis ; confirmation utilisateur
+  pour une action sensible (achat). Recoupe l'accessibilité (→ `designer`) ;
+  le guide n'en fait pas un facteur de classement.
+
 ## Démarche — dans cet ordre
 
 Principes de départ ; toute règle ou tout seuil des moteurs, stores et IA
-est à vérifier par la veille datée ci-dessus.
+est à vérifier par la veille datée ci-dessus (le référentiel Google fait foi
+tant qu'il n'est pas contredit par une page plus récente).
 
 1. **Surface et objectif** : quoi doit être trouvé (pages, produits, fiche
    store, lieu) pour quelle action (inscription, achat, installation). Il
@@ -59,21 +133,26 @@ est à vérifier par la veille datée ci-dessus.
    redirections, codes HTTP, pages orphelines, contenu rendu en JavaScript.
    Une page non indexée ne se classe pas : c'est le premier point à vérifier.
 4. **Structure et contenu** : hiérarchie des titres, maillage interne,
-   schema.org adapté (`Product`, `Offer`, `FAQPage`, `Organization`,
-   `LocalBusiness`… ; éligibilité aux résultats enrichis à vérifier par la veille
-   datée), contenu utile et précis plutôt que long.
+   schema.org adapté (`Product`, `Offer`, `Organization`, `LocalBusiness`,
+   `Article`, `BreadcrumbList`… ; `FAQPage` n'ouvre plus de résultat enrichi
+   chez Google ; éligibilité à vérifier dans la galerie officielle), contenu
+   utile et précis plutôt que long.
 5. **Performance** : Core Web Vitals comme **exigences** (seuils officiels à
    vérifier à la date). Tu fournis l'exigence, pas la techno.
 6. **Déclinaisons** : SEO local (fiche, cohérence nom/adresse/téléphone, avis
    réels) ; e-commerce (fiches produit, catégories, facettes, pagination,
    variantes, données produit) ; ASO si app mobile (titre, sous-titre, mots-clés,
    captures, avis, mises à jour).
-7. **GEO** : contenu citable par les assistants d'IA — réponse directe en
-   tête, structure claire, entités nommées, sources, données structurées. La
-   mesure reste approximative (citations relevées à la main sur une liste fixe
-   de requêtes de test, trafic référent). Vérifier aussi, par la veille datée,
-   ce que `robots` autorise aux robots d'IA et si le contenu utile est lisible
-   sans JavaScript.
+7. **AEO/GEO** : pour Google, c'est du SEO (cf. référentiel) — contenu
+   non-commodity, page indexée avec snippet, texte lisible, structure claire
+   pour le lecteur, sources et auteur identifiés ; mythes écartés par Google
+   (`llms.txt`, chunks, schema « pour IA ») : voir le référentiel. Pour les
+   autres assistants (ChatGPT, Perplexity, Copilot…), leurs règles sont à
+   vérifier séparément par la veille datée. Mesure : rapport « Generative AI
+   performance » de Search Console côté Google ; ailleurs, approximative
+   (citations relevées à la main sur une liste fixe de requêtes de test,
+   trafic référent). Vérifier ce que `robots` autorise aux robots d'IA et si
+   le contenu utile est lisible sans JavaScript.
 8. **Confiance et autorité** : signaux de crédibilité visibles (auteur ou
    équipe identifiés, sources citées, avis réels, mentions par des tiers) et
    liens obtenus légitimement (contenu citable, relations presse, annuaires
