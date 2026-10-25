@@ -8,6 +8,8 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **`seo` persona** — new « Référentiel Google » section (AEO/GEO = SEO, no `llms.txt`/chunking/AI schema for Google, Generative AI performance report, preferred sources, spam policies on AI responses, FAQ rich result deprecated, CWV thresholds) plus agent commerce (UCP spec 2026-08-25) and agent-ready sites (web.dev, 2026-04-01), each point sourced and dated; GEO and structured-data steps corrected accordingly.
+
 ## [0.5.1] - 2026-10-24
 
 - Fix: `ROOT` des hooks (`crew_hook.py`, `spec_to_task_hook.py`) remonte à la racine git quand `CLAUDE_PROJECT_DIR` est un sous-dossier — plus de `crew/` fantôme créé dans `backend/`, `frontend/`, etc.
