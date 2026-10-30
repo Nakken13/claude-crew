@@ -4,6 +4,12 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## token-weather-nan-entree-invalide — 2026-10-30
+Quoi : `computeTokenWeather` (`hooks/mods/token-weather.ts`) garde désormais `Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0` ;
+`NaN`/`Infinity` en appel direct ne produisent plus `NaN/200k (NaN%)` (`Math.max(0, NaN)` vaut `NaN`). Test `météo : seuils … jamais de NaN`
+(`hooks/mods.test.ts`) étendu à `NaN` et `Infinity` (rouge avant correctif, 11/11 verts après). Trouvé pendant `verif-mod-token-weather`
+(pas corrigé dans cette tâche, par choix). Pas de test IA/DEV dédié : couvert par la suite unitaire.
+
 ## claude-md-template-2955-mots-toujours-charge — 2026-10-03
 Quoi : `template/CLAUDE.md` et `CLAUDE.md` (identiques, `cmp`) ramenés de 3248/3256 à **1197 mots** ; une ligne
 par obligation (schéma d'états + règle d'or, démarrage = `manager`/`crew-start` jamais de `mv` nu, zones de batchs

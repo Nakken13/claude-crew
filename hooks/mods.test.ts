@@ -627,8 +627,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
       expect(snap.percent).toBe(pct);
       expect(snap.label).toBe(label);
     }
-    // NaN direct : défaut connu, cf. crew/PROBLEMS/token-weather-nan-entree-invalide.md
-    for (const bad of [-5, 0]) {
+    // entrées invalides directes (cf. crew/PROBLEMS/token-weather-nan-entree-invalide.md)
+    for (const bad of [-5, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
       const snap = computeTokenWeather(bad, 0);
       expect(snap.line).not.toContain('NaN');
     }

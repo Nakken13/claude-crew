@@ -55,7 +55,7 @@ export function computeTokenWeather(
   contextWindow = tokenWeatherState.contextWindow,
 ): TokenWeatherSnapshot {
   const safeWindow = contextWindow > 0 ? contextWindow : 200_000;
-  const safeTokens = Math.max(0, contextTokens);
+  const safeTokens = Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0;
   const ratio = Math.min(1, safeTokens / safeWindow);
   const percent = Math.floor(ratio * 100);
 
