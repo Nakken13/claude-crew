@@ -72,6 +72,19 @@ interface ModBusBuckets {
   commands: Map<string, HookHandler<any, any>>;
 }
 
+// $.env.get est asynchrone dans le moteur ; les mods lisent l'env en synchrone : on résout une fois.
+const envCache: Record<string, string | undefined> = {};
+
+async function refreshEnvCache(
+  $: { env: { get: (name: string) => unknown } },
+  cwd?: string,
+): Promise<void> {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  envCache.CLAUDE_PROJECT_DIR = await Promise.resolve($.env.get('CLAUDE_PROJECT_DIR')).then(str, () => undefined);
+  envCache.CLAUDE_CACHE_TTL = await Promise.resolve($.env.get('CLAUDE_CACHE_TTL')).then(str, () => undefined);
+  if (!envCache.CLAUDE_PROJECT_DIR && cwd) envCache.CLAUDE_PROJECT_DIR = cwd;
+}
+
 function createModBus(): { buckets: ModBusBuckets; registrar: ModRegistrar } {
   const buckets: ModBusBuckets = {
     sessionStart: [],
@@ -193,6 +206,7 @@ export function register(on: ModRegistrar): void {
   registerPromptCacheControl(registrar);
 
   on('session.start', async ($, e, next) => {
+    await refreshEnvCache($, (e as { cwd?: string }).cwd);
     const preRegistered = new Set([
       'crew-ui',
       'crew-turns',
@@ -251,14 +265,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR') || ((e as { cwd?: string }).cwd ?? undefined)
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
 
     return composeMiddlewareChain(buckets.sessionStart, api, e, next);
@@ -280,14 +287,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     return composeMiddlewareChain(buckets.turnStart, api, e, next);
   });
@@ -308,19 +308,13 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     return composeMiddlewareChain(buckets.toolCall, api, e, next).catch(() => next(e));
   });
 
   on('turn.complete', async ($, e, next) => {
+    await refreshEnvCache($);
     const api: ModApi = {
       ui: {
         resolve: (ev) => $.ui.resolve(ev),
@@ -336,14 +330,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     // e.usage somme les requêtes du tour ; la taille réelle du contexte vient de la session.
     let enriched: unknown = e;
@@ -377,14 +364,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     return composeMiddlewareChain(buckets.sessionEnd, api, e, next);
   });
@@ -405,14 +385,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     // Une seule ligne : crew à gauche, météo à droite (segments versés par chaque mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
@@ -447,14 +420,7 @@ export function register(on: ModRegistrar): void {
         list: (p) => $.fs.list(p),
         stat: (p) => $.fs.stat(p),
       },
-      env: {
-        get: (k) =>
-          k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
-            : k === 'CLAUDE_CACHE_TTL'
-              ? $.env.get('CLAUDE_CACHE_TTL')
-              : undefined,
-      },
+      env: { get: (k) => envCache[k] },
     };
     return composeMiddlewareChain(buckets.pane, api, e, next).catch(() => next(e));
   });
@@ -480,14 +446,7 @@ export function register(on: ModRegistrar): void {
             list: (p) => $.fs.list(p),
             stat: (p) => $.fs.stat(p),
           },
-          env: {
-            get: (k) =>
-              k === 'CLAUDE_PROJECT_DIR'
-                ? $.env.get('CLAUDE_PROJECT_DIR')
-                : k === 'CLAUDE_CACHE_TTL'
-                  ? $.env.get('CLAUDE_CACHE_TTL')
-                  : undefined,
-          },
+          env: { get: (k) => envCache[k] },
         };
         return handler(api, e, async () => undefined);
       })
@@ -514,14 +473,7 @@ export function register(on: ModRegistrar): void {
             list: (p) => $.fs.list(p),
             stat: (p) => $.fs.stat(p),
           },
-          env: {
-            get: (k) =>
-              k === 'CLAUDE_PROJECT_DIR'
-                ? $.env.get('CLAUDE_PROJECT_DIR')
-                : k === 'CLAUDE_CACHE_TTL'
-                  ? $.env.get('CLAUDE_CACHE_TTL')
-                  : undefined,
-          },
+          env: { get: (k) => envCache[k] },
         };
         return handler(api, e, async () => undefined);
       })
@@ -548,14 +500,7 @@ export function register(on: ModRegistrar): void {
             list: (p) => $.fs.list(p),
             stat: (p) => $.fs.stat(p),
           },
-          env: {
-            get: (k) =>
-              k === 'CLAUDE_PROJECT_DIR'
-                ? $.env.get('CLAUDE_PROJECT_DIR')
-                : k === 'CLAUDE_CACHE_TTL'
-                  ? $.env.get('CLAUDE_CACHE_TTL')
-                  : undefined,
-          },
+          env: { get: (k) => envCache[k] },
         };
         return handler(api, e, async () => undefined);
       })
@@ -582,14 +527,7 @@ export function register(on: ModRegistrar): void {
             list: (p) => $.fs.list(p),
             stat: (p) => $.fs.stat(p),
           },
-          env: {
-            get: (k) =>
-              k === 'CLAUDE_PROJECT_DIR'
-                ? $.env.get('CLAUDE_PROJECT_DIR')
-                : k === 'CLAUDE_CACHE_TTL'
-                  ? $.env.get('CLAUDE_CACHE_TTL')
-                  : undefined,
-          },
+          env: { get: (k) => envCache[k] },
         };
         return handler(api, e, async () => undefined);
       })

@@ -548,4 +548,14 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(promptCacheState.sessionCacheReadTokens - cacheBefore).toBe(150_000);
     await h.emit('session.end', { sessionId: 'sess-real-1' });
   });
+
+  test("env asynchrone du moteur ($.env.get renvoie une promesse) : projectRoot reste une chaîne", async () => {
+    const h = createHarness();
+    (h.api.env as { get: unknown }).get = async (k: string) => (k === 'CLAUDE_PROJECT_DIR' ? '/proj' : undefined);
+    await h.emit('session.start', { sessionId: 'sess-env-1', cwd: '/proj' });
+    expect(crewRuntimeState.projectRoot).toBe('/proj');
+    const lock = JSON.parse(h.files.get('/proj/.claude/crew-sessions.lock') ?? h.files.get('.claude/crew-sessions.lock') ?? '{}');
+    expect(typeof lock.sessions?.['sess-env-1']?.cwd).toBe('string');
+    await h.emit('session.end', { sessionId: 'sess-env-1' });
+  });
 });
