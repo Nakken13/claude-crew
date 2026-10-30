@@ -248,6 +248,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(row).toContain('Read×2');
     expect(row).toContain('R:140k');
 
+    // Volets ouverts au démarrage de session : on repart d'un état fermé pour tester la bascule
+    await h.emit('command.run', { args: 'turns off' }, 'command=crew-ui');
     await h.emit('command.run', { args: '' }, 'command=crew-turns');
     expect(h.openedPanes).toContain('crew-turns');
     const turnsPaneTree = await h.emit('ui.render', { requestId: 'crew-turns' }, 'component=Pane');
@@ -398,6 +400,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(eta.line).toBe('⏱️ Fin estimée : ~8 min (~45k tokens restants)');
 
     // Step 4: Unified `/crew-ui` slash command toggles panes and bands locally
+    await h.emit('command.run', { args: 'board off' }, 'command=crew-ui');
     const boardRes = await h.emit('command.run', { args: 'board' }, 'command=crew-ui');
     expect(String(boardRes.text)).toContain('ouvert');
     expect(h.openedPanes).toContain('crew-board');
@@ -612,5 +615,13 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     const lock = JSON.parse(h.files.get('/proj/.claude/crew-sessions.lock') ?? h.files.get('.claude/crew-sessions.lock') ?? '{}');
     expect(typeof lock.sessions?.['sess-env-1']?.cwd).toBe('string');
     await h.emit('session.end', { sessionId: 'sess-env-1' });
+  });
+  test('démarrage de session : les 5 volets Zero-Token sont ouverts sans voler le focus', async () => {
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-autostart-1' });
+    expect([...h.openedPanes].sort()).toEqual(
+      ['crew-agents', 'crew-board', 'crew-cache', 'crew-stack', 'crew-turns'],
+    );
+    await h.emit('session.end', { sessionId: 'sess-autostart-1' });
   });
 });
