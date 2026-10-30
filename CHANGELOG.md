@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the `claude-crew` scaffold are documented here.
+All notable changes to the `crew-mates` scaffold are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 version numbers match the `version` field in
 [`.claude-plugin/plugin.json`](./.claude-plugin/plugin.json) (see
@@ -8,6 +8,9 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-30
+
+- **BREAKING: plugin renamed `claude-crew` → `crew-mates`** (the `claude-` prefix is reserved for Anthropic's own plugins; `claude plugin validate` rejected it). The GitHub repo stays `Nakken13/claude-crew`. All `/crew-*` commands are unchanged; only the long prefix changes (`crew-mates:crew-start`). Migrate once per machine: `/plugin uninstall claude-crew`, `/plugin marketplace remove claude-crew`, `/plugin marketplace add Nakken13/claude-crew`, `/plugin install crew-mates@crew-mates`, then `/crew-update` in each project. `crew_update.py` still detects the old `claude-crew` entry in `enabledPlugins` for the double-hook check.
 - **10 Zero-Token Claude Code Mods (`hooks/register.ts` + `hooks/mods/*.ts`)** — 100% local, zero-LLM-call, zero-dependency TypeScript mods declared via `"modules": ["./register.ts"]` in `hooks/hooks.json`:
   - **Visibility & Context (Mods 1–5):** `prompt-cache-control` (5m/1h TTL countdown, `cache_read` / `cache_creation` counters, `<60s` expiry alert), `token-weather` (1-line `☀️ Clear` → `⛅ Cloudy` → `⛈️ Storm` → `🚨 Compact soon` gauge), `turn-inspector` (`/crew-turns` side pane), `stack-viewer` (`/crew-stack` loaded session tree with source & priority), and `agent-flow` (`/crew-agents` live subagent execution tree).
   - **Tasks, Batches & Multi-Session (Mods 6–10):** `crew-radar` (`🟢 X Sessions en ligne | ⚡ Y Current Tasks | 📋 Z Todo` via `.claude/crew-sessions.lock` + `crew_lock.json`), `batch-progress` (live task checkbox `[████░░]` & global batch `[██████░░]` progress bars), `batch-dependency-graph` (`/crew-board` Kanban `Todo | In Progress | Done | Blocked` linked to active sessions), `file-lock-monitor` (instant UI collision alert on `Edit`/`Write`/`MultiEdit`), and `batch-eta-cost` (real-time remaining duration & tokens estimator from completed batch tasks).

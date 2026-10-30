@@ -2,7 +2,7 @@
 
 - [ ] 🖱️ Depuis un profil Claude Code propre (pas ce repo) :
       `/plugin marketplace add Nakken13/claude-crew` → succès.
-- [ ] 🖱️ `/plugin install claude-crew@claude-crew` → succès, skills
+- [ ] 🖱️ `/plugin install crew-mates@crew-mates` → succès, skills
       `crew-*` et personas (`manager`, `ceo`, `architect`, `comms`)
       disponibles.
 - [ ] 🖱️ `/crew-init` sur un projet vide → scaffold complet créé

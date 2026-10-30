@@ -29,7 +29,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 USER_SETTINGS_PATH = pathlib.Path.home() / ".claude" / "settings.json"
 PROJECT_SETTINGS_FILES = ("settings.json", "settings.local.json")
-PLUGIN_NAME = "claude-crew"
+PLUGIN_NAME = "crew-mates"
+LEGACY_PLUGIN_NAME = "claude-crew"  # nom avant le rename : projets non migres
 LOCAL_HOOK_RE = re.compile(r"(^|[\s\"'/\\=])crew[/\\]crew_hook\.py")
 
 SCAFFOLD_VERSION_REL = pathlib.Path("crew") / "CLAUDE_CONTEXT" / "SCAFFOLD_VERSION.json"
@@ -228,7 +229,7 @@ def _plugin_enabled(settings):
     plugins = settings.get("enabledPlugins")
     if not isinstance(plugins, dict):
         return False
-    return any(k.split("@")[0] == PLUGIN_NAME and v is True for k, v in plugins.items())
+    return any(k.split("@")[0] in (PLUGIN_NAME, LEGACY_PLUGIN_NAME) and v is True for k, v in plugins.items())
 
 
 def _is_local_crew_hook(hook):
@@ -286,7 +287,7 @@ def _strip_local_hooks(settings):
 
 
 def detect_double_hook(project_root, user_settings_path=None):
-    """{evenement: [commandes locales]} quand le plugin claude-crew est actif
+    """{evenement: [commandes locales]} quand le plugin crew-mates est actif
     (`enabledPlugins` du projet ou de l'utilisateur) ET que les settings du
     projet appellent aussi la copie locale `crew/crew_hook.py` : deux hooks
     sur le meme crew_lock.json. {} sinon (legacy sans plugin = normal).
@@ -325,7 +326,7 @@ def _handle_double_hook(project_root, remove):
     """Avertit (et ne retire que si `remove`) un double hook plugin + local."""
     double = detect_double_hook(project_root)
     if double:
-        print("ATTENTION : plugin claude-crew actif ET hooks locaux crew/crew_hook.py "
+        print("ATTENTION : plugin crew-mates actif ET hooks locaux crew/crew_hook.py "
               "(deux hooks sur le meme crew_lock.json) :")
         for event, cmds in double.items():
             for cmd in cmds:
@@ -357,7 +358,7 @@ def _main():
                          help="avec --seed, reamorce volontairement une baseline deja enregistree")
     parser.add_argument("--remove-double-hook", action="store_true",
                          help="retire des settings du projet les hooks locaux crew/crew_hook.py "
-                              "quand le plugin claude-crew est aussi actif (sinon : avertissement seul)")
+                              "quand le plugin crew-mates est aussi actif (sinon : avertissement seul)")
     args = parser.parse_args()
 
     _handle_double_hook(args.project, args.remove_double_hook)

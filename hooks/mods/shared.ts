@@ -1,5 +1,5 @@
 /**
- * Shared pure types, parsers, formatters, and local UI state for claude-crew Zero-Token Mods.
+ * Shared pure types, parsers, formatters, and local UI state for crew-mates Zero-Token Mods.
  *
  * Strict constraints:
  * - Zero LLM / token usage (no model calls, no prompt injection, no LLM tool registration).

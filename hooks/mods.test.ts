@@ -169,7 +169,7 @@ function collectTexts(node: unknown): string {
   return '';
 }
 
-describe('claude-crew 10 Zero-Token Mods suite', () => {
+describe('crew-mates 10 Zero-Token Mods suite', () => {
   test('Étape 2 (Mods 1-5): cache TTL, token weather, turn inspector, stack viewer, agent flow', async () => {
     const h = createHarness({
       'CLAUDE.md': '# Project Rules\n',

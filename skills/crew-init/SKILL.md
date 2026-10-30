@@ -25,7 +25,7 @@ placeholder non résolu par oubli.
    défini ou ne résout vers aucun répertoire existant, ce skill tourne hors
    contexte plugin — arrêter immédiatement et dire à l'utilisateur d'installer
    d'abord le plugin (`/plugin marketplace add Nakken13/claude-crew` puis
-   `/plugin install claude-crew@claude-crew`) avant de relancer `/crew-init`.
+   `/plugin install crew-mates@crew-mates`) avant de relancer `/crew-init`.
    Ne jamais tenter une copie partielle dans ce cas.
 1. **Copier** à la racine du projet (sans écraser un fichier déjà présent et
    déjà rempli), depuis `${CLAUDE_PLUGIN_ROOT}/template/` : `CLAUDE.md`,

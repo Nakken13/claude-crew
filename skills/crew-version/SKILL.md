@@ -1,6 +1,6 @@
 ---
 name: crew-version
-description: Affiche la version de claude-crew installée (vX.X.X). Trigger — "/crew-version", "quelle version de crew".
+description: Affiche la version de crew-mates installée (vX.X.X). Trigger — "/crew-version", "quelle version de crew".
 ---
 
 Lecture seule. Lancer :
