@@ -198,6 +198,21 @@ EVENT_EXPECTED_SCRIPT = {
     "PostToolUse": "scripts/spec_to_task_hook.py",
 }
 
+EXPECTED_MOD_FILES = [
+    "hooks/register.ts",
+    "hooks/mods/shared.ts",
+    "hooks/mods/prompt-cache-control.ts",
+    "hooks/mods/token-weather.ts",
+    "hooks/mods/turn-inspector.ts",
+    "hooks/mods/stack-viewer.ts",
+    "hooks/mods/agent-flow.ts",
+    "hooks/mods/crew-radar.ts",
+    "hooks/mods/batch-progress.ts",
+    "hooks/mods/batch-dependency-graph.ts",
+    "hooks/mods/file-lock-monitor.ts",
+    "hooks/mods/batch-eta-cost.ts",
+]
+
 
 def check_hooks_json(repo_root: Path) -> list[str]:
     problems = []
@@ -213,6 +228,14 @@ def check_hooks_json(repo_root: Path) -> list[str]:
     except json.JSONDecodeError as e:
         problems.append(f"{hooks_path} is not valid JSON: {e}")
         return problems
+
+    modules = data.get("modules")
+    if not isinstance(modules, list) or "./register.ts" not in modules:
+        problems.append(f"{hooks_path} missing './register.ts' in 'modules'")
+
+    for mod_rel in EXPECTED_MOD_FILES:
+        if not (repo_root / mod_rel).exists():
+            problems.append(f"missing Zero-Token mod file: {repo_root / mod_rel}")
 
     events = data.get("hooks", {})
     for event_name, script_rel in EVENT_EXPECTED_SCRIPT.items():
