@@ -556,6 +556,7 @@ export function parseClaudeBatch(markdown: string): ParsedBatchFile {
 /* -------------------------------------------------------------------------- */
 
 export const CREW_LOCK_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours (matches crew_hook.py)
+export const SESSIONS_LOCK_TTL_MS = 30 * 60 * 1000; // heartbeat a chaque tour : une session muette 30 min est consideree morte
 export const ACTIVE_FILE_TOUCH_TTL_MS = 15 * 60 * 1000; // 15 minutes for live file edit locks
 
 export interface CrewLockSessionEntry {
@@ -624,7 +625,7 @@ export function parseSessionsLock(jsonText: string, nowMs = Date.now()): Session
       if (!entry || typeof entry !== 'object') continue;
       const tsStr = entry.updatedAt || entry.startedAt || '';
       const ts = tsStr ? Date.parse(tsStr) : NaN;
-      if (!Number.isFinite(ts) || nowMs - ts > CREW_LOCK_TTL_MS) continue;
+      if (!Number.isFinite(ts) || nowMs - ts > SESSIONS_LOCK_TTL_MS) continue;
 
       const activeFiles: Record<string, number> = {};
       if (entry.activeFiles && typeof entry.activeFiles === 'object') {

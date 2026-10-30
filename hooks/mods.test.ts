@@ -549,6 +549,50 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-real-1' });
   });
 
+  test('cache : le TTL 1h détecté reste 1h sur un tour en lecture seule (sans cache_creation)', async () => {
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-ttl-1' });
+    await h.emit('turn.complete', {
+      durationMs: 1_000,
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 5_000,
+        cache_creation_input_tokens: 1_000,
+        cache_creation: { ephemeral_1h_input_tokens: 1_000 },
+      },
+    });
+    expect(computePromptCacheStatus(Date.now()).ttlLabel).toBe('1h');
+    await h.emit('turn.complete', {
+      durationMs: 1_000,
+      usage: { input_tokens: 10, cache_read_input_tokens: 6_000, cache_creation_input_tokens: 0 },
+    });
+    expect(computePromptCacheStatus(Date.now()).ttlLabel).toBe('1h');
+    await h.emit('session.end', { sessionId: 'sess-ttl-1' });
+  });
+
+  test('sessions fantomes : entree inactive > 30 min purgee, ancien id remplace par l\'id reel', async () => {
+    const h = createHarness();
+    const nowMs = Date.now();
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const entry = (sid: string, ms: number) => ({
+      sessionId: sid, startedAt: iso(ms), updatedAt: iso(ms), cwd: '.', activeTask: null, batch: null, activeFiles: {},
+    });
+    h.files.set(
+      '.claude/crew-sessions.lock',
+      JSON.stringify({
+        sessions: {
+          'sess-stale-1': entry('sess-stale-1', nowMs - 2 * 60 * 60 * 1000),
+          'sess-fresh-1': entry('sess-fresh-1', nowMs - 60 * 1000),
+        },
+      }),
+    );
+    crewRuntimeState.sessionId = 'sess-fresh-1';
+    await h.emit('session.start', { sessionId: 'real-uuid-1' });
+    const lock = JSON.parse(h.files.get('.claude/crew-sessions.lock') ?? '{}');
+    expect(Object.keys(lock.sessions).sort()).toEqual(['real-uuid-1']);
+    await h.emit('session.end', { sessionId: 'real-uuid-1' });
+  });
+
   test('/crew-ui : une erreur interne remonte son message au lieu d\'un texte générique', async () => {
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-err-1' });

@@ -50,6 +50,7 @@ export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): str
 
 export function registerCrewRadar(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
+    const previousSid = crewRuntimeState.sessionId;
     const sid = resolveSessionIdFromEvent(e as Record<string, unknown>);
     const projectRoot = $.env.get('CLAUDE_PROJECT_DIR') || '.';
     crewRuntimeState.projectRoot = projectRoot;
@@ -72,6 +73,8 @@ export function registerCrewRadar(on: ModRegistrar): void {
     const lockPath = joinPath(mainRoot, SESSIONS_LOCK_REL_PATH);
     const rawLock = await $.fs.read(lockPath).catch(() => '');
     const parsedLock = parseSessionsLock(rawLock, nowMs);
+    // L'id de repli genere au chargement du mod est remplace par l'id reel : ne pas laisser de fantome.
+    if (previousSid !== sid) delete parsedLock.sessions[previousSid];
 
     const existing = parsedLock.sessions[sid];
     parsedLock.sessions[sid] = {
