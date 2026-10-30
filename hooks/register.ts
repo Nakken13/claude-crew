@@ -345,7 +345,20 @@ export function register(on: ModRegistrar): void {
               : undefined,
       },
     };
-    return composeMiddlewareChain(buckets.turnComplete, api, e, next);
+    // Le vrai turn.complete ne porte aucun compte de tokens : le contexte vient de la session.
+    let enriched: unknown = e;
+    const ev = e as Record<string, unknown>;
+    if (ev.usage === undefined && ev.contextTokens === undefined) {
+      try {
+        const ctx = (await $.session.usage()).context;
+        if (ctx.tokens && ctx.tokens > 0) {
+          enriched = { ...ev, contextTokens: ctx.tokens, contextWindow: ctx.window };
+        }
+      } catch {
+        // session.usage indisponible : on garde l'événement tel quel (météo à 0 %)
+      }
+    }
+    return composeMiddlewareChain(buckets.turnComplete, api, enriched, next);
   });
 
   on('session.end', async ($, e, next) => {
