@@ -77,3 +77,13 @@
 - 2026-10-02 ➕ **ajoutée au backlog** : `verrou-partage-worktrees.md`
 - 2026-10-03 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `Batch A — Audit ECC : tokens & réactivité du plugin` (historique déjà dans HISTORIQUE.md)
 - 2026-10-03 🧹 **verrou de tâche close hors checkout principal purgé** : `claude-md-template-2955-mots-toujours-charge.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-agent-flow.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-batch-dependency-graph.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-batch-eta-cost.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-batch-progress.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-crew-radar.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-file-lock-monitor.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-prompt-cache-control.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-stack-viewer.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-token-weather.md`
+- 2026-10-30 ➕ **ajoutée au backlog** : `verif-mod-turn-inspector.md`
