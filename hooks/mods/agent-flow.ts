@@ -1,7 +1,7 @@
 /**
  * Mod 5 — agent-flow.ts
  *
- * Intercepte les lancements de subagents (`tool.call` sur les agents de `claude-crew` :
+ * Intercepte les lancements de subagents (`tool.call` sur les agents de `crew-mates` :
  * `Agent`, `Task`, `ceo`, `manager`, `comms`, `architect`, `designer`, `legal`, `social`, `seo`)
  * et dessine en direct l'arbre d'exécution (statut, outils, durée).
  *
@@ -123,7 +123,7 @@ export function registerAgentFlow(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-agents',
-        description: 'Afficher l’arbre d’exécution en direct des subagents claude-crew (0-token)',
+        description: 'Afficher l’arbre d’exécution en direct des subagents crew-mates (0-token)',
       })
       .catch(() => undefined);
     return next(e);
@@ -288,7 +288,7 @@ export function registerAgentFlow(on: ModRegistrar): void {
           ? [
               Text({
                 dimColor: true,
-                children: ['Aucun subagent claude-crew lancé durant cette session.'],
+                children: ['Aucun subagent crew-mates lancé durant cette session.'],
               }),
             ]
           : nodes.map((node, idx) =>

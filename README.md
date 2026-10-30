@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./media/Claude-crew-logo.png" alt="claude-crew logo" width="260" />
+<img src="./media/Claude-crew-logo.png" alt="crew-mates logo" width="260" />
 
-# 🗂️ claude-crew
+# 🗂️ crew-mates
 
 **File-based task lifecycle, multi-agent collision prevention & 10 Zero-Token UI mods for Claude Code.**
 
@@ -25,7 +25,7 @@
 > [!TIP]
 > Claude Code forgets everything between sessions. Run two instances on the
 > same repo and they'll happily edit the same files at the same time, with no
-> warning. `claude-crew` fixes both — with plain Markdown files, two stdlib-only
+> warning. `crew-mates` fixes both — with plain Markdown files, two stdlib-only
 > Python hooks, and **10 native Zero-Token Claude Code Mods** rendering live
 > multi-session, cache, and batch telemetry directly inside the Claude Code UI.
 > No server, no DB (the local web dashboard is optional).
@@ -43,7 +43,7 @@
 | 🕶️ **Flying blind on cache, context & batches** | You don't see your prompt cache about to expire (`5 min` / `1h` TTL), your context approaching forced compaction, which subagent is running, or your batch ETA — unless you burn tokens asking Claude. |
 
 > [!TIP]
-> Recognize any of these? A ⭐ on [`claude-crew`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
+> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
 
 <br>
 
@@ -75,7 +75,7 @@ its entire history.
 ## 🎯 The actual differentiator: batching
 
 Plenty of scaffolds give you a prompt template and a folder layout. What
-`claude-crew` adds is tracking *which files each task touches* (its "zone"),
+`crew-mates` adds is tracking *which files each task touches* (its "zone"),
 grouping tasks that share a zone into the same batch, and **preventing** —
 not just flagging — a collision when a batch's zone overlaps an **active**
 batch it doesn't belong to. Two layers, not one:
@@ -135,7 +135,7 @@ each other's files.
 ## 🎛️ 10 Zero-Token Mods (in-process UI)
 
 Requires a Claude Code build that supports hook `modules` (validated on
-`v2.1.314`; check with `claude plugin validate .`). `claude-crew` includes **10 native TypeScript Mods** loaded in-process via
+`v2.1.314`; check with `claude plugin validate .`). `crew-mates` includes **10 native TypeScript Mods** loaded in-process via
 `hooks/hooks.json` (`"modules": ["./register.ts"]`). They draw live status bands
 above your prompt and interactive side panes — **without spending a single LLM token**.
 
@@ -173,10 +173,10 @@ prompt cache drops below `60s`, an immediate visual alert appears above the prom
 | # | Mod (`hooks/mods/`) | UI Surface | What it does (100% local) |
 |---|---|---|---|
 | **1** | `prompt-cache-control.ts` | `AbovePrompt` + Toast | Tracks prompt cache TTL (`5 min` default or `1h` via `ephemeral_1h_input_tokens` / `CLAUDE_CACHE_TTL=1h`), live `MM:SS` countdown, `cache_read_input_tokens` / `cache_creation_input_tokens` counters, hit-rate %, and `< 60s` expiry warning. |
-| **2** | `token-weather.ts` | `AbovePrompt` + Toast | Compact 1-line context window gauge: `☀️ Clear` (`<50%`) → `⛅ Cloudy` (`50–74%`) → `⛈️ Storm` (`75–89%`, aligned with `claude-crew`'s 150k rule) → `🚨 Compact soon` (`≥90%`). |
+| **2** | `token-weather.ts` | `AbovePrompt` + Toast | Compact 1-line context window gauge: `☀️ Clear` (`<50%`) → `⛅ Cloudy` (`50–74%`) → `⛈️ Storm` (`75–89%`, aligned with `crew-mates`'s 150k rule) → `🚨 Compact soon` (`≥90%`). |
 | **3** | `turn-inspector.ts` | `Pane` (`/crew-turns`) | Side panel logging every turn: `in`/`out` tokens, cache `R`/`W`, deduplicated tool calls (`Read×3, Edit`), turn duration, and context bar. |
 | **4** | `stack-viewer.ts` | `Pane` (`/crew-stack`) | Hierarchical tree of everything active in the session (`CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, MCP servers, skills, agent personas, 0-token mods & shell hooks) annotated with **source** and **priority** (`P1` local override → `P3` plugin/docs). |
-| **5** | `agent-flow.ts` | `Pane` (`/crew-agents`) + `AbovePrompt` | Intercepts `tool.call` subagent launches (`Agent`, `Task`, and `claude-crew` personas `ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) and renders a live execution tree (`🔄` / `✅` / `🚫` / `❌`, tools, elapsed time). |
+| **5** | `agent-flow.ts` | `Pane` (`/crew-agents`) + `AbovePrompt` | Intercepts `tool.call` subagent launches (`Agent`, `Task`, and `crew-mates` personas `ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) and renders a live execution tree (`🔄` / `✅` / `🚫` / `❌`, tools, elapsed time). |
 
 #### ⚡ Tasks, Batches & Multi-Session (Mods 6–10)
 
@@ -236,11 +236,11 @@ Mods load with the plugin — nothing to enable. From a clone:
 claude --plugin-dir /path/to/claude-crew     # one-off session, no install
 # or
 /plugin marketplace add /path/to/claude-crew
-/plugin install claude-crew@claude-crew
+/plugin install crew-mates@crew-mates
 ```
 
 Then run `/crew-ui` in a session: it lists every band and pane with its
-ON/OFF state. Already installed from GitHub? Run `/plugin update claude-crew`
+ON/OFF state. Already installed from GitHub? Run `/plugin update crew-mates`
 once the mods are published.
 
 **Bands don't show up?** Run `claude plugin validate .` — the output must
@@ -259,7 +259,7 @@ Claude Code build predates hook `modules`; update it.
 | `/crew-count` | Count how many batches can be launched in parallel right now + ready terminal titles |
 | `/crew-dashboard` | Launch the optional local read/write web dashboard (`http://127.0.0.1:8943`) |
 | `/crew-update` | Pull upstream engine-file updates into an already-bootstrapped project without touching `crew/` task data |
-| `/crew-version` | Print the installed `claude-crew` version |
+| `/crew-version` | Print the installed `crew-mates` version |
 
 ### Optional environment variables
 
@@ -300,7 +300,7 @@ your project.
 
 ```text
 /plugin marketplace add Nakken13/claude-crew
-/plugin install claude-crew@claude-crew
+/plugin install crew-mates@crew-mates
 /crew-init
 ```
 
@@ -312,8 +312,8 @@ Zero-Token Mods run straight from the installed plugin.
 Paste this into Claude Code, in the project you want to set up:
 
 ```text
-Install the claude-crew plugin (marketplace add Nakken13/claude-crew, then
-install claude-crew@claude-crew), then run /crew-init here.
+Install the crew-mates plugin (marketplace add Nakken13/claude-crew, then
+install crew-mates@crew-mates), then run /crew-init here.
 ```
 
 Claude runs the marketplace add + install for you, then bootstraps the
@@ -329,7 +329,7 @@ cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,cr
 Open `your-project` in Claude Code and run `/crew-init`. Use this if you
 don't want a marketplace dependency — skills, agents, and Python hooks get
 copied straight into the project (note: the 10 in-process TypeScript Mods in
-`hooks/` require loading `claude-crew` as a Claude Code plugin via Option A/B).
+`hooks/` require loading `crew-mates` as a Claude Code plugin via Option A/B).
 
 <br>
 
@@ -356,8 +356,8 @@ crew\dashboard.bat
 
 `crew/dashboard.bat` is copied into every project by `/crew-init` (and kept
 current by `/crew-update`). It finds the server in this order: `%CREW_DASHBOARD_DIR%`
-(manual override), `scripts/dashboard/` in the repo (claude-crew itself), then the
-newest installed plugin under `%USERPROFILE%\.claude\plugins\cache\claude-crew\`.
+(manual override), `scripts/dashboard/` in the repo (crew-mates itself), then the
+newest installed plugin under `%USERPROFILE%\.claude\plugins\cache\crew-mates\`.
 So the plugin must be installed for it to work in other projects.
 
 First run creates an isolated venv (`.dashboard-venv/`) and installs the
@@ -376,7 +376,7 @@ Already bootstrapped? `/crew-update` pulls in engine-file changes (fixes,
 new rules, new skills) without ever touching your `crew/` task data.
 
 - **Plugin install (Option A/B)** — skills, agents, hooks, and Zero-Token Mods
-  already run from `${CLAUDE_PLUGIN_ROOT}`, so `/plugin update claude-crew` covers those;
+  already run from `${CLAUDE_PLUGIN_ROOT}`, so `/plugin update crew-mates` covers those;
   `/crew-update` only checks `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/
   `CONTRIBUTING.md`/`SECURITY.md`/`check_placeholders.py`/`crew/dashboard.bat`.
 - **Manual clone (Option C)** — `/crew-update` also checks `crew_hook.py`,
@@ -396,13 +396,13 @@ one of four statuses before anything is written:
 
 <br>
 
-## 🎓 Tutorial: update claude-crew
+## 🎓 Tutorial: update crew-mates
 
 **Plugin install (Option A/B)**
 
 1. Update the plugin itself (skills, agents, hooks, Zero-Token Mods):
    ```text
-   /plugin update claude-crew
+   /plugin update crew-mates
    ```
 2. Restart Claude Code so the new version (`v0.6.0`) and `hooks/register.ts` are loaded.
 3. In each bootstrapped project, sync the project-level files:
@@ -414,7 +414,7 @@ one of four statuses before anything is written:
 
 **Manual clone (Option C)**
 
-1. Pull the latest scaffold in your clone of claude-crew:
+1. Pull the latest scaffold in your clone of crew-mates:
    ```bash
    git pull
    ```
@@ -431,7 +431,7 @@ status means.
 
 ## 🧪 Testing & verification
 
-If you're developing or auditing `claude-crew` locally:
+If you're developing or auditing `crew-mates` locally:
 
 ```bash
 # Run the 10 Zero-Token Mods test suite inside Claude Code's native mod harness
@@ -462,7 +462,7 @@ python scripts/dev/verify_plugin_package.py
 ## 🤝 Contributing
 
 Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
-`claude-crew` saves you a merge conflict, a ⭐ helps other people find it.
+`crew-mates` saves you a merge conflict, a ⭐ helps other people find it.
 
 [![GitHub stars](https://img.shields.io/github/stars/Nakken13/claude-crew?style=social)](https://github.com/Nakken13/claude-crew)
 

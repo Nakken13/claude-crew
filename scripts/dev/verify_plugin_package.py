@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural integrity checks for the claude-crew plugin package.
+"""Structural integrity checks for the crew-mates plugin package.
 
 Run directly: python scripts/dev/verify_plugin_package.py
 Exits 0 if every check passes, 1 otherwise (with problems printed).
@@ -54,8 +54,8 @@ def check_manifests(repo_root: Path) -> list[str]:
             plugins = data.get("plugins")
             if not plugins or not isinstance(plugins, list):
                 problems.append(f"{marketplace_path} missing non-empty 'plugins' list")
-            elif not any(p.get("name") == "claude-crew" for p in plugins):
-                problems.append(f"{marketplace_path} 'plugins' list has no entry named claude-crew")
+            elif not any(p.get("name") == "crew-mates" for p in plugins):
+                problems.append(f"{marketplace_path} 'plugins' list has no entry named crew-mates")
 
     return problems
 
@@ -279,7 +279,7 @@ def check_readme_has_marketplace_install(repo_root: Path) -> list[str]:
     text = readme.read_text(encoding="utf-8")
     if "/plugin marketplace add Nakken13/claude-crew" not in text:
         problems.append(f"{readme} missing the /plugin marketplace add command")
-    if "/plugin install claude-crew@claude-crew" not in text:
+    if "/plugin install crew-mates@crew-mates" not in text:
         problems.append(f"{readme} missing the /plugin install command")
     return problems
 

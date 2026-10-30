@@ -1,5 +1,5 @@
 /**
- * Point d'entrée unique des 10 Mods "Zero-Token" de `claude-crew`.
+ * Point d'entrée unique des 10 Mods "Zero-Token" de `crew-mates`.
  * Déclaré dans `hooks/hooks.json` via `"modules": ["./register.ts"]`.
  *
  * Architecture :
@@ -156,7 +156,7 @@ export function formatCrewUiOverview(): string {
   const flag = (v: boolean) => (v ? '🟢 ON' : '⚪ OFF');
 
   return [
-    '🎛️ claude-crew Zero-Token UI (10 Mods 100% locaux)',
+    '🎛️ crew-mates Zero-Token UI (10 Mods 100% locaux)',
     'Usage : /crew-ui [all|radar|progress|board|turns|stack|agents] [on|off]',
     '',
     'Bandes AbovePrompt :',
@@ -202,7 +202,7 @@ export function register(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-ui',
-        description: 'Contrôler les 10 Mods Zero-Token claude-crew (bandes de statut & volets UI)',
+        description: 'Contrôler les 10 Mods Zero-Token crew-mates (bandes de statut & volets UI)',
         argumentHint: '[all|radar|progress|board|turns|stack|agents]',
       })
       .catch(() => undefined);
@@ -227,7 +227,7 @@ export function register(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-agents',
-        description: 'Afficher l’arbre d’exécution en direct des subagents claude-crew (0-token)',
+        description: 'Afficher l’arbre d’exécution en direct des subagents crew-mates (0-token)',
       })
       .catch(() => undefined);
 
@@ -697,8 +697,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: shouldEnable
-              ? '🎛️ Tous les volets et bandes Zero-Token claude-crew sont ouverts.'
-              : '⚪ Volets Zero-Token claude-crew fermés.',
+              ? '🎛️ Tous les volets et bandes Zero-Token crew-mates sont ouverts.'
+              : '⚪ Volets Zero-Token crew-mates fermés.',
           };
         }
 

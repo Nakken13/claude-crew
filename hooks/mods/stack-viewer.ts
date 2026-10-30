@@ -193,7 +193,7 @@ export function registerStackViewer(on: ModRegistrar): void {
       if (!localSkillSet.has(sk)) {
         skills.push({
           name: sk,
-          source: 'plugin claude-crew',
+          source: 'plugin crew-mates',
           priority: 'P2 · Plugin',
         });
       }
@@ -218,7 +218,7 @@ export function registerStackViewer(on: ModRegistrar): void {
       if (!localAgentSet.has(ag)) {
         agents.push({
           name: ag.replace(/\.md$/i, ''),
-          source: 'plugin claude-crew',
+          source: 'plugin crew-mates',
           priority: 'P2 · Plugin',
         });
       }

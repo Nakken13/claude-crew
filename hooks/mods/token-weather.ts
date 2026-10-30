@@ -5,7 +5,7 @@
  * `☀️ Clear` → `⛅ Cloudy` → `⛈️ Storm` → `🚨 Compact soon`
  * basée sur le ratio de la fenêtre de contexte.
  *
- * Seuils calibrés sur la politique d'efficience de contexte de `claude-crew`
+ * Seuils calibrés sur la politique d'efficience de contexte de `crew-mates`
  * (seuil d'alerte crew à 150k / 200k = 75%) :
  * - < 50%  : ☀️ Clear
  * - 50-74% : ⛅ Cloudy

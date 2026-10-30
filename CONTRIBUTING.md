@@ -1,4 +1,4 @@
-# Contributing to claude-crew
+# Contributing to crew-mates
 
 Solo-maintained project — no rigid convention imposed. That said, if you're
 opening a PR:

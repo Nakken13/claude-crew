@@ -1,12 +1,12 @@
 {
-  "name": "claude-crew",
+  "name": "crew-mates",
   "owner": {
     "name": "Nakken13",
     "url": "https://github.com/Nakken13"
   },
   "plugins": [
     {
-      "name": "claude-crew",
+      "name": "crew-mates",
       "source": ".",
       "description": "File-based task lifecycle, multi-agent collision prevention, and 10 Zero-Token UI/batch supervision mods for Claude Code."
     }
