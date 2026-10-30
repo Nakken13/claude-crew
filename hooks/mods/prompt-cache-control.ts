@@ -10,7 +10,8 @@
 
 import {
   crewRuntimeState,
-  crewUiState,
+  PANE_META,
+  resolvePaneRequestId,
   extractTurnUsage,
   formatCompactTokens,
   formatCountdownClock,
@@ -184,28 +185,24 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
     return next(e);
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const prev = await next(e);
-    if (!crewUiState.bands.cache) return prev;
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    if (resolvePaneRequestId(e as Record<string, unknown>) !== PANE_META['crew-cache'].id) {
+      return next(e);
+    }
 
     const status = computePromptCacheStatus(Date.now());
     const { Box, Text } = $.ui.resolve(e);
-
     return Box({
       flexDirection: 'column',
+      padding: 1,
+      gap: 1,
       children: [
-        ...(prev ? [prev] : []),
-        Box({
-          flexDirection: 'row',
-          paddingX: 1,
-          children: [
-            Text({
-              color: status.color,
-              bold: status.bold,
-              dimColor: status.remainingSeconds === 0 && promptCacheState.lastRefreshAtMs === null,
-              children: [status.line],
-            }),
-          ],
+        Text({ bold: true, color: 'cyan', children: [PANE_META['crew-cache'].title] }),
+        Text({
+          color: status.color,
+          bold: status.bold,
+          dimColor: status.remainingSeconds === 0 && promptCacheState.lastRefreshAtMs === null,
+          children: [status.line],
         }),
       ],
     });

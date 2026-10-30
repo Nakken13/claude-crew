@@ -97,8 +97,8 @@ export interface ModRegistrar {
   (event: string, matcher: Record<string, unknown>, handler: HookHandler<any, any>): void;
 }
 
-export type CrewPaneId = 'crew-turns' | 'crew-stack' | 'crew-board' | 'crew-agents';
-export type CrewBandId = 'cache' | 'weather' | 'radar' | 'progress' | 'agents' | 'locks';
+export type CrewPaneId = 'crew-turns' | 'crew-stack' | 'crew-board' | 'crew-agents' | 'crew-cache';
+export type CrewBandId = 'weather' | 'radar' | 'progress' | 'agents' | 'locks';
 
 export const PANE_META: Record<CrewPaneId, { id: CrewPaneId; title: string; command: string }> = {
   'crew-turns': {
@@ -120,6 +120,11 @@ export const PANE_META: Record<CrewPaneId, { id: CrewPaneId; title: string; comm
     id: 'crew-agents',
     title: '🎭 Crew Agent Flow',
     command: '/crew-agents',
+  },
+  'crew-cache': {
+    id: 'crew-cache',
+    title: '🔥 Prompt Cache',
+    command: '/crew-ui cache',
   },
 };
 
@@ -158,7 +163,6 @@ const DEFAULT_SESSION_ID = `sess-${Date.now().toString(36)}-${Math.random().toSt
 
 export const crewUiState: CrewUiVisibilityState = {
   bands: {
-    cache: true,
     weather: true,
     radar: true,
     progress: true,
@@ -170,6 +174,7 @@ export const crewUiState: CrewUiVisibilityState = {
     'crew-stack': false,
     'crew-board': false,
     'crew-agents': false,
+    'crew-cache': false,
   },
 };
 
@@ -851,4 +856,75 @@ export function formatCountdownClock(remainingSeconds: number): string {
     return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Bande unique au-dessus du prompt : chaque mod y verse des segments (gauche = crew,
+ * droite = météo) au lieu de dessiner sa propre ligne, ce qui évitait l'empilement.
+ */
+export interface BandSegment {
+  slot: 'left' | 'right' | 'alert';
+  text: string;
+  order?: number;
+  color?: string;
+  bold?: boolean;
+  dimColor?: boolean;
+}
+
+export interface BandAccumulator {
+  crewBand: true;
+  foreign: unknown;
+  blocks: unknown[];
+  segments: BandSegment[];
+}
+
+export function isBandAccumulator(value: unknown): value is BandAccumulator {
+  return typeof value === 'object' && value !== null && (value as BandAccumulator).crewBand === true;
+}
+
+export function addBandSegments(prev: unknown, ...segments: BandSegment[]): BandAccumulator {
+  if (isBandAccumulator(prev)) return { ...prev, segments: [...prev.segments, ...segments] };
+  return { crewBand: true, foreign: prev ?? null, blocks: [], segments };
+}
+
+/** Bloc multi-lignes déjà dessiné (ex. arbre des subagents), posé au-dessus de la ligne unique. */
+export function addBandBlock(prev: unknown, block: unknown): BandAccumulator {
+  const acc = addBandSegments(prev);
+  return { ...acc, blocks: [...acc.blocks, block] };
+}
+
+export function renderBandAccumulator(
+  acc: BandAccumulator,
+  ui: { Box: (p: any) => unknown; Text: (p: any) => unknown },
+): unknown {
+  const byOrder = (a: BandSegment, b: BandSegment) => (a.order ?? 100) - (b.order ?? 100);
+  const text = (s: BandSegment) =>
+    ui.Text({ color: s.color, bold: s.bold, dimColor: s.dimColor, children: [s.text] });
+  const side = (slot: 'left' | 'right') =>
+    ui.Box({
+      flexDirection: 'row',
+      gap: 2,
+      children: acc.segments.filter((s) => s.slot === slot).sort(byOrder).map(text),
+    });
+  const alerts = acc.segments.filter((s) => s.slot === 'alert').map((s) =>
+    ui.Box({ flexDirection: 'row', paddingX: 1, children: [text(s)] }),
+  );
+  const hasMain = acc.segments.some((s) => s.slot !== 'alert');
+  const rows = [
+    ...(acc.foreign ? [acc.foreign] : []),
+    ...acc.blocks,
+    ...alerts,
+    ...(hasMain
+      ? [
+          ui.Box({
+            flexDirection: 'row',
+            paddingX: 1,
+            justifyContent: 'space-between',
+            children: [side('left'), side('right')],
+          }),
+        ]
+      : []),
+  ];
+  if (rows.length === 0) return null;
+  return ui.Box({ flexDirection: 'column', children: rows });
 }

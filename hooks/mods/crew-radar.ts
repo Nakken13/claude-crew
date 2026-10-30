@@ -22,6 +22,7 @@ import {
   resolveSessionIdFromEvent,
   resolveWorktreeMainRoot,
   type ModRegistrar,
+  addBandSegments,
 } from './shared.ts';
 
 export const SESSIONS_LOCK_REL_PATH = '.claude/crew-sessions.lock';
@@ -236,27 +237,15 @@ export function registerCrewRadar(on: ModRegistrar): void {
     return next(e);
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.radar) return prev;
-
-    const { Box, Text } = $.ui.resolve(e);
-    return Box({
-      flexDirection: 'column',
-      children: [
-        ...(prev ? [prev] : []),
-        Box({
-          flexDirection: 'row',
-          paddingX: 1,
-          children: [
-            Text({
-              color: 'cyan',
-              bold: true,
-              children: [formatCrewRadarLine()],
-            }),
-          ],
-        }),
-      ],
+    return addBandSegments(prev, {
+      slot: 'left',
+      order: 10,
+      color: 'cyan',
+      bold: true,
+      text: formatCrewRadarLine(),
     });
   });
 }

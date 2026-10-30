@@ -22,6 +22,7 @@ import {
   formatCompactTokens,
   renderBar,
   type ModRegistrar,
+  addBandSegments,
 } from './shared.ts';
 
 export type WeatherStageLabel = '☀️ Clear' | '⛅ Cloudy' | '⛈️ Storm' | '🚨 Compact soon';
@@ -115,29 +116,16 @@ export function registerTokenWeather(on: ModRegistrar): void {
     return next(e);
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.weather) return prev;
 
     const snap = computeTokenWeather();
-    const { Box, Text } = $.ui.resolve(e);
-
-    return Box({
-      flexDirection: 'column',
-      children: [
-        ...(prev ? [prev] : []),
-        Box({
-          flexDirection: 'row',
-          paddingX: 1,
-          children: [
-            Text({
-              color: snap.color,
-              bold: snap.bold,
-              children: [snap.line],
-            }),
-          ],
-        }),
-      ],
+    return addBandSegments(prev, {
+      slot: 'right',
+      color: snap.color,
+      bold: snap.bold,
+      text: snap.line,
     });
   });
 }

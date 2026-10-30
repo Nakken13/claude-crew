@@ -21,6 +21,7 @@ import {
   resolveSessionIdFromEvent,
   type ModRegistrar,
   type ParsedBatchSection,
+  addBandSegments,
 } from './shared.ts';
 
 export interface BatchProgressState {
@@ -325,7 +326,7 @@ export function registerBatchProgress(on: ModRegistrar): void {
     return result;
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.progress) return prev;
     if (
@@ -335,23 +336,11 @@ export function registerBatchProgress(on: ModRegistrar): void {
     ) {
       return prev;
     }
-
-    const { Box, Text } = $.ui.resolve(e);
-    return Box({
-      flexDirection: 'column',
-      children: [
-        ...(prev ? [prev] : []),
-        Box({
-          flexDirection: 'row',
-          paddingX: 1,
-          children: [
-            Text({
-              color: batchProgressState.taskSlug ? 'green' : 'gray',
-              children: [formatCombinedBatchProgressLine()],
-            }),
-          ],
-        }),
-      ],
+    return addBandSegments(prev, {
+      slot: 'left',
+      order: 20,
+      color: batchProgressState.taskSlug ? 'green' : 'gray',
+      text: formatCombinedBatchProgressLine(),
     });
   });
 }

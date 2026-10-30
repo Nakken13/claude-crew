@@ -15,6 +15,7 @@ import {
   PANE_META,
   resolvePaneRequestId,
   type ModRegistrar,
+  addBandBlock,
 } from './shared.ts';
 
 export type SubagentRunStatus = 'running' | 'done' | 'denied' | 'error';
@@ -234,11 +235,9 @@ export function registerAgentFlow(on: ModRegistrar): void {
     const recentNodes = agentFlowState.nodes.slice(-3);
     const { Box, Text } = $.ui.resolve(e);
 
-    return Box({
-      flexDirection: 'column',
-      children: [
-        ...(prev ? [prev] : []),
-        Box({
+    return addBandBlock(
+      prev,
+      Box({
           flexDirection: 'column',
           paddingX: 1,
           children: [
@@ -262,8 +261,7 @@ export function registerAgentFlow(on: ModRegistrar): void {
             ),
           ],
         }),
-      ],
-    });
+    );
   });
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
