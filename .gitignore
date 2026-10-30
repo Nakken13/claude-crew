@@ -40,4 +40,6 @@ Thumbs.db
 # Claude Code — état local/perso, jamais partagé entre postes
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/crew-sessions.lock
+.claude/crew-batch-metrics.json
 .claude/worktrees/

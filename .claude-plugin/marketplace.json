@@ -8,7 +8,7 @@
     {
       "name": "claude-crew",
       "source": ".",
-      "description": "File-based task lifecycle + multi-agent collision prevention for Claude Code."
+      "description": "File-based task lifecycle, multi-agent collision prevention, and 10 Zero-Token UI/batch supervision mods for Claude Code."
     }
   ]
 }
