@@ -613,4 +613,44 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(typeof lock.sessions?.['sess-env-1']?.cwd).toBe('string');
     await h.emit('session.end', { sessionId: 'sess-env-1' });
   });
+  test('météo : seuils 49/50/74/75/89/90 % -> palier, jamais de NaN', () => {
+    const cases: Array<[number, string]> = [
+      [49, '☀️ Clear'],
+      [50, '⛅ Cloudy'],
+      [74, '⛅ Cloudy'],
+      [75, '⛈️ Storm'],
+      [89, '⛈️ Storm'],
+      [90, '🚨 Compact soon'],
+    ];
+    for (const [pct, label] of cases) {
+      const snap = computeTokenWeather(pct * 2_000, 200_000);
+      expect(snap.percent).toBe(pct);
+      expect(snap.label).toBe(label);
+    }
+    // NaN direct : défaut connu, cf. crew/PROBLEMS/token-weather-nan-entree-invalide.md
+    for (const bad of [-5, 0]) {
+      const snap = computeTokenWeather(bad, 0);
+      expect(snap.line).not.toContain('NaN');
+    }
+    expect(computeTokenWeather(500_000, 200_000).percent).toBe(100);
+  });
+
+  test('météo : session.usage() en erreur ou turn.complete sans usage -> ancien état conservé', async () => {
+    const h = createHarness();
+    (h.api as unknown as Record<string, unknown>).session = {
+      usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 60 } }),
+    };
+    await h.emit('session.start', { sessionId: 'sess-weather-2' });
+    await h.emit('turn.complete', { reason: 'answer', durationMs: 1_000 });
+    expect(computeTokenWeather().percent).toBe(60);
+
+    (h.api as unknown as Record<string, unknown>).session = {
+      usage: async () => {
+        throw new Error('indisponible');
+      },
+    };
+    await h.emit('turn.complete', { reason: 'answer', durationMs: 1_000 });
+    expect(computeTokenWeather().percent).toBe(60);
+    await h.emit('session.end', { sessionId: 'sess-weather-2' });
+  });
 });
