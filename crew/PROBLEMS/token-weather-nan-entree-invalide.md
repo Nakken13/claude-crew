@@ -1,6 +1,6 @@
 # token-weather : `computeTokenWeather(NaN)` affiche `NaN/200k (NaN%)`
 
-Statut : 🔴 ouvert
+Statut : ✅ résolu (garde `Number.isFinite`, test étendu NaN/Infinity)
 
 ## Contexte
 
