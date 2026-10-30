@@ -345,10 +345,10 @@ export function register(on: ModRegistrar): void {
               : undefined,
       },
     };
-    // Le vrai turn.complete ne porte aucun compte de tokens : le contexte vient de la session.
+    // e.usage somme les requêtes du tour ; la taille réelle du contexte vient de la session.
     let enriched: unknown = e;
     const ev = e as Record<string, unknown>;
-    if (ev.usage === undefined && ev.contextTokens === undefined) {
+    if (ev.contextTokens === undefined) {
       try {
         const ctx = (await $.session.usage()).context;
         if (ctx.tokens && ctx.tokens > 0) {

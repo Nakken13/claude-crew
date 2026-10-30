@@ -525,4 +525,27 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather().percent).toBe(80);
     await h.emit('session.end', { sessionId: 'sess-weather-1' });
   });
+
+  test('événement turn.complete réaliste (usage du moteur) : météo et compteurs de cache bougent', async () => {
+    const h = createHarness();
+    const cacheBefore = promptCacheState.sessionCacheReadTokens;
+    await h.emit('session.start', { sessionId: 'sess-real-1' });
+    await h.emit('turn.complete', {
+      reason: 'answer',
+      answer: 'ok',
+      durationMs: 4_000,
+      isAborted: false,
+      turnId: 't1',
+      usage: {
+        input_tokens: 2_000,
+        output_tokens: 500,
+        cache_read_input_tokens: 150_000,
+        cache_creation_input_tokens: 8_000,
+        model: 'claude-sonnet-5-5',
+      },
+    });
+    expect(computeTokenWeather().percent).toBeGreaterThan(0);
+    expect(promptCacheState.sessionCacheReadTokens - cacheBefore).toBe(150_000);
+    await h.emit('session.end', { sessionId: 'sess-real-1' });
+  });
 });
