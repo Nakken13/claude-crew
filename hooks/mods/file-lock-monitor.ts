@@ -22,6 +22,7 @@ import {
   type ModRegistrar,
   type ParsedBatchSection,
   type SessionsLockFile,
+  addBandSegments,
 } from './shared.ts';
 import { SESSIONS_LOCK_REL_PATH } from './crew-radar.ts';
 
@@ -256,33 +257,22 @@ export function registerFileLockMonitor(on: ModRegistrar): void {
     return next(e);
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.locks) return prev;
 
     const activeAlerts = getActiveCollisionAlerts(Date.now());
     if (activeAlerts.length === 0) return prev;
 
-    const { Box, Text } = $.ui.resolve(e);
-    return Box({
-      flexDirection: 'column',
-      children: [
-        ...(prev ? [prev] : []),
-        ...activeAlerts.slice(-3).map((alert) =>
-          Box({
-            flexDirection: 'row',
-            paddingX: 1,
-            children: [
-              Text({
-                color: 'red',
-                bold: true,
-                children: [alert.message],
-              }),
-            ],
-          }),
-        ),
-      ],
-    });
+    return addBandSegments(
+      prev,
+      ...activeAlerts.slice(-3).map((alert) => ({
+        slot: 'alert' as const,
+        color: 'red',
+        bold: true,
+        text: alert.message,
+      })),
+    );
   });
 }
 

@@ -172,7 +172,7 @@ prompt cache drops below `60s`, an immediate visual alert appears above the prom
 
 | # | Mod (`hooks/mods/`) | UI Surface | What it does (100% local) |
 |---|---|---|---|
-| **1** | `prompt-cache-control.ts` | `AbovePrompt` + Toast | Tracks prompt cache TTL (`5 min` default or `1h` via `ephemeral_1h_input_tokens` / `CLAUDE_CACHE_TTL=1h`), live `MM:SS` countdown, `cache_read_input_tokens` / `cache_creation_input_tokens` counters, hit-rate %, and `< 60s` expiry warning. |
+| **1** | `prompt-cache-control.ts` | `Pane` (`/crew-ui cache`) + Toast | Tracks prompt cache TTL (`5 min` default or `1h` via `ephemeral_1h_input_tokens` / `CLAUDE_CACHE_TTL=1h`), live `MM:SS` countdown, `cache_read_input_tokens` / `cache_creation_input_tokens` counters, hit-rate %, and `< 60s` expiry warning. |
 | **2** | `token-weather.ts` | `AbovePrompt` + Toast | Compact 1-line context window gauge: `☀️ Clear` (`<50%`) → `⛅ Cloudy` (`50–74%`) → `⛈️ Storm` (`75–89%`, aligned with `crew-mates`'s 150k rule) → `🚨 Compact soon` (`≥90%`). |
 | **3** | `turn-inspector.ts` | `Pane` (`/crew-turns`) | Side panel logging every turn: `in`/`out` tokens, cache `R`/`W`, deduplicated tool calls (`Read×3, Edit`), turn duration, and context bar. |
 | **4** | `stack-viewer.ts` | `Pane` (`/crew-stack`) | Hierarchical tree of everything active in the session (`CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, MCP servers, skills, agent personas, 0-token mods & shell hooks) annotated with **source** and **priority** (`P1` local override → `P3` plugin/docs). |
@@ -224,7 +224,7 @@ hooks/
 /crew-ui turns   (or /crew-turns)   # Toggle Turn Inspector side pane
 /crew-ui stack   (or /crew-stack)   # Toggle Session Stack Viewer tree pane
 /crew-ui agents  (or /crew-agents)  # Toggle live Subagent Flow execution tree pane
-/crew-ui cache [on|off]       # Toggle prompt cache TTL band (prompt-cache-control)
+/crew-ui cache                # Toggle prompt cache TTL side pane (prompt-cache-control)
 /crew-ui weather [on|off]     # Toggle token weather gauge band (token-weather)
 ```
 

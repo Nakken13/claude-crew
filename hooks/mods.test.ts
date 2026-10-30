@@ -507,6 +507,11 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     const agentsTree = await h.emit('ui.render', { requestId: 'crew-agents' }, 'component=Pane');
     expect(collectTexts(agentsTree)).toContain("Arbre d'exécution Subagents");
 
+    // Le cache vit dans son volet latéral, plus dans la bande au-dessus du prompt
+    const cacheTree = await h.emit('ui.render', { requestId: 'crew-cache' }, 'component=Pane');
+    expect(collectTexts(cacheTree)).toContain('Prompt Cache');
+    expect(collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'))).not.toContain('cache_read');
+
     await h.emit('session.end', { sessionId: 'sess-vel-1' });
   });
 });

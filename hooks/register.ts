@@ -15,6 +15,8 @@ import {
   crewUiState,
   PANE_META,
   resolvePaneRequestId,
+  isBandAccumulator,
+  renderBandAccumulator,
   type CrewPaneId,
   type HookHandler,
   type ModApi,
@@ -159,15 +161,15 @@ export function formatCrewUiOverview(): string {
     '🎛️ crew-mates Zero-Token UI (10 Mods 100% locaux)',
     'Usage : /crew-ui [all|radar|progress|board|turns|stack|agents] [on|off]',
     '',
-    'Bandes AbovePrompt :',
+    'Bande unique AbovePrompt (crew à gauche, météo à droite) :',
     `  • radar    (${flag(b.radar)})    — ${formatCrewRadarLine()}`,
     `  • progress (${flag(b.progress)}) — ${formatCombinedBatchProgressLine()}`,
     `  • weather  (${flag(b.weather)})  — ${computeTokenWeather().line}`,
-    `  • cache    (${flag(b.cache)})    — ${computePromptCacheStatus().line}`,
     `  • locks    (${flag(b.locks)})    — Anti-collision multi-sessions (Edit/Write)`,
     '',
     'Volets interactifs (Panes) :',
     `  • board    (${flag(p['crew-board'])})  — /crew-board  (${batchBoardState.allBoards.length} batch(s))`,
+    `  • cache    (${flag(p['crew-cache'])})  — /crew-ui cache  (${computePromptCacheStatus().line})`,
     `  • turns    (${flag(p['crew-turns'])})  — /crew-turns  (${turnInspectorState.turns.length} tour(s))`,
     `  • stack    (${flag(p['crew-stack'])})  — /crew-stack  (${stackViewerState.snapshot.modsAndHooks.length} mods/hooks)`,
     `  • agents   (${flag(p['crew-agents'])}) — /crew-agents (${agentFlowState.nodes.length} subagent(s))`,
@@ -399,9 +401,11 @@ export function register(on: ModRegistrar): void {
               : undefined,
       },
     };
-    // Reverse order so top bands (alerts, radar, progress) stack cleanly above weather & cache
+    // Une seule ligne : crew à gauche, météo à droite (segments versés par chaque mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
-    return composeMiddlewareChain(orderedBands, api, e, next).catch(() => next(e));
+    return composeMiddlewareChain(orderedBands, api, e, next)
+      .then((tree) => (isBandAccumulator(tree) ? renderBandAccumulator(tree, $.ui.resolve(e)) : tree))
+      .catch(() => next(e));
   });
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
@@ -410,7 +414,8 @@ export function register(on: ModRegistrar): void {
       reqId !== 'crew-turns' &&
       reqId !== 'crew-stack' &&
       reqId !== 'crew-board' &&
-      reqId !== 'crew-agents'
+      reqId !== 'crew-agents' &&
+      reqId !== 'crew-cache'
     ) {
       return next(e);
     }
@@ -611,16 +616,6 @@ export function register(on: ModRegistrar): void {
           };
         }
 
-        if (target === 'cache') {
-          crewUiState.bands.cache = parseToggleIntent(modeArg, crewUiState.bands.cache);
-          $.ui.invalidate('ui.render');
-          return {
-            text: crewUiState.bands.cache
-              ? `🔥 Prompt Cache Control activé : ${computePromptCacheStatus().line}`
-              : '⚪ Prompt Cache Control masqué.',
-          };
-        }
-
         if (target === 'weather') {
           crewUiState.bands.weather = parseToggleIntent(modeArg, crewUiState.bands.weather);
           $.ui.invalidate('ui.render');
@@ -636,6 +631,7 @@ export function register(on: ModRegistrar): void {
           turns: 'crew-turns',
           stack: 'crew-stack',
           agents: 'crew-agents',
+          cache: 'crew-cache',
         };
 
         if (target in paneMap) {
@@ -674,7 +670,6 @@ export function register(on: ModRegistrar): void {
           const isExplicitOff = modeArg === 'off' || modeArg === 'close' || modeArg === 'hide';
           crewUiState.bands.radar = isExplicitOff ? false : true;
           crewUiState.bands.progress = isExplicitOff ? false : true;
-          crewUiState.bands.cache = isExplicitOff ? false : true;
           crewUiState.bands.weather = isExplicitOff ? false : true;
           crewUiState.bands.agents = isExplicitOff ? false : true;
           crewUiState.bands.locks = true;
