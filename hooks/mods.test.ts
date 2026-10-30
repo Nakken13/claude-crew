@@ -514,4 +514,15 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
 
     await h.emit('session.end', { sessionId: 'sess-vel-1' });
   });
+
+  test('météo : le contexte vient de $.session.usage() quand turn.complete ne porte pas de tokens', async () => {
+    const h = createHarness();
+    (h.api as unknown as Record<string, unknown>).session = {
+      usage: async () => ({ context: { tokens: 160_000, window: 200_000, percent: 80 } }),
+    };
+    await h.emit('session.start', { sessionId: 'sess-weather-1' });
+    await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
+    expect(computeTokenWeather().percent).toBe(80);
+    await h.emit('session.end', { sessionId: 'sess-weather-1' });
+  });
 });
