@@ -396,6 +396,29 @@ one of four statuses before anything is written:
 
 <br>
 
+## 🔁 Migrating from `claude-crew` (< 1.0.0)
+
+The plugin was renamed `crew-mates` (the `claude-` prefix is reserved). The GitHub repo
+and every `/crew-*` command are unchanged. Once per machine:
+
+```text
+/plugin uninstall claude-crew
+/plugin marketplace remove claude-crew
+/plugin marketplace add Nakken13/claude-crew
+/plugin install crew-mates@crew-mates
+```
+
+Then run `/crew-update` in each project. **Your project files are safe:**
+
+- The `/plugin` commands never touch a project, only the plugin cache.
+- `/crew-update` never writes your data: `crew/TODO`, `CURRENT_TASKS`, `PROBLEMS`, `ICEBOX`,
+  `PAUSED`, `TESTS`, `HISTORIQUE.md`, `TESTS_DONE`, `CLAUDE_BATCH.md`.
+- Engine files you customized (`PRODUCT.md`, `CLAUDE.md`, `AGENTS.md`...) are reported as
+  `conflict` and never overwritten without your confirmation.
+- **Recommended:** read the dry-run plan before confirming, keep your version for every
+  `conflict`, and answer **no** if asked to "seed" the baseline on a project whose files you
+  edited by hand.
+
 ## 🎓 Tutorial: update crew-mates
 
 **Plugin install (Option A/B)**
@@ -404,7 +427,7 @@ one of four statuses before anything is written:
    ```text
    /plugin update crew-mates
    ```
-2. Restart Claude Code so the new version (`v0.6.0`) and `hooks/register.ts` are loaded.
+2. Restart Claude Code so the new version (`v1.0.0`) and `hooks/register.ts` are loaded.
 3. In each bootstrapped project, sync the project-level files:
    ```text
    /crew-update
