@@ -128,6 +128,7 @@ function stopCountdownTimer(): void {
 export function registerPromptCacheControl(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
+    promptCacheState.ttlSeconds = 300;
     if (envTtl && (envTtl.toLowerCase() === '1h' || envTtl === '3600')) {
       promptCacheState.ttlSeconds = 3600;
     }
@@ -158,7 +159,8 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
     const usage = extractTurnUsage(e as Record<string, unknown>, envTtl);
 
-    promptCacheState.ttlSeconds = usage.ttlSeconds;
+    // Le 1h n'est visible que sur les tours qui créent du cache : ne jamais rétrograder en cours de session.
+    promptCacheState.ttlSeconds = Math.max(promptCacheState.ttlSeconds, usage.ttlSeconds);
     promptCacheState.lastCacheReadTokens = usage.cacheReadInputTokens;
     promptCacheState.lastCacheCreationTokens = usage.cacheCreationInputTokens;
     promptCacheState.sessionCacheReadTokens += usage.cacheReadInputTokens;
