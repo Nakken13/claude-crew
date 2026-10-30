@@ -646,6 +646,9 @@ export function parseSessionsLock(jsonText: string, nowMs = Date.now()): Session
   }
 }
 
+// Borne l'explosion combinatoire de `{a,b}{c,d}…` (2^N) dans une ligne `Zone :`.
+const MAX_BRACE_EXPANSIONS = 64;
+
 export function expandBraceGlob(pattern: string): string[] {
   const norm = normalizeSlashes(pattern.trim()).replace(/\/+\*\*$/, '').replace(/\/+$/, '');
   const braceMatch = norm.match(/\{([^{}]+)\}/);
@@ -658,6 +661,7 @@ export function expandBraceGlob(pattern: string): string[] {
   for (const choice of braceMatch[1].split(',')) {
     for (const sub of expandBraceGlob(`${prefix}${choice.trim()}${suffix}`)) {
       results.push(sub);
+      if (results.length >= MAX_BRACE_EXPANSIONS) return results;
     }
   }
   return results;
