@@ -549,6 +549,17 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-real-1' });
   });
 
+  test('/crew-ui : une erreur interne remonte son message au lieu d\'un texte générique', async () => {
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-err-1' });
+    (h.api.ui as { open: unknown }).open = async () => {
+      throw new Error('boom-ui-open');
+    };
+    const res = await h.emit('command.run', { args: 'board on' }, 'command=crew-ui');
+    expect(String(res.text)).toContain('boom-ui-open');
+    await h.emit('session.end', { sessionId: 'sess-err-1' });
+  });
+
   test("env asynchrone du moteur ($.env.get renvoie une promesse) : projectRoot reste une chaîne", async () => {
     const h = createHarness();
     (h.api.env as { get: unknown }).get = async (k: string) => (k === 'CLAUDE_PROJECT_DIR' ? '/proj' : undefined);

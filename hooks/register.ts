@@ -652,7 +652,9 @@ export function register(on: ModRegistrar): void {
           text: `❓ Sous-commande inconnue "${target}". Utilisez : /crew-ui [all|radar|progress|board|turns|stack|agents]`,
         };
       })
-      .catch(() => ({ text: '❌ Erreur locale lors de l’exécution de /crew-ui.' }));
+      .catch((err: unknown) => ({
+        text: `❌ Erreur locale lors de l’exécution de /crew-ui : ${err instanceof Error ? err.message : String(err)}`,
+      }));
   });
 }
 
