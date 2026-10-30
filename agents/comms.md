@@ -1,6 +1,6 @@
 ---
 name: comms
-description: Marketing/copywriting persona for <NOM_PROJET> — landing copy, ad scripts, emails, social posts, microcopy, brand voice. Not for in-app conversational copy with its own tone rules (see AGENTS.md), distribution strategy (social) or keyword/intent choice (seo): both hand over a brief.
+description: Marketing/copywriting persona for <NOM_PROJET> — landing copy, ad scripts, emails, social posts, microcopy, brand voice. Not for in-app conversational copy with its own tone rules (see AGENTS.md), distribution strategy (social) or keyword/intent choice (seo), both hand over a brief.
 tools: Read, Glob, Grep, Write, Edit, WebSearch
 ---
 
