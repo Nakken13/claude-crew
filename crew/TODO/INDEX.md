@@ -10,5 +10,4 @@ Tâches pas commencées. Démarrer = déplacer le fichier vers `crew/CURRENT_TAS
 - [Vérifier en réel le mod file-lock-monitor](verif-mod-file-lock-monitor.md)
 - [Vérifier en réel le mod prompt-cache-control](verif-mod-prompt-cache-control.md)
 - [Vérifier en réel le mod stack-viewer](verif-mod-stack-viewer.md)
-- [Vérifier en réel le mod token-weather](verif-mod-token-weather.md)
 - [Vérifier en réel le mod turn-inspector](verif-mod-turn-inspector.md)
