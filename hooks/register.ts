@@ -254,7 +254,7 @@ export function register(on: ModRegistrar): void {
       env: {
         get: (k) =>
           k === 'CLAUDE_PROJECT_DIR'
-            ? $.env.get('CLAUDE_PROJECT_DIR')
+            ? $.env.get('CLAUDE_PROJECT_DIR') || ((e as { cwd?: string }).cwd ?? undefined)
             : k === 'CLAUDE_CACHE_TTL'
               ? $.env.get('CLAUDE_CACHE_TTL')
               : undefined,
