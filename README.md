@@ -134,8 +134,8 @@ each other's files.
 
 ## 🎛️ 10 Zero-Token Mods (in-process UI)
 
-Starting in **v0.6.0** (requires Claude Code `v2.1.287+` Mods runtime),
-`claude-crew` includes **10 native TypeScript Mods** loaded in-process via
+Requires a Claude Code build that supports hook `modules` (validated on
+`v2.1.314`; check with `claude plugin validate .`). `claude-crew` includes **10 native TypeScript Mods** loaded in-process via
 `hooks/hooks.json` (`"modules": ["./register.ts"]`). They draw live status bands
 above your prompt and interactive side panes — **without spending a single LLM token**.
 
@@ -227,6 +227,25 @@ hooks/
 /crew-ui cache [on|off]       # Toggle prompt cache TTL band (prompt-cache-control)
 /crew-ui weather [on|off]     # Toggle token weather gauge band (token-weather)
 ```
+
+### Try it locally
+
+Mods load with the plugin — nothing to enable. From a clone:
+
+```bash
+claude --plugin-dir /path/to/claude-crew     # one-off session, no install
+# or
+/plugin marketplace add /path/to/claude-crew
+/plugin install claude-crew@claude-crew
+```
+
+Then run `/crew-ui` in a session: it lists every band and pane with its
+ON/OFF state. Already installed from GitHub? Run `/plugin update claude-crew`
+once the mods are published.
+
+**Bands don't show up?** Run `claude plugin validate .` — the output must
+include a line `hooks/hooks.json names a hooks module`. If it doesn't, your
+Claude Code build predates hook `modules`; update it.
 
 ### Workflow & lifecycle skills (`/crew-*`)
 
