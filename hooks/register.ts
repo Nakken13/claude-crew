@@ -247,6 +247,20 @@ export function register(on: ModRegistrar): void {
       })
       .catch(() => undefined);
 
+    // Les bandes sont actives par défaut ; les volets, eux, s'ouvrent ici (équivalent de `/crew-ui all`).
+    for (const paneId of Object.keys(PANE_META) as CrewPaneId[]) {
+      crewUiState.panes[paneId] = true;
+      await Promise.resolve(
+        $.ui.open({
+          id: PANE_META[paneId].id,
+          title: PANE_META[paneId].title,
+          focus: false,
+          immediate: true,
+          closeOnEscape: true,
+        }),
+      ).catch(() => undefined);
+    }
+
     const api: ModApi = {
       ui: {
         resolve: (ev) => $.ui.resolve(ev),
