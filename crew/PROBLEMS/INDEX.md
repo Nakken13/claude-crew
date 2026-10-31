@@ -10,3 +10,6 @@ Problèmes. Résolu → déplacer le contexte vers `HISTORIQUE.md`.
 - [Latence du hook PreToolUse : un spawn Python à chaque appel outil](latence-hook-pretooluse-spawn-python.md)
 - [Listes de personas maintenues à la main + miroirs désynchronisés](listes-personas-glob.md)
 - [Moniteur de contexte : seuil fixe 150k et répétition stderr sans intervalle](moniteur-contexte-seuil-fixe-stderr.md)
+- [token-weather : `computeTokenWeather(NaN)` affiche `NaN/200k (NaN%)`](token-weather-nan-entree-invalide.md)
+- [token-weather : la jauge reste à 0 % en session réelle](token-weather-reste-a-0-pourcent-session-reelle.md)
+- [`/crew-ui all` sans `on`/`off` bascule au lieu d'ouvrir](crew-ui-all-sans-argument-ferme-les-volets.md)

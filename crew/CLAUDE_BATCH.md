@@ -10,7 +10,7 @@ Zone : `hooks/mods/**`, `hooks/mods.test.ts`, `hooks/register.ts`
 
 Séquence ordonnée (socle partagé d'abord, du plus simple au plus couplé) :
 
-1. `verif-mod-token-weather.md`
+1. ~~`verif-mod-token-weather.md`~~
 2. `verif-mod-prompt-cache-control.md`
 3. `verif-mod-crew-radar.md`
 4. `verif-mod-batch-progress.md`
