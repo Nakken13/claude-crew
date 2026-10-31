@@ -254,7 +254,6 @@ export function register(on: ModRegistrar): void {
         $.ui.open({
           id: PANE_META[paneId].id,
           title: PANE_META[paneId].title,
-          focus: false,
           immediate: true,
           closeOnEscape: true,
         }),
@@ -645,7 +644,7 @@ export function register(on: ModRegistrar): void {
               await $.ui.open({
                 id: PANE_META[paneId].id,
                 title: PANE_META[paneId].title,
-                focus: paneId === 'crew-board',
+                ...(paneId === 'crew-board' ? { focus: true as const } : {}),
                 immediate: true,
                 closeOnEscape: true,
               });

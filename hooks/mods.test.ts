@@ -727,4 +727,22 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     );
     await h.emit('session.end', { sessionId: 'sess-autostart-1' });
   });
+
+  test("ui.open : l'hôte n'accepte que focus:true ou l'absence du champ (jamais focus:false)", async () => {
+    const h = createHarness();
+    const opened: Array<Record<string, unknown>> = [];
+    const realOpen = h.api.ui.open;
+    h.api.ui.open = async (opts: any) => {
+      opened.push({ ...opts });
+      return realOpen(opts);
+    };
+    await h.emit('session.start', { sessionId: 'sess-focus-1' });
+    await h.emit('command.run', { args: 'all off' }, 'command=crew-ui');
+    await h.emit('command.run', { args: 'all on' }, 'command=crew-ui');
+    expect(opened.length).toBeGreaterThanOrEqual(10);
+    for (const o of opened) {
+      expect('focus' in o ? o.focus : true).toBe(true);
+    }
+    await h.emit('session.end', { sessionId: 'sess-focus-1' });
+  });
 });
