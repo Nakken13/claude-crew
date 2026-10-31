@@ -655,4 +655,65 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather().percent).toBe(60);
     await h.emit('session.end', { sessionId: 'sess-weather-2' });
   });
+
+  // --- verif-mod-prompt-cache-control ---
+  function resetPromptCacheState(): void {
+    promptCacheState.ttlSeconds = 300;
+    promptCacheState.lastRefreshAtMs = null;
+    promptCacheState.lastCacheReadTokens = 0;
+    promptCacheState.lastCacheCreationTokens = 0;
+    promptCacheState.alertedExpiringForRefreshMs = null;
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  test('cache : CLAUDE_CACHE_TTL=1h -> TTL 3600, absent ou invalide -> 300', async () => {
+    resetPromptCacheState();
+    const h1 = createHarness();
+    (h1.api.env as { get: (k: string) => unknown }).get = (k) =>
+      k === 'CLAUDE_CACHE_TTL' ? Promise.resolve('1h') : k === 'CLAUDE_PROJECT_DIR' ? '.' : undefined;
+    await h1.emit('session.start', { sessionId: 'sess-cache-ttl-1h' });
+    expect(promptCacheState.ttlSeconds).toBe(3600);
+    await h1.emit('session.end', { sessionId: 'sess-cache-ttl-1h' });
+
+    resetPromptCacheState();
+    const h2 = createHarness();
+    await h2.emit('session.start', { sessionId: 'sess-cache-ttl-default' });
+    expect(promptCacheState.ttlSeconds).toBe(300);
+    await h2.emit('session.end', { sessionId: 'sess-cache-ttl-default' });
+  });
+
+  test('cache : sans tour (lastRefreshAtMs null) -> placeholder, aucun toast ; usage sans champs cache -> pas de crash', async () => {
+    resetPromptCacheState();
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-cache-edge' });
+    const idle = computePromptCacheStatus(Date.now());
+    expect(idle.line).toContain('--:--');
+    expect(idle.isExpiringSoon).toBe(false);
+    await sleep(1_300);
+    expect(h.toasts.filter((t) => t.includes('Prompt cache expire'))).toHaveLength(0);
+
+    await h.emit('turn.complete', { reason: 'answer', durationMs: 500, usage: { input_tokens: 10, output_tokens: 2 } });
+    expect(Number.isFinite(computePromptCacheStatus().hitRatePercent)).toBe(true);
+    expect(computePromptCacheStatus().line).not.toContain('NaN');
+    await h.emit('session.end', { sessionId: 'sess-cache-edge' });
+  });
+
+  test('cache : < 60 s -> un seul toast par rafraichissement, rien apres session.end', async () => {
+    resetPromptCacheState();
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-cache-toast' });
+    promptCacheState.lastRefreshAtMs = Date.now() - 245_000; // 55 s restantes
+    await sleep(2_300);
+    const alerts = () => h.toasts.filter((t) => t.includes('Prompt cache expire'));
+    expect(alerts()).toHaveLength(1);
+
+    await h.emit('session.end', { sessionId: 'sess-cache-toast' });
+    const toastsAfterEnd = h.toasts.length;
+    const invalidationsAfterEnd = h.invalidations;
+    promptCacheState.lastRefreshAtMs = Date.now() - 250_000; // nouveau rafraichissement a alerter
+    promptCacheState.alertedExpiringForRefreshMs = null;
+    await sleep(1_500);
+    expect(h.toasts.length).toBe(toastsAfterEnd);
+    expect(h.invalidations).toBe(invalidationsAfterEnd);
+  });
 });
