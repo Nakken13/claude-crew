@@ -631,6 +631,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     for (const bad of [-5, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
       const snap = computeTokenWeather(bad, 0);
       expect(snap.line).not.toContain('NaN');
+      expect(Number.isFinite(snap.percent)).toBe(true);
+      expect(snap.label).toBe('☀️ Clear');
     }
     expect(computeTokenWeather(500_000, 200_000).percent).toBe(100);
   });
