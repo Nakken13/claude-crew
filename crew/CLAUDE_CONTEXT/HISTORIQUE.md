@@ -4,6 +4,15 @@ Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
 clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
 aideraient une session future à comprendre pourquoi une décision a été prise.
 
+## verif-mod-token-weather — 2026-10-31
+Quoi : vérification réelle du mod `token-weather` (batch « Vérification réelle des mods hooks »). Unitaire : 11/11 verts ; tests de seuils 49/50/74/75/89/90 %
+et de cas limites ajoutés (`hooks/mods.test.ts`, commits `2f6d544`, `4770322`) ; garde NaN/Infinity (`d04308d`). Session réelle (`claude --plugin-dir .`, sonde temporaire
+retirée) : `$.session.usage()` = 87 628 / 1 000 000 (9 %), jauge `☀️ Clear [█░░░░░░░]` cohérente. Le « 0 % » constaté d'abord venait de la copie installée
+`crew-mates@1.0.0` (périmée, sans appel à `session.usage()`), pas du code du worktree : la désactiver (`claude plugin disable crew-mates`) pour tester un worktree.
+Seul le palier Clear est vu en réel (autres paliers différés, décision utilisateur) → `TESTS/DEV/verif-mod-token-weather.md`. Pas de test IA dédié : la suite
+unitaire couvre le reste. Problèmes ouverts : `crew/PROBLEMS/token-weather-reste-a-0-pourcent-session-reelle.md` (bandeau tronqué, `catch {}` muet).
+Revue : 4 passes `simplify` propres ; état global des tests non réinitialisé entre tests (optionnel, impact faible).
+
 ## token-weather-nan-entree-invalide — 2026-10-30
 Quoi : `computeTokenWeather` (`hooks/mods/token-weather.ts`) garde désormais `Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0` ;
 `NaN`/`Infinity` en appel direct ne produisent plus `NaN/200k (NaN%)` (`Math.max(0, NaN)` vaut `NaN`). Test `météo : seuils … jamais de NaN`
