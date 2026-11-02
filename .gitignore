@@ -55,3 +55,6 @@ crew/CLAUDE_BATCH.md
 crew/CLAUDE_CONTEXT/HISTORIQUE.md
 crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md
 crew/CLAUDE_CONTEXT/TESTS_DONE/
+
+# Artefact runtime des mods (vitest lance depuis hooks/)
+hooks/.claude/
