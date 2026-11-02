@@ -77,6 +77,7 @@ TEMPLATE_WHITELIST = [
     ".gitignore",
     "crew/CLAUDE_BATCH.md",
     "crew/CLAUDE_CONTEXT/AGENTS.md",
+    "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md",
     "crew/CLAUDE_CONTEXT/HISTORIQUE.md",
     "crew/CLAUDE_CONTEXT/TESTS_DONE/README.md",
     "crew/CURRENT_TASKS/README.md",

@@ -8,6 +8,9 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **`CLAUDE.md` slimmed ~10 KB → ~5 KB (≈4.5k → ≈2.2k tokens loaded every session).** Task lifecycle, batching/anti-collision, context-efficiency rules and detailed persona routing moved verbatim to the new on-demand engine file `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (added to `crew_update.py` engine files and to the template); `CLAUDE.md` keeps skill/persona routing, `/crew-*` commands and a few always-on rules. Hook messages, skills, agents and `CLAUDE_BATCH.md` point to the new doc instead of `CLAUDE.md § ...`.
+- **Context-reset threshold unified at 150k tokens** for any window size (the Stop hook no longer uses 800k for 1M windows).
+
 ## [1.0.0] - 2026-10-30
 
 - **BREAKING: plugin renamed `claude-crew` → `crew-mates`** (the `claude-` prefix is reserved for Anthropic's own plugins; `claude plugin validate` rejected it). The GitHub repo stays `Nakken13/claude-crew`. All `/crew-*` commands are unchanged; only the long prefix changes (`crew-mates:crew-start`). Migrate once per machine: `/plugin uninstall claude-crew`, `/plugin marketplace remove claude-crew`, `/plugin marketplace add Nakken13/claude-crew`, `/plugin install crew-mates@crew-mates`, then `/crew-update` in each project. `crew_update.py` still detects the old `claude-crew` entry in `enabledPlugins` for the double-hook check.

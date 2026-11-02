@@ -10,7 +10,7 @@ placeholder non résolu par oubli.
 
 **Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
 résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+session mono-subtree (cf. `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Guides AGENTS.md segmentés), le cwd
 peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
 créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
 la racine une seule fois en début d'exécution (`git rev-parse

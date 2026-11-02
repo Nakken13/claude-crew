@@ -268,7 +268,7 @@ def rotate_historique_entries(text, cutoff):
     anterieure a `cutoff` (date) part dans le second. Sans rotation le
     fichier grossit sans fin — chaque future lecture complete (agent,
     skill) devient plus couteuse en tokens meme en respectant la regle
-    'lire par tranches' (CLAUDE.md § Efficience de contexte), puisque
+    'lire par tranches' (crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Efficience de contexte), puisque
     trouver la bonne tranche suppose deja savoir ou chercher. Une entete
     sans date parseable (entree malformee, ex. `## verif-fork-throwaway`)
     n'est JAMAIS rotee a l'aveugle — faute de pouvoir la comparer au cutoff,
@@ -999,7 +999,7 @@ def gate_pretooluse(payload):
         if section is None:
             sys.stderr.write(
                 f"[batch] `{slug}` n'est categorisee dans aucun batch de CLAUDE_BATCH.md. "
-                "Ajoute-la a un batch (avec sa Zone :) avant de la demarrer — voir CLAUDE.md § Batching, "
+                "Ajoute-la a un batch (avec sa Zone :) avant de la demarrer — voir crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Batching, "
                 "ou dispatch le persona manager (/crew-start) qui le fait pour toi.\n"
             )
             sys.exit(2)
@@ -1143,9 +1143,6 @@ def check_zone_overlaps(sections, active, locks, session_id=None, observer=False
 
 
 CONTEXT_BUDGET_TOKENS = 150_000
-CONTEXT_BUDGET_TOKENS_1M = 800_000
-# Au-dela, une fenetre 200k est impossible : fenetre 1M inferee meme sans `[1m]`.
-CONTEXT_WINDOW_200K_MAX = 210_000
 CONTEXT_REPEAT_STEP = 50_000
 
 
@@ -1174,21 +1171,18 @@ def _iter_lines_reverse(path, chunk_size=65536):
 
 def check_context_budget(payload, state=None):
     """Avertit (non bloquant) quand le contexte de la session principale
-    depasse ~150k tokens (800k en fenetre 1M ; cf. CLAUDE.md § Efficience de
-    contexte / Reset de session). Aucune API de comptage de tokens dediee
+    depasse ~150k tokens, quelle que soit la taille de fenetre (cf.
+    crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Efficience de contexte / Reset de session). Aucune API de comptage de tokens dediee
     n'est exposee aux hooks Claude Code : approxime via le dernier message
     assistant du transcript (`transcript_path` du payload Stop) —
     usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens,
     proxy raisonnable puisque chaque tour renvoie l'historique complet en
-    entree. Fenetre 1M detectee par `model` contenant `[1m]` ou par un total
-    > CONTEXT_WINDOW_200K_MAX. `state` ({session_id -> total au dernier
+    entree. Seuil unique (fenetre 200k ou 1M : la qualite se degrade avant la
+    limite). `state` ({session_id -> total au dernier
     avertissement}, mute en place) limite la repetition a un palier de
     CONTEXT_REPEAT_STEP tokens ; repasse sous le seuil (/clear, compaction)
     -> entree purgee, re-avertit au prochain franchissement. state=None ->
     sans memoire (un avertissement a chaque appel au-dessus du seuil).
-    Limite connue : le transcript porte souvent l'id modele nu (sans `[1m]`) ;
-    une session 1M n'est alors reconnue qu'au-dela de 210k (alerte 150k possible
-    avant, faux positif accepte).
     Best-effort : toute erreur (transcript absent, format inattendu, ligne
     corrompue) -> pas d'avertissement."""
     transcript_path = payload.get("transcript_path")
@@ -1199,7 +1193,6 @@ def check_context_budget(payload, state=None):
         return []
     try:
         last_usage = None
-        model = ""
         for raw_line in _iter_lines_reverse(path):
             line = raw_line.strip()
             if not line:
@@ -1208,7 +1201,6 @@ def check_context_budget(payload, state=None):
             msg = entry.get("message") or {}
             if msg.get("role") == "assistant" and msg.get("usage"):
                 last_usage = msg["usage"]
-                model = str(msg.get("model") or "")
                 break
     except Exception:
         return []
@@ -1219,10 +1211,8 @@ def check_context_budget(payload, state=None):
         + (last_usage.get("cache_read_input_tokens") or 0)
         + (last_usage.get("cache_creation_input_tokens") or 0)
     )
-    window_1m = "[1m]" in model.lower() or total > CONTEXT_WINDOW_200K_MAX
-    threshold = CONTEXT_BUDGET_TOKENS_1M if window_1m else CONTEXT_BUDGET_TOKENS
     sid = str(payload.get("session_id"))
-    if total <= threshold:
+    if total <= CONTEXT_BUDGET_TOKENS:
         if state is not None:
             state.pop(sid, None)
         return []
@@ -1233,9 +1223,9 @@ def check_context_budget(payload, state=None):
         state[sid] = total
     return [
         f"[contexte] ~{total:,} tokens de contexte estimes (seuil "
-        f"{threshold:,}) — /clear ou nouvelle session "
-        "recommande avant de continuer (cf. CLAUDE.md § Efficience de "
-        "contexte)."
+        f"{CONTEXT_BUDGET_TOKENS:,}) — /clear ou nouvelle session "
+        "recommande avant de continuer (cf. crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md "
+        "§ Efficience de contexte)."
     ]
 
 

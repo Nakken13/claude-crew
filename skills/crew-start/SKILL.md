@@ -40,7 +40,7 @@ checkout principal.
    - `start` → étape 3 (Cas démarrage).
    - `classify` → des tâches de `TODO/` n'ont ni batch ni zone
      (`unclassified`) : dispatcher `Agent({subagent_type: "manager"})` pour
-     les classer (zone d'impact + batch, cf. `CLAUDE.md` § Batching), puis
+     les classer (zone d'impact + batch, cf. `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Batching), puis
      relancer l'étape 1.
    - `none` → rien de démarrable : dire pourquoi à l'utilisateur à partir de
      `skipped` (verrou, batch actif, chevauchement) ou « TODO vide », et
