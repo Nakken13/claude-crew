@@ -245,8 +245,8 @@ claude --plugin-dir /path/to/claude-crew     # one-off session, no install
 other machine, use the GitHub marketplace in [Option A](#-option-a--install-via-marketplace-recommended).
 
 Then run `/crew-ui` in a session: it lists every band and pane with its
-ON/OFF state. Already installed from GitHub? Run `/plugin update crew-mates`
-once the mods are published.
+ON/OFF state. Already installed from GitHub? Update from a terminal (see
+[Tutorial: update crew-mates](#-tutorial-update-crew-mates)) once the mods are published.
 
 **Bands don't show up?** Run `claude plugin validate .` — the output must
 include a line `hooks/hooks.json names a hooks module`. If it doesn't, your
@@ -386,7 +386,7 @@ Already bootstrapped? `/crew-update` pulls in engine-file changes (fixes,
 new rules, new skills) without ever touching your `crew/` task data.
 
 - **Plugin install (Option A/B)** — skills, agents, hooks, and Zero-Token Mods
-  already run from `${CLAUDE_PLUGIN_ROOT}`, so `/plugin update crew-mates` covers those;
+  already run from `${CLAUDE_PLUGIN_ROOT}`, so updating the plugin (see the tutorial below) covers those;
   `/crew-update` only checks `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/
   `CONTRIBUTING.md`/`SECURITY.md`/`check_placeholders.py`/`crew/dashboard.bat`.
 - **Manual clone (Option C)** — `/crew-update` also checks `crew_hook.py`,
@@ -433,11 +433,19 @@ Then run `/crew-update` in each project. **Your project files are safe:**
 
 **Plugin install (Option A/B)**
 
-1. Update the plugin itself (skills, agents, hooks, Zero-Token Mods):
-   ```text
-   /plugin update crew-mates
+1. Update the plugin itself (skills, agents, hooks, Zero-Token Mods) from a
+   regular terminal (outside Claude Code):
+   ```bash
+   claude plugin marketplace update crew-mates
+   claude plugin update crew-mates@crew-mates
    ```
-2. Restart Claude Code so the new version (`v1.0.0`) and `hooks/register.ts` are loaded.
+   The first command refreshes the marketplace cache, the second installs the
+   new version. The in-session `/plugin update crew-mates` may only open the
+   plugin list; the terminal commands are the reliable way.
+   > Updates are detected by the `version` field of `.claude-plugin/plugin.json`:
+   > if it was not bumped, the command answers "already at the latest version"
+   > even though new commits exist.
+2. Restart Claude Code so the new version and `hooks/register.ts` are loaded.
 3. In each bootstrapped project, sync the project-level files:
    ```text
    /crew-update
