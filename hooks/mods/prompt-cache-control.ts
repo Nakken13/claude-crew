@@ -1,7 +1,7 @@
 /**
  * Mod 1 — prompt-cache-control.ts
  *
- * Affiche au-dessus du prompt un timer de TTL du cache (1h par défaut, 5 min si observé ou CLAUDE_CACHE_TTL=5m) et les compteurs
+ * Affiche au-dessus du prompt un timer de TTL du cache (1h par défaut, 5 min seulement si CLAUDE_CACHE_TTL=5m) et les compteurs
  * `cache_read_input_tokens` / `cache_creation_input_tokens`.
  * Alerte visuelle immédiate si le cache expire (< 60s).
  *
@@ -164,13 +164,12 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
     const usage = extractTurnUsage(e as Record<string, unknown>, envTtl);
 
-    // Le 1h n'est visible que sur les tours qui créent du cache : ne jamais rétrograder après l'avoir vu.
-    if (usage.ttlDetected) {
-      if (usage.ttlSeconds >= 3600) {
-        promptCacheState.saw1h = true;
+    // Un write 5m isolé ne prouve rien : Claude Code écrit de petits blocs 5m même quand le préfixe est en 1h.
+    // On ne rétrograde donc jamais sur observation ; 5 min seulement via CLAUDE_CACHE_TTL=5m (session.start).
+    if (usage.ttlDetected && usage.ttlSeconds >= 3600) {
+      promptCacheState.saw1h = true;
+      if (!envTtl || !['5m', '5min', '300'].includes(envTtl.toLowerCase())) {
         promptCacheState.ttlSeconds = 3600;
-      } else if (!promptCacheState.saw1h) {
-        promptCacheState.ttlSeconds = 300;
       }
     }
     promptCacheState.lastCacheReadTokens = usage.cacheReadInputTokens;

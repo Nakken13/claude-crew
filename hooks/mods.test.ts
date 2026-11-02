@@ -697,7 +697,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h2.emit('session.end', { sessionId: 'sess-cache-ttl-default' });
   });
 
-  test('cache : défaut 1h avec compte à rebours ; write 5m seul -> 5 min, mais jamais après un write 1h', async () => {
+  test('cache : défaut 1h avec compte à rebours ; un write 5m seul ne rétrograde jamais', async () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-default' });
@@ -707,6 +707,11 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     const dflt = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 280_000);
     expect(dflt.ttlLabel).toBe('1h');
     expect(dflt.isExpiringSoon).toBe(false);
+
+    await h.emit('turn.complete', {
+      usage: { input_tokens: 10, cache_creation_input_tokens: 596, cache_creation: { ephemeral_5m_input_tokens: 596 } },
+    });
+    expect(computePromptCacheStatus(Date.now()).ttlLabel).toBe('1h');
 
     await h.emit('turn.complete', {
       usage: { input_tokens: 10, cache_creation_input_tokens: 1_000, cache_creation: { ephemeral_1h_input_tokens: 1_000 } },
