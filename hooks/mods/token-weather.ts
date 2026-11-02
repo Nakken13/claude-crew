@@ -98,9 +98,9 @@ export function computeTokenWeather(
   };
 }
 
-/** Version courte pour la bande : `☀️19%` (emoji du palier + pourcentage). */
+/** Version courte pour la bande : `☀️19% 39k/200k` (emoji du palier, pourcentage, tokens). */
 export function formatWeatherCompact(snap: TokenWeatherSnapshot = computeTokenWeather()): string {
-  return `${snap.label.split(' ')[0]}${snap.percent}%`;
+  return `${snap.label.split(' ')[0]}${snap.percent}% ${formatCompactTokens(snap.contextTokens)}/${formatCompactTokens(snap.contextWindow)}`;
 }
 
 export function registerTokenWeather(on: ModRegistrar): void {
