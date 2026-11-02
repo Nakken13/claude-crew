@@ -156,6 +156,18 @@ export function getActiveCollisionAlerts(nowMs = Date.now()): FileCollisionAlert
   return fileLockMonitorState.alerts;
 }
 
+/** Une seule ligne : `🚨 2 collisions : stripe.ts, hotfile.ts (@other-se B)`. */
+export function formatCollisionAlertsCompact(alerts: FileCollisionAlert[]): string {
+  const files = [...new Set(alerts.map((a) => a.filePath.split('/').pop() || a.filePath))];
+  const shown = files.slice(0, 2).join(', ') + (files.length > 2 ? ` +${files.length - 2}` : '');
+  const owners = [
+    ...new Set(
+      alerts.map((a) => `@${a.ownerSessionId.slice(0, 8)}${a.ownerBatch ? ` ${a.ownerBatch}` : ''}`),
+    ),
+  ].join(' ');
+  return `🚨 ${alerts.length} collision${alerts.length > 1 ? 's' : ''} : ${shown} (${owners})`;
+}
+
 export function registerFileLockMonitor(on: ModRegistrar): void {
   on('tool.call', async ($, e, next) => {
     try {
@@ -264,15 +276,12 @@ export function registerFileLockMonitor(on: ModRegistrar): void {
     const activeAlerts = getActiveCollisionAlerts(Date.now());
     if (activeAlerts.length === 0) return prev;
 
-    return addBandSegments(
-      prev,
-      ...activeAlerts.slice(-3).map((alert) => ({
-        slot: 'alert' as const,
-        color: 'red',
-        bold: true,
-        text: alert.message,
-      })),
-    );
+    return addBandSegments(prev, {
+      slot: 'alert',
+      color: 'red',
+      bold: true,
+      text: formatCollisionAlertsCompact(activeAlerts),
+    });
   });
 }
 
