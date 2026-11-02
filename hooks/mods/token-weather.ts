@@ -26,6 +26,7 @@ import {
 } from './shared.ts';
 
 const CREW_RESET_TOKENS = 150_000;
+const WEATHER_PINK = '#ff69b4';
 
 export type WeatherStageLabel = '☀️ Clear' | '⛅ Cloudy' | '⛈️ Storm' | '🚨 Compact soon';
 
@@ -132,7 +133,7 @@ export function registerTokenWeather(on: ModRegistrar): void {
     const snap = computeTokenWeather();
     return addBandSegments(prev, {
       slot: 'right',
-      color: snap.color,
+      color: WEATHER_PINK,
       bold: snap.bold,
       text: formatWeatherCompact(snap),
     });
