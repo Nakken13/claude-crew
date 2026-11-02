@@ -98,7 +98,7 @@ export interface ModRegistrar {
 }
 
 export type CrewPaneId = 'crew-turns' | 'crew-stack' | 'crew-board' | 'crew-agents' | 'crew-cache';
-export type CrewBandId = 'weather' | 'radar' | 'progress' | 'agents' | 'locks';
+export type CrewBandId = 'usage' | 'weather' | 'radar' | 'progress' | 'agents' | 'locks';
 
 export const PANE_META: Record<CrewPaneId, { id: CrewPaneId; title: string; command: string }> = {
   'crew-turns': {
@@ -163,6 +163,7 @@ const DEFAULT_SESSION_ID = `sess-${Date.now().toString(36)}-${Math.random().toSt
 
 export const crewUiState: CrewUiVisibilityState = {
   bands: {
+    usage: true,
     weather: true,
     radar: true,
     progress: true,

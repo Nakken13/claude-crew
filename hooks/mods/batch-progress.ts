@@ -329,17 +329,12 @@ export function registerBatchProgress(on: ModRegistrar): void {
   on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.progress) return prev;
-    if (
-      !batchProgressState.hasCrewScaffold &&
-      !batchProgressState.taskSlug &&
-      !batchProgressState.batchKey
-    ) {
-      return prev;
-    }
+    // Pas de tâche active : on n'occupe pas la ligne avec un état « au repos » grisé.
+    if (!batchProgressState.taskSlug) return prev;
     return addBandSegments(prev, {
       slot: 'left',
       order: 20,
-      color: batchProgressState.taskSlug ? 'green' : 'gray',
+      color: 'green',
       text: formatCombinedBatchProgressLine(),
     });
   });
