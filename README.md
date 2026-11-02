@@ -239,6 +239,10 @@ claude --plugin-dir /path/to/claude-crew     # one-off session, no install
 /plugin install crew-mates@crew-mates
 ```
 
+`/path/to/claude-crew` is a placeholder: use your real clone path (e.g.
+`C:\dev\claude-crew`). Local paths are for testing a clone; to install on any
+other machine, use the GitHub marketplace in [Option A](#-option-a--install-via-marketplace-recommended).
+
 Then run `/crew-ui` in a session: it lists every band and pane with its
 ON/OFF state. Already installed from GitHub? Run `/plugin update crew-mates`
 once the mods are published.
@@ -306,6 +310,11 @@ your project.
 
 No cloning, no manual file copying — skills, agents, Python hooks, and all 10
 Zero-Token Mods run straight from the installed plugin.
+
+Both names are `crew-mates`: the first is the marketplace (`name` in
+`.claude-plugin/marketplace.json`), the second the plugin, hence
+`crew-mates@crew-mates`. A plugin can only be installed through a marketplace;
+restart Claude Code after install if the `/crew-*` commands don't appear.
 
 ### 🤖 Option B — Ask Claude to install it
 
