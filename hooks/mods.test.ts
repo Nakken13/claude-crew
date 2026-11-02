@@ -672,8 +672,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
 
   // --- verif-mod-prompt-cache-control ---
   function resetPromptCacheState(): void {
-    promptCacheState.ttlSeconds = 300;
-    promptCacheState.ttlKnown = false;
+    promptCacheState.ttlSeconds = 3600;
+    promptCacheState.saw1h = false;
     promptCacheState.lastRefreshAtMs = null;
     promptCacheState.lastCacheReadTokens = 0;
     promptCacheState.lastCacheCreationTokens = 0;
@@ -681,46 +681,41 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  test('cache : CLAUDE_CACHE_TTL=1h -> TTL 3600, absent ou invalide -> 300', async () => {
+  test('cache : défaut 1h ; CLAUDE_CACHE_TTL=5m -> 300', async () => {
     resetPromptCacheState();
     const h1 = createHarness();
     (h1.api.env as { get: (k: string) => unknown }).get = (k) =>
-      k === 'CLAUDE_CACHE_TTL' ? Promise.resolve('1h') : k === 'CLAUDE_PROJECT_DIR' ? '.' : undefined;
+      k === 'CLAUDE_CACHE_TTL' ? Promise.resolve('5m') : k === 'CLAUDE_PROJECT_DIR' ? '.' : undefined;
     await h1.emit('session.start', { sessionId: 'sess-cache-ttl-1h' });
-    expect(promptCacheState.ttlSeconds).toBe(3600);
+    expect(promptCacheState.ttlSeconds).toBe(300);
     await h1.emit('session.end', { sessionId: 'sess-cache-ttl-1h' });
 
     resetPromptCacheState();
     const h2 = createHarness();
     await h2.emit('session.start', { sessionId: 'sess-cache-ttl-default' });
-    expect(promptCacheState.ttlSeconds).toBe(300);
-    expect(promptCacheState.ttlKnown).toBe(false);
+    expect(promptCacheState.ttlSeconds).toBe(3600);
     await h2.emit('session.end', { sessionId: 'sess-cache-ttl-default' });
   });
 
-  test('cache : TTL inconnu -> label « ? », ni compte à rebours ni alerte ; 1h détecté -> label 1h', async () => {
+  test('cache : défaut 1h avec compte à rebours ; write 5m seul -> 5 min, mais jamais après un write 1h', async () => {
     resetPromptCacheState();
     const h = createHarness();
-    await h.emit('session.start', { sessionId: 'sess-cache-unknown' });
+    await h.emit('session.start', { sessionId: 'sess-cache-default' });
     await h.emit('turn.complete', {
       usage: { input_tokens: 10, cache_read_input_tokens: 50_000, cache_creation_input_tokens: 1_000 },
     });
-    const unknown = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 280_000);
-    expect(unknown.ttlLabel).toBe('?');
-    expect(unknown.line).toContain('TTL ?');
-    expect(unknown.isExpiringSoon).toBe(false);
-    expect(unknown.isExpired).toBe(false);
+    const dflt = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 280_000);
+    expect(dflt.ttlLabel).toBe('1h');
+    expect(dflt.isExpiringSoon).toBe(false);
 
     await h.emit('turn.complete', {
-      usage: {
-        input_tokens: 10,
-        cache_read_input_tokens: 50_000,
-        cache_creation_input_tokens: 1_000,
-        cache_creation: { ephemeral_1h_input_tokens: 1_000 },
-      },
+      usage: { input_tokens: 10, cache_creation_input_tokens: 1_000, cache_creation: { ephemeral_1h_input_tokens: 1_000 } },
+    });
+    await h.emit('turn.complete', {
+      usage: { input_tokens: 10, cache_creation_input_tokens: 500, cache_creation: { ephemeral_5m_input_tokens: 500 } },
     });
     expect(computePromptCacheStatus(Date.now()).ttlLabel).toBe('1h');
-    await h.emit('session.end', { sessionId: 'sess-cache-unknown' });
+    await h.emit('session.end', { sessionId: 'sess-cache-default' });
   });
 
   test('cache : sans tour (lastRefreshAtMs null) -> placeholder, aucun toast ; usage sans champs cache -> pas de crash', async () => {
@@ -743,7 +738,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-toast' });
-    promptCacheState.ttlKnown = true; // TTL 5 min observé
+    promptCacheState.ttlSeconds = 300; // TTL 5 min observé
     promptCacheState.lastRefreshAtMs = Date.now() - 245_000; // 55 s restantes
     await sleep(2_300);
     const alerts = () => h.toasts.filter((t) => t.includes('Prompt cache expire'));

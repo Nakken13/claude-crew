@@ -1,7 +1,7 @@
 /**
  * Mod 1 — prompt-cache-control.ts
  *
- * Affiche au-dessus du prompt un timer de TTL du cache (5 min / 1h) et les compteurs
+ * Affiche au-dessus du prompt un timer de TTL du cache (1h par défaut, 5 min si observé ou CLAUDE_CACHE_TTL=5m) et les compteurs
  * `cache_read_input_tokens` / `cache_creation_input_tokens`.
  * Alerte visuelle immédiate si le cache expire (< 60s).
  *
@@ -20,8 +20,8 @@ import {
 
 export interface PromptCacheControlState {
   ttlSeconds: number;
-  /** false tant qu'aucun TTL réel (env ou ephemeral_1h/5m) n'a été observé : affichage « ? », pas de compte à rebours. */
-  ttlKnown: boolean;
+  /** true dès qu'un write 1h a été observé : plus de rétrogradation vers 5 min ensuite. */
+  saw1h: boolean;
   lastRefreshAtMs: number | null;
   lastCacheReadTokens: number;
   lastCacheCreationTokens: number;
@@ -31,8 +31,9 @@ export interface PromptCacheControlState {
 }
 
 export const promptCacheState: PromptCacheControlState = {
-  ttlSeconds: 300,
-  ttlKnown: false,
+  // Défaut 1h : l'événement turn.complete n'expose pas le détail ephemeral_1h/5m, donc 5 min n'est jamais déductible.
+  ttlSeconds: 3600,
+  saw1h: false,
   lastRefreshAtMs: null,
   lastCacheReadTokens: 0,
   lastCacheCreationTokens: 0,
@@ -43,7 +44,7 @@ export const promptCacheState: PromptCacheControlState = {
 
 export interface FormattedCacheStatus {
   visible: boolean;
-  ttlLabel: '5 min' | '1h' | '?';
+  ttlLabel: '5 min' | '1h';
   remainingSeconds: number;
   isWarm: boolean;
   isExpiringSoon: boolean;
@@ -55,11 +56,7 @@ export interface FormattedCacheStatus {
 }
 
 export function computePromptCacheStatus(nowMs = Date.now()): FormattedCacheStatus {
-  const ttlLabel: '5 min' | '1h' | '?' = !promptCacheState.ttlKnown
-    ? '?'
-    : promptCacheState.ttlSeconds >= 3600
-      ? '1h'
-      : '5 min';
+  const ttlLabel: '5 min' | '1h' = promptCacheState.ttlSeconds >= 3600 ? '1h' : '5 min';
 
   if (promptCacheState.lastRefreshAtMs === null) {
     return {
@@ -73,28 +70,6 @@ export function computePromptCacheStatus(nowMs = Date.now()): FormattedCacheStat
       color: 'gray',
       bold: false,
       line: `🧊 Cache (${ttlLabel}) --:-- | cache_read: 0 · cache_creation: 0`,
-    };
-  }
-
-  if (!promptCacheState.ttlKnown) {
-    // TTL inconnu : on n'invente ni compte à rebours ni alerte d'expiration (le vrai TTL est souvent 1h).
-    const totalUnknown =
-      promptCacheState.sessionCacheReadTokens + promptCacheState.sessionCacheCreationTokens;
-    const hitUnknown =
-      totalUnknown > 0
-        ? Math.floor((promptCacheState.sessionCacheReadTokens / totalUnknown) * 100)
-        : 0;
-    return {
-      visible: true,
-      ttlLabel,
-      remainingSeconds: 0,
-      isWarm: true,
-      isExpiringSoon: false,
-      isExpired: false,
-      hitRatePercent: hitUnknown,
-      color: 'green',
-      bold: false,
-      line: `🔥 Cache (TTL ?) | cache_read: ${formatCompactTokens(promptCacheState.lastCacheReadTokens)} · cache_creation: ${formatCompactTokens(promptCacheState.lastCacheCreationTokens)} (hit ${hitUnknown}%)`,
     };
   }
 
@@ -157,11 +132,10 @@ function stopCountdownTimer(): void {
 export function registerPromptCacheControl(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
-    promptCacheState.ttlSeconds = 300;
-    promptCacheState.ttlKnown = false;
-    if (envTtl && (envTtl.toLowerCase() === '1h' || envTtl === '3600')) {
-      promptCacheState.ttlSeconds = 3600;
-      promptCacheState.ttlKnown = true;
+    promptCacheState.ttlSeconds = 3600;
+    promptCacheState.saw1h = false;
+    if (envTtl && ['5m', '5min', '300'].includes(envTtl.toLowerCase())) {
+      promptCacheState.ttlSeconds = 300;
     }
 
     stopCountdownTimer();
@@ -190,10 +164,14 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
     const usage = extractTurnUsage(e as Record<string, unknown>, envTtl);
 
-    // Le 1h n'est visible que sur les tours qui créent du cache : ne jamais rétrograder en cours de session.
+    // Le 1h n'est visible que sur les tours qui créent du cache : ne jamais rétrograder après l'avoir vu.
     if (usage.ttlDetected) {
-      promptCacheState.ttlKnown = true;
-      promptCacheState.ttlSeconds = Math.max(promptCacheState.ttlSeconds, usage.ttlSeconds);
+      if (usage.ttlSeconds >= 3600) {
+        promptCacheState.saw1h = true;
+        promptCacheState.ttlSeconds = 3600;
+      } else if (!promptCacheState.saw1h) {
+        promptCacheState.ttlSeconds = 300;
+      }
     }
     promptCacheState.lastCacheReadTokens = usage.cacheReadInputTokens;
     promptCacheState.lastCacheCreationTokens = usage.cacheCreationInputTokens;
