@@ -908,7 +908,7 @@ export function renderBandAccumulator(
   const side = (slot: 'left' | 'right') =>
     ui.Box({
       flexDirection: 'row',
-      gap: 2,
+      gap: 4,
       children: acc.segments.filter((s) => s.slot === slot).sort(byOrder).map(text),
     });
   const alerts = acc.segments.filter((s) => s.slot === 'alert').map((s) =>
