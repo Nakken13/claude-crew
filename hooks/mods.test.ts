@@ -239,7 +239,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     // Mod 2: Token Weather stages
     expect(computeTokenWeather(40_000, 200_000).label).toBe('☀️ Clear');
     expect(computeTokenWeather(110_000, 200_000).label).toBe('⛅ Cloudy');
-    expect(computeTokenWeather(160_000, 200_000).label).toBe('⛈️ Storm');
+    expect(computeTokenWeather(120_000, 200_000).label).toBe('⛈️ Storm');
     expect(computeTokenWeather(185_000, 200_000).label).toBe('🚨 Compact soon');
 
     // Mod 3: Turn Inspector row & pane rendering
@@ -521,7 +521,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
   test('météo : le contexte vient de $.session.usage() quand turn.complete ne porte pas de tokens', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
-      usage: async () => ({ context: { tokens: 160_000, window: 200_000, percent: 80 } }),
+      usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
     };
     await h.emit('session.start', { sessionId: 'sess-weather-1' });
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
@@ -626,7 +626,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
       [90, '🚨 Compact soon'],
     ];
     for (const [pct, label] of cases) {
-      const snap = computeTokenWeather(pct * 2_000, 200_000);
+      const snap = computeTokenWeather(pct * 1_500, 200_000);
       expect(snap.percent).toBe(pct);
       expect(snap.label).toBe(label);
     }
@@ -640,20 +640,20 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather(500_000, 200_000).percent).toBe(100);
   });
 
-  test('météo : fenêtre > 200k plafonnée à 150k (politique crew), fenêtre 200k inchangée', () => {
+  test('météo : toute fenêtre > 150k plafonnée à 150k (politique crew)', () => {
     const big = computeTokenWeather(150_000, 1_000_000);
     expect(big.contextWindow).toBe(150_000);
     expect(big.percent).toBe(100);
     expect(big.label).toBe('🚨 Compact soon');
     expect(computeTokenWeather(60_000, 1_000_000).label).toBe('☀️ Clear');
     expect(computeTokenWeather(120_000, 1_000_000).label).toBe('⛈️ Storm');
-    expect(computeTokenWeather(160_000, 200_000).contextWindow).toBe(200_000);
+    expect(computeTokenWeather(100_000, 200_000).contextWindow).toBe(150_000);
   });
 
   test('météo : session.usage() en erreur ou turn.complete sans usage -> ancien état conservé', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
-      usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 60 } }),
+      usage: async () => ({ context: { tokens: 90_000, window: 200_000, percent: 60 } }),
     };
     await h.emit('session.start', { sessionId: 'sess-weather-2' });
     await h.emit('turn.complete', { reason: 'answer', durationMs: 1_000 });
