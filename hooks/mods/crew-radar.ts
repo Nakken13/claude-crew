@@ -50,7 +50,7 @@ export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): str
 
 /** Version courte pour la bande : `🟢2 ⚡1 📋5 ⏸0` (sessions, en cours, todo, pause) ; 0 affiché, jamais omis. */
 export function formatCrewRadarCompact(state: CrewRadarState = crewRadarState): string {
-  return `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks} ⏸${state.pausedTasks}`;
+  return `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks} ⏸${String(state.pausedTasks).padStart(2, "0")}`;
 }
 
 export function registerCrewRadar(on: ModRegistrar): void {
