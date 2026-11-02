@@ -98,7 +98,7 @@ export function formatCompactProgressLine(state: BatchProgressState = batchProgr
   }
   const eta = compactEta(crewRuntimeState.etaSummaryLine);
   if (eta) parts.push(eta);
-  return parts.join(' · ');
+  return parts.join('  ·  ');
 }
 
 export function selectActiveBatchSection(
