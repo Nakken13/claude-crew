@@ -98,6 +98,11 @@ export function computeTokenWeather(
   };
 }
 
+/** Version courte pour la bande : `☀️19%` (emoji du palier + pourcentage). */
+export function formatWeatherCompact(snap: TokenWeatherSnapshot = computeTokenWeather()): string {
+  return `${snap.label.split(' ')[0]}${snap.percent}%`;
+}
+
 export function registerTokenWeather(on: ModRegistrar): void {
   on('turn.complete', async ($, e, next) => {
     const usage = extractTurnUsage(e as Record<string, unknown>);
@@ -129,7 +134,7 @@ export function registerTokenWeather(on: ModRegistrar): void {
       slot: 'right',
       color: snap.color,
       bold: snap.bold,
-      text: snap.line,
+      text: formatWeatherCompact(snap),
     });
   });
 }

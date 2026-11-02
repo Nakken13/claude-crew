@@ -32,10 +32,10 @@ function resetIn(iso?: string): string {
   const ms = Date.parse(iso) - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return '';
   const min = Math.round(ms / 60000);
-  if (min < 60) return ` (reset ${min}m)`;
+  if (min < 60) return `↻${min}m`;
   const h = Math.floor(min / 60);
-  if (h < 48) return ` (reset ${h}h${String(min % 60).padStart(2, '0')})`;
-  return ` (reset ${Math.round(h / 24)}j)`;
+  if (h < 48) return `↻${h}h${String(min % 60).padStart(2, '0')}`;
+  return `↻${Math.round(h / 24)}j`;
 }
 
 export function formatUsageLine(u: UsageSnapshot | null = usageBandState.snapshot): string {
@@ -44,9 +44,8 @@ export function formatUsageLine(u: UsageSnapshot | null = usageBandState.snapsho
   for (const l of u.limits) {
     parts.push(`${LABELS[l.kind] ?? l.kind} ${Math.round(l.percentUsed)}%${resetIn(l.resetsAt)}`);
   }
-  if (u.contextPercent !== null) parts.push(`ctx ${Math.round(u.contextPercent)}%`);
   if (u.costUsd !== null) parts.push(`$${u.costUsd.toFixed(2)}`);
-  return parts.length ? `Usage ${parts.join('  ·  ')}` : 'Usage indisponible';
+  return parts.length ? parts.join(' · ') : 'Usage indisponible';
 }
 
 async function refresh($: unknown): Promise<void> {

@@ -82,6 +82,25 @@ export function formatCombinedBatchProgressLine(
   return parts.join('  │  ');
 }
 
+/** `⏱️ Fin estimée : ~8 min (~45k tokens restants)` -> `⏱~8min` ; calibration -> rien. */
+export function compactEta(line: string | null): string {
+  if (!line) return '';
+  if (line.includes('terminé')) return '✅';
+  const m = line.match(/:\s*(~[^(]+?)\s*(?:\(|$)/);
+  return m ? `⏱${m[1].replace(/\s+/g, '')}` : '';
+}
+
+/** Version courte pour la bande : `T 2/5 · B 3/7 · ⏱~8min`. */
+export function formatCompactProgressLine(state: BatchProgressState = batchProgressState): string {
+  const parts = [`T ${state.taskDone}/${state.taskTotal}`];
+  if (state.batchKey && state.batchTotalTasks > 0) {
+    parts.push(`B ${state.batchDoneTasks}/${state.batchTotalTasks}`);
+  }
+  const eta = compactEta(crewRuntimeState.etaSummaryLine);
+  if (eta) parts.push(eta);
+  return parts.join(' · ');
+}
+
 export function selectActiveBatchSection(
   sections: ParsedBatchSection[],
   preferredBatchKey: string | null,
@@ -335,7 +354,7 @@ export function registerBatchProgress(on: ModRegistrar): void {
       slot: 'left',
       order: 20,
       color: 'green',
-      text: formatCombinedBatchProgressLine(),
+      text: formatCompactProgressLine(),
     });
   });
 }
