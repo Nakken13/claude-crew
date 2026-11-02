@@ -58,3 +58,4 @@ crew/CLAUDE_CONTEXT/TESTS_DONE/
 
 # Artefact runtime des mods (vitest lance depuis hooks/)
 hooks/.claude/
+/tsconfig.json
