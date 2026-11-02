@@ -222,6 +222,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
         output_tokens: 1_500,
         cache_read_input_tokens: 140_000,
         cache_creation_input_tokens: 8_000,
+        cache_creation: { ephemeral_5m_input_tokens: 8_000 },
       },
     });
 
@@ -672,6 +673,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
   // --- verif-mod-prompt-cache-control ---
   function resetPromptCacheState(): void {
     promptCacheState.ttlSeconds = 300;
+    promptCacheState.ttlKnown = false;
     promptCacheState.lastRefreshAtMs = null;
     promptCacheState.lastCacheReadTokens = 0;
     promptCacheState.lastCacheCreationTokens = 0;
@@ -692,7 +694,33 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     const h2 = createHarness();
     await h2.emit('session.start', { sessionId: 'sess-cache-ttl-default' });
     expect(promptCacheState.ttlSeconds).toBe(300);
+    expect(promptCacheState.ttlKnown).toBe(false);
     await h2.emit('session.end', { sessionId: 'sess-cache-ttl-default' });
+  });
+
+  test('cache : TTL inconnu -> label « ? », ni compte à rebours ni alerte ; 1h détecté -> label 1h', async () => {
+    resetPromptCacheState();
+    const h = createHarness();
+    await h.emit('session.start', { sessionId: 'sess-cache-unknown' });
+    await h.emit('turn.complete', {
+      usage: { input_tokens: 10, cache_read_input_tokens: 50_000, cache_creation_input_tokens: 1_000 },
+    });
+    const unknown = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 280_000);
+    expect(unknown.ttlLabel).toBe('?');
+    expect(unknown.line).toContain('TTL ?');
+    expect(unknown.isExpiringSoon).toBe(false);
+    expect(unknown.isExpired).toBe(false);
+
+    await h.emit('turn.complete', {
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 50_000,
+        cache_creation_input_tokens: 1_000,
+        cache_creation: { ephemeral_1h_input_tokens: 1_000 },
+      },
+    });
+    expect(computePromptCacheStatus(Date.now()).ttlLabel).toBe('1h');
+    await h.emit('session.end', { sessionId: 'sess-cache-unknown' });
   });
 
   test('cache : sans tour (lastRefreshAtMs null) -> placeholder, aucun toast ; usage sans champs cache -> pas de crash', async () => {
@@ -715,6 +743,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-toast' });
+    promptCacheState.ttlKnown = true; // TTL 5 min observé
     promptCacheState.lastRefreshAtMs = Date.now() - 245_000; // 55 s restantes
     await sleep(2_300);
     const alerts = () => h.toasts.filter((t) => t.includes('Prompt cache expire'));

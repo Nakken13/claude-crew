@@ -740,6 +740,8 @@ export interface NormalizedTurnUsage {
   contextTokens: number;
   contextWindow: number;
   ttlSeconds: number;
+  /** true si le TTL (1h ou 5m) a été observé ; false = inconnu (ne pas supposer 5 min). */
+  ttlDetected: boolean;
   model: string;
 }
 
@@ -788,7 +790,11 @@ export function extractTurnUsage(
   const rawTtl = String(
     envTtlOverride ?? e.cacheTtl ?? e.cache_ttl ?? usageObj.cache_ttl ?? '',
   ).toLowerCase();
+  const ephemeral5m = num(cacheCreationDetail?.ephemeral_5m_input_tokens);
   const is1hTtl = ephemeral1h > 0 || rawTtl === '1h' || rawTtl === '3600' || rawTtl === '60m';
+  const is5mTtl = ephemeral5m > 0 || rawTtl === '5m' || rawTtl === '300' || rawTtl === '5min';
+  // TTL réellement observé (écriture 1h/5m vue, ou valeur explicite) ; sinon inconnu : ne pas deviner 5 min.
+  const ttlDetected = is1hTtl || is5mTtl;
   const ttlSeconds = is1hTtl ? 3600 : 300;
 
   return {
@@ -799,6 +805,7 @@ export function extractTurnUsage(
     contextTokens,
     contextWindow,
     ttlSeconds,
+    ttlDetected,
     model,
   };
 }
