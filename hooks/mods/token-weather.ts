@@ -57,8 +57,8 @@ export function computeTokenWeather(
   contextWindow = tokenWeatherState.contextWindow,
 ): TokenWeatherSnapshot {
   const rawWindow = contextWindow > 0 ? contextWindow : 200_000;
-  // Fenêtre 1M : la jauge vise le seuil de reset crew (150k), pas 1M.
-  const safeWindow = rawWindow > 200_000 ? CREW_RESET_TOKENS : rawWindow;
+  // La jauge vise toujours au plus le seuil de reset crew (150k), quelle que soit la fenêtre réelle.
+  const safeWindow = Math.min(rawWindow, CREW_RESET_TOKENS);
   const safeTokens = Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0;
   const ratio = Math.min(1, safeTokens / safeWindow);
   const percent = Math.floor(ratio * 100);
