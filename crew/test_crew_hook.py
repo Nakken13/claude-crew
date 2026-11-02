@@ -1532,14 +1532,27 @@ def test_sessionstart_title_prefers_own_lock_over_others(repo, monkeypatch, caps
     assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "b1"
 
 
-def test_sessionstart_no_title_when_ambiguous_or_user_named(repo, monkeypatch, capsys):
+def test_sessionstart_color_title_when_ambiguous_or_after_clear(repo, monkeypatch, capsys):
     root, dirs, ctx = repo
     _put(dirs, "CURRENT_TASKS", "a1.md")
     _put(dirs, "CURRENT_TASKS", "b1.md")
-    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys)
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] in h.SESSION_COLORS
+    assert _run_sessionstart(monkeypatch, capsys, source="clear")["sessionTitle"] in h.SESSION_COLORS
+    # une tache unique garde la priorite sur la couleur
     (dirs["CURRENT_TASKS"] / "b1.md").unlink()
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "a1"
+
+
+def test_sessionstart_no_title_when_user_named_or_compact(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
     assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, session_title="mon nom")
     assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, source="compact")
+
+
+def test_session_color_is_stable_per_session_id():
+    assert h.session_color("S1") == h.session_color("S1")
+    assert len({h.session_color(f"S{i}") for i in range(40)}) > 1
 
 
 def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
