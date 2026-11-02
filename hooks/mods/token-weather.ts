@@ -25,6 +25,8 @@ import {
   addBandSegments,
 } from './shared.ts';
 
+const CREW_RESET_TOKENS = 150_000;
+
 export type WeatherStageLabel = '☀️ Clear' | '⛅ Cloudy' | '⛈️ Storm' | '🚨 Compact soon';
 
 export interface TokenWeatherSnapshot {
@@ -54,7 +56,9 @@ export function computeTokenWeather(
   contextTokens = tokenWeatherState.contextTokens,
   contextWindow = tokenWeatherState.contextWindow,
 ): TokenWeatherSnapshot {
-  const safeWindow = contextWindow > 0 ? contextWindow : 200_000;
+  const rawWindow = contextWindow > 0 ? contextWindow : 200_000;
+  // Fenêtre 1M : la jauge vise le seuil de reset crew (150k), pas 1M.
+  const safeWindow = rawWindow > 200_000 ? CREW_RESET_TOKENS : rawWindow;
   const safeTokens = Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0;
   const ratio = Math.min(1, safeTokens / safeWindow);
   const percent = Math.floor(ratio * 100);

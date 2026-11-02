@@ -640,6 +640,16 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather(500_000, 200_000).percent).toBe(100);
   });
 
+  test('météo : fenêtre > 200k plafonnée à 150k (politique crew), fenêtre 200k inchangée', () => {
+    const big = computeTokenWeather(150_000, 1_000_000);
+    expect(big.contextWindow).toBe(150_000);
+    expect(big.percent).toBe(100);
+    expect(big.label).toBe('🚨 Compact soon');
+    expect(computeTokenWeather(60_000, 1_000_000).label).toBe('☀️ Clear');
+    expect(computeTokenWeather(120_000, 1_000_000).label).toBe('⛈️ Storm');
+    expect(computeTokenWeather(160_000, 200_000).contextWindow).toBe(200_000);
+  });
+
   test('météo : session.usage() en erreur ou turn.complete sans usage -> ancien état conservé', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
