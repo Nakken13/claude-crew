@@ -35,7 +35,7 @@ En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
 Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux (sauf le
 blocage volontaire exit(2) de gate_pretooluse).
 """
-import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
+import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess, hashlib
 
 def _git_root(start):
     """Premiere racine git (dossier ou fichier `.git` de worktree) en remontant
@@ -1495,12 +1495,22 @@ def session_digest(session_id):
     )
 
 
+SESSION_COLORS = ("🔴 rouge", "🟠 orange", "🟡 jaune", "🟢 vert", "🔵 bleu", "🟣 violet", "🟤 marron")
+
+
+def session_color(session_id):
+    """Pastille + nom de couleur stables pour une session (repli du sessionTitle
+    quand aucune tache unique ne la nomme) ; distingue les sessions a l'oeil."""
+    h = hashlib.sha1(str(session_id).encode("utf-8")).digest()
+    return SESSION_COLORS[h[0] % len(SESSION_COLORS)]
+
+
 def session_title(session_id, payload):
     """Titre (slug de la tache) pour le `sessionTitle` de SessionStart ; None si
     la session est deja nommee, si la source n'est pas startup/resume/fork, ou si
     la tache est ambigue. Verrou de cette session d'abord, sinon l'unique tache de
     CURRENT_TASKS non verrouillee par une autre session. Lecture seule."""
-    if payload.get("session_title") or payload.get("source") not in ("startup", "resume", "fork"):
+    if payload.get("session_title") or payload.get("source") not in ("startup", "resume", "fork", "clear"):
         return None
     now_dt = datetime.datetime.now()
     sessions = load_locks().get("sessions", {})
@@ -1510,7 +1520,7 @@ def session_title(session_id, payload):
                  if sid != session_id and not _session_expired(info, now_dt)
                  for t in info.get("tasks") or []}
         names = [n for n in _task_names(DIRS["CURRENT_TASKS"]) if n not in taken]
-    return names[0].removesuffix(".md") if len(names) == 1 else None
+    return names[0].removesuffix(".md") if len(names) == 1 else session_color(session_id)
 
 
 def _task_names(d):

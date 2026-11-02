@@ -103,7 +103,7 @@ writer, present only while ≥ 2 sessions hold locks) or the `Bash` call is a cl
 of ~270 ms per `Edit`/`Write`. Set `CREW_HOOK_PROFILE=minimal` to disable the
 `PreToolUse` gate entirely (`Stop`/`SessionEnd` keep syncing indexes and locks).
 
-A `SessionStart` hook (`startup|resume|compact`) injects a read-only crew digest (≤ 2000 chars:
+A `SessionStart` hook (`startup|resume|clear|compact`) injects a read-only crew digest (≤ 2000 chars:
 active/paused tasks with `n/m` checkboxes, active batches, other sessions' locks, last 3
 `HISTORIQUE.md` entries) so a resume or compaction doesn't re-read `crew/` by hand. Set
 `CREW_SESSION_DIGEST=off` to disable it.
