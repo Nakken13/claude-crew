@@ -43,3 +43,15 @@ Thumbs.db
 .claude/crew-sessions.lock
 .claude/crew-batch-metrics.json
 .claude/worktrees/
+
+# Données de suivi crew (locales ; le moteur crew_hook.py/tests/AGENTS.md reste versionné)
+crew/TODO/
+crew/CURRENT_TASKS/
+crew/PAUSED/
+crew/PROBLEMS/
+crew/ICEBOX/
+crew/TESTS/
+crew/CLAUDE_BATCH.md
+crew/CLAUDE_CONTEXT/HISTORIQUE.md
+crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md
+crew/CLAUDE_CONTEXT/TESTS_DONE/

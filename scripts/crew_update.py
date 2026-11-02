@@ -45,6 +45,7 @@ ENGINE_FILES_COMMON = [
     "SECURITY.md",
     "check_placeholders.py",
     "crew/dashboard.bat",
+    "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md",
 ]
 
 # Fichiers moteur supplementaires, uniquement pour les projets bootstrapes

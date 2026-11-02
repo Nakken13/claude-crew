@@ -3,7 +3,7 @@ name: crew-close-task
 description: Clôture une tâche crew terminée — vérifie les cases, passes review + simplify, historise, sort les tests IA/DEV, barre la tâche du batch. Trigger — "/crew-close-task", "cette tâche est finie", "clôture la tâche".
 ---
 
-Exécute le protocole défini dans `CLAUDE.md` § "Gestion des tâches" (point
+Exécute le protocole défini dans `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § "Gestion des tâches" (point
 3) — ne pas clore une tâche en sautant ces étapes, même perçue comme petite
 (obligation de modularité, cf. `CLAUDE.md` § "Modularité du code" /
 `crew/CLAUDE_CONTEXT/AGENTS.md` si ce projet y documente des anti-patterns
@@ -11,7 +11,7 @@ précis).
 
 **Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
 résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+session mono-subtree (cf. `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Guides AGENTS.md segmentés), le cwd
 peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
 créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
 la racine une seule fois en début d'exécution (`git rev-parse

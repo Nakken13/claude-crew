@@ -544,7 +544,7 @@ def test_check_batches_ignores_md_refs_outside_list_lines(repo):
     root, dirs, ctx = repo
     (dirs["TODO"] / "vraie-tache.md").write_text("# t\n", encoding="utf-8")
     h.BATCH_FILE.write_text(
-        "# Batching\n\nVoir § Batching dans `CLAUDE.md` racine.\n\n"
+        "# Batching\n\nVoir § Batching dans `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md`.\n\n"
         "## Batch A\n\nZone : `src/`, `README.md`\n\n- `vraie-tache.md`\n",
         encoding="utf-8",
     )
@@ -677,32 +677,26 @@ def test_check_context_budget_200k_window_alerts_at_160k(tmp_path):
     assert len(h.check_context_budget({"transcript_path": transcript})) == 1
 
 
-def test_check_context_budget_1m_model_threshold_800k(tmp_path):
+def test_check_context_budget_same_threshold_for_1m_model(tmp_path):
+    """Seuil unique 150k, y compris modele [1m] ou total > 210k."""
     model = "claude-opus-5-5[1m]"
-    low = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
+    low = _write_transcript(tmp_path, [_ctx(140_000)], model=model)
     assert h.check_context_budget({"transcript_path": low}) == []
-    high = _write_transcript(tmp_path, [_ctx(810_000)], model=model)
+    high = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
     assert len(h.check_context_budget({"transcript_path": high})) == 1
-
-
-def test_check_context_budget_infers_1m_window_above_210k(tmp_path):
-    """Total > 210k sans [1m] : impossible en fenetre 200k -> fenetre 1M inferee,
-    seuil 800k (pas d'alerte a 215k)."""
-    mid = _write_transcript(tmp_path, [_ctx(215_000)], model="claude-sonnet-5-5")
-    assert h.check_context_budget({"transcript_path": mid}) == []
-    high = _write_transcript(tmp_path, [_ctx(820_000)], model="claude-sonnet-5-5")
-    assert len(h.check_context_budget({"transcript_path": high})) == 1
+    big = _write_transcript(tmp_path, [_ctx(300_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": big})) == 1
 
 
 def test_check_context_budget_repeats_only_every_50k_per_session(tmp_path):
     state = {}
     payload = lambda t, sid="S1": {"transcript_path": _write_transcript(
         tmp_path, [_ctx(t)], model="claude-opus-5-5[1m]"), "session_id": sid}
-    assert len(h.check_context_budget(payload(810_000), state)) == 1
-    assert h.check_context_budget(payload(830_000), state) == []  # < +50k
-    assert len(h.check_context_budget(payload(865_000), state)) == 1  # palier +50k
+    assert len(h.check_context_budget(payload(160_000), state)) == 1
+    assert h.check_context_budget(payload(180_000), state) == []  # < +50k
+    assert len(h.check_context_budget(payload(215_000), state)) == 1  # palier +50k
     # autre session : etat independant
-    assert len(h.check_context_budget(payload(830_000, "S2"), state)) == 1
+    assert len(h.check_context_budget(payload(180_000, "S2"), state)) == 1
 
 
 def test_check_context_budget_state_resets_when_back_under_threshold(tmp_path):
@@ -1016,7 +1010,7 @@ def test_zone_overlap_ignores_batches_with_only_todo_tasks(repo, monkeypatch, ca
     """Faux positif constate (voyageo/time2cook) : deux batchs « pas demarre »
     dont toutes les taches sont en TODO/ etaient traites comme actifs ->
     avertissement `[zone]` a chaque tour. Actif = >=1 tache en
-    CURRENT_TASKS/PAUSED ou tenue par un verrou (CLAUDE.md § Batching)."""
+    CURRENT_TASKS/PAUSED ou tenue par un verrou (crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Batching)."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     for s in ("task-a.md", "task-b.md"):

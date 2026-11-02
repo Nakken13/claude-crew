@@ -76,8 +76,9 @@ repo). Il ne remplace jamais un fichier sans confirmation explicite.
 ### Cas particulier : `CLAUDE.md` allégé (opt-in)
 
 Depuis le slimming du template, un `CLAUDE.md` d'ancienne génération reste **valide** :
-les skills y renvoient par titres de section (`§ Batching`, `§ Gestion des tâches`,
-`§ Personas`, `§ Guides AGENTS.md segmentés`, `§ 2bis`) présents dans les deux versions.
+les skills renvoient à `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (`§ Batching`, `§ Gestion des tâches`,
+`§ Guides AGENTS.md segmentés`, `§ 2bis`), fichier moteur ajouté par `/crew-update` ; l'ancien `CLAUDE.md`
+long reste valide (ces sections y sont aussi).
 
 - `apply` → sans risque ; `conflict` (personnalisé) → **jamais touché par défaut**, le
   rapport signale seulement « version allégée disponible ». Migration **sur demande

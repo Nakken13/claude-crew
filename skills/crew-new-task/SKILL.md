@@ -4,14 +4,14 @@ description: Crée une tâche crew (TODO ou CURRENT_TASKS) avec fichier, INDEX.m
 ---
 
 Ce skill encode le protocole de création de tâche déjà défini dans
-`CLAUDE.md` (§ Gestion des tâches, § Batching) — il ne remplace pas ce
+`crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (§ Gestion des tâches, § Batching) — il ne remplace pas ce
 document, il évite de ré-écrire à la main un prompt long à chaque fois.
 Source unique de vérité = `CLAUDE.md`, ce fichier ne fait que standardiser
 l'appel.
 
 **Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
 résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
+session mono-subtree (cf. `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Guides AGENTS.md segmentés), le cwd
 peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
 créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
 la racine une seule fois en début d'exécution (`git rev-parse
