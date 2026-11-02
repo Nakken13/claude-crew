@@ -376,7 +376,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     // Render AbovePrompt and confirm radar, progress, and collision banner appear
     const aboveTree = await h.emit('ui.render', {}, 'component=AbovePrompt');
     const aboveText = collectTexts(aboveTree);
-    expect(aboveText).toContain('🟢2 ⚡2 📋2 ⏸️01');
+    expect(aboveText).toContain('🟢2 ⚡2 📋2 ⏸️1');
     expect(aboveText).toContain('T 4/6  ·  B 3/4');
     expect(aboveText).toContain('B 3/4');
     expect(aboveText).toContain('🚨 2 collisions : stripe.ts, hotfile.ts');
