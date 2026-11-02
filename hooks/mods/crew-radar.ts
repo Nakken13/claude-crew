@@ -48,6 +48,12 @@ export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): str
   return state.pausedTasks > 0 ? `${base} | ⏸️ ${state.pausedTasks} Paused` : base;
 }
 
+/** Version courte pour la bande : `🟢2 ⚡1 📋5 ⏸1` (sessions, en cours, todo, pause). */
+export function formatCrewRadarCompact(state: CrewRadarState = crewRadarState): string {
+  const base = `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks}`;
+  return state.pausedTasks > 0 ? `${base} ⏸${state.pausedTasks}` : base;
+}
+
 export function registerCrewRadar(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
     const previousSid = crewRuntimeState.sessionId;
@@ -248,7 +254,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
       order: 10,
       color: 'cyan',
       bold: true,
-      text: formatCrewRadarLine(),
+      text: formatCrewRadarCompact(),
     });
   });
 }

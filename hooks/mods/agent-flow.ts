@@ -15,7 +15,7 @@ import {
   PANE_META,
   resolvePaneRequestId,
   type ModRegistrar,
-  addBandBlock,
+  addBandSegments,
 } from './shared.ts';
 
 export type SubagentRunStatus = 'running' | 'done' | 'denied' | 'error';
@@ -232,36 +232,16 @@ export function registerAgentFlow(on: ModRegistrar): void {
       return prev;
     }
 
-    const recentNodes = agentFlowState.nodes.slice(-3);
-    const { Box, Text } = $.ui.resolve(e);
-
-    return addBandBlock(
-      prev,
-      Box({
-          flexDirection: 'column',
-          paddingX: 1,
-          children: [
-            Text({
-              color: agentFlowState.activeStack.length > 0 ? 'magenta' : 'cyan',
-              bold: agentFlowState.activeStack.length > 0,
-              children: [
-                `🎭 Agent Flow (${agentFlowState.activeStack.length} actif / ${agentFlowState.nodes.length} total)`,
-              ],
-            }),
-            ...recentNodes.map((node, idx) =>
-              Text({
-                color:
-                  node.status === 'running'
-                    ? 'yellow'
-                    : node.status === 'done'
-                      ? 'green'
-                      : 'red',
-                children: [`  ${formatAgentNodeLine(node, idx === recentNodes.length - 1)}`],
-              }),
-            ),
-          ],
-        }),
-    );
+    const running = agentFlowState.nodes.filter((n) => n.status === 'running');
+    if (running.length === 0) return prev;
+    const names = running.slice(0, 2).map((n) => n.agentName).join(',');
+    const more = running.length > 2 ? `+${running.length - 2}` : '';
+    return addBandSegments(prev, {
+      slot: 'left',
+      order: 30,
+      color: 'magenta',
+      text: `🎭${names}${more}`,
+    });
   });
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {

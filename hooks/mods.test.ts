@@ -376,9 +376,9 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     // Render AbovePrompt and confirm radar, progress, and collision banner appear
     const aboveTree = await h.emit('ui.render', {}, 'component=AbovePrompt');
     const aboveText = collectTexts(aboveTree);
-    expect(aboveText).toContain('🟢 2 Sessions en ligne');
-    expect(aboveText).toContain('Task : [████░░] 4/6 (66%)');
-    expect(aboveText).toContain('Batch : [██████░░] 3/4 tasks (75%)');
+    expect(aboveText).toContain('🟢2 ⚡2 📋2');
+    expect(aboveText).toContain('T 4/6');
+    expect(aboveText).toContain('B 3/4');
     expect(aboveText).toContain('COLLISION');
 
     // Mod 10: Batch ETA & Cost calculation from completed tasks
