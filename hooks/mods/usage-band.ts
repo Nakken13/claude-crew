@@ -82,9 +82,12 @@ export function registerUsageBand(on: ModRegistrar): void {
     return next(e);
   });
 
-  on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const prev = await next(e);
-    if (!crewUiState.bands.usage || !usageBandState.snapshot) return prev;
+    if (!crewUiState.bands.usage) return prev;
+    // Après /reload-plugins ni session.start ni turn.complete ne se déclenchent : lecture au 1er rendu.
+    if (!usageBandState.snapshot) await refresh($);
+    if (!usageBandState.snapshot) return prev;
     const text = formatUsageLine();
     if (text === 'Usage indisponible') return prev;
     return addBandSegments(prev, { slot: 'right', color: ORANGE, bold: false, text });
