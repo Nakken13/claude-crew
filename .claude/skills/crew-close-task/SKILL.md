@@ -5,7 +5,7 @@ description: Clôture une tâche crew terminée — vérifie les cases, passes r
 
 Exécute le protocole défini dans `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § "Gestion des tâches" (point
 3) — ne pas clore une tâche en sautant ces étapes, même perçue comme petite
-(obligation de modularité, cf. `CLAUDE.md` § "Modularité du code" /
+(obligation de modularité, cf.
 `crew/CLAUDE_CONTEXT/AGENTS.md` si ce projet y documente des anti-patterns
 précis).
 
