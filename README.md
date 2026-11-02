@@ -226,6 +226,7 @@ hooks/
 /crew-ui agents  (or /crew-agents)  # Toggle live Subagent Flow execution tree pane
 /crew-ui cache                # Toggle prompt cache TTL side pane (prompt-cache-control)
 /crew-ui weather [on|off]     # Toggle token weather gauge band (token-weather)
+/crew-ui usage [on|off]       # Toggle orange /usage band: 5h, 7d, context, cost (usage-band)
 ```
 
 ### Try it locally

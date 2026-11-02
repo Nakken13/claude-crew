@@ -60,6 +60,10 @@ import {
 import {
   registerBatchEtaCost,
 } from './mods/batch-eta-cost.ts';
+import {
+  formatUsageLine,
+  registerUsageBand,
+} from './mods/usage-band.ts';
 
 interface ModBusBuckets {
   sessionStart: Array<HookHandler<any, any>>;
@@ -172,12 +176,13 @@ export function formatCrewUiOverview(): string {
 
   return [
     '🎛️ crew-mates Zero-Token UI (10 Mods 100% locaux)',
-    'Usage : /crew-ui [all|radar|progress|board|turns|stack|agents] [on|off]',
+    'Usage : /crew-ui [all|radar|progress|usage|board|turns|stack|agents] [on|off]',
     '',
     'Bande unique AbovePrompt (crew à gauche, météo à droite) :',
     `  • radar    (${flag(b.radar)})    — ${formatCrewRadarLine()}`,
     `  • progress (${flag(b.progress)}) — ${formatCombinedBatchProgressLine()}`,
     `  • weather  (${flag(b.weather)})  — ${computeTokenWeather().line}`,
+    `  • usage    (${flag(b.usage)})    — ${formatUsageLine()}`,
     `  • locks    (${flag(b.locks)})    — Anti-collision multi-sessions (Edit/Write)`,
     '',
     'Volets interactifs (Panes) :',
@@ -204,6 +209,7 @@ export function register(on: ModRegistrar): void {
   registerStackViewer(registrar);
   registerTokenWeather(registrar);
   registerPromptCacheControl(registrar);
+  registerUsageBand(registrar);
 
   on('session.start', async ($, e, next) => {
     await refreshEnvCache($, (e as { cwd?: string }).cwd);
@@ -219,7 +225,7 @@ export function register(on: ModRegistrar): void {
       .register({
         name: 'crew-ui',
         description: 'Contrôler les 10 Mods Zero-Token crew-mates (bandes de statut & volets UI)',
-        argumentHint: '[all|radar|progress|board|turns|stack|agents]',
+        argumentHint: '[all|radar|progress|usage|board|turns|stack|agents]',
       })
       .catch(() => undefined);
     await $.command
@@ -547,7 +553,7 @@ export function register(on: ModRegistrar): void {
       .catch(() => ({ text: '🎭 Erreur locale sur /crew-agents.' }));
   });
 
-  // Commande slash unifiée `/crew-ui [all|radar|progress|board|turns|stack|agents]` (0-token)
+  // Commande slash unifiée `/crew-ui [all|radar|progress|usage|board|turns|stack|agents]` (0-token)
   on('command.run', { command: 'crew-ui' }, async ($, e) => {
     return Promise.resolve()
       .then(async () => {
@@ -577,6 +583,16 @@ export function register(on: ModRegistrar): void {
             text: crewUiState.bands.progress
               ? `📊 Batch & Task Progress activé : ${formatCombinedBatchProgressLine()}`
               : '⚪ Batch & Task Progress masqué.',
+          };
+        }
+
+        if (target === 'usage') {
+          crewUiState.bands.usage = parseToggleIntent(modeArg, crewUiState.bands.usage);
+          $.ui.invalidate('ui.render');
+          return {
+            text: crewUiState.bands.usage
+              ? `🟧 Usage activé : ${formatUsageLine()}`
+              : '⚪ Usage masqué.',
           };
         }
 
@@ -635,6 +651,7 @@ export function register(on: ModRegistrar): void {
           crewUiState.bands.radar = isExplicitOff ? false : true;
           crewUiState.bands.progress = isExplicitOff ? false : true;
           crewUiState.bands.weather = isExplicitOff ? false : true;
+          crewUiState.bands.usage = isExplicitOff ? false : true;
           crewUiState.bands.agents = isExplicitOff ? false : true;
           crewUiState.bands.locks = true;
 
@@ -662,7 +679,7 @@ export function register(on: ModRegistrar): void {
         }
 
         return {
-          text: `❓ Sous-commande inconnue "${target}". Utilisez : /crew-ui [all|radar|progress|board|turns|stack|agents]`,
+          text: `❓ Sous-commande inconnue "${target}". Utilisez : /crew-ui [all|radar|progress|usage|board|turns|stack|agents]`,
         };
       })
       .catch((err: unknown) => ({
