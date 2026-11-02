@@ -285,6 +285,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
 
     return composeMiddlewareChain(buckets.sessionStart, api, e, next);
@@ -307,6 +308,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     return composeMiddlewareChain(buckets.turnStart, api, e, next);
   });
@@ -328,6 +330,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     return composeMiddlewareChain(buckets.toolCall, api, e, next).catch(() => next(e));
   });
@@ -350,6 +353,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     // e.usage somme les requêtes du tour ; la taille réelle du contexte vient de la session.
     let enriched: unknown = e;
@@ -384,6 +388,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     return composeMiddlewareChain(buckets.sessionEnd, api, e, next);
   });
@@ -405,6 +410,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     // Une seule ligne : crew à gauche, météo à droite (segments versés par chaque mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
@@ -440,6 +446,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
+      session: { usage: () => ($ as any).session.usage() },
     };
     return composeMiddlewareChain(buckets.pane, api, e, next).catch(() => next(e));
   });
@@ -466,6 +473,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
+          session: { usage: () => ($ as any).session.usage() },
         };
         return handler(api, e, async () => undefined);
       })
@@ -493,6 +501,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
+          session: { usage: () => ($ as any).session.usage() },
         };
         return handler(api, e, async () => undefined);
       })
@@ -520,6 +529,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
+          session: { usage: () => ($ as any).session.usage() },
         };
         return handler(api, e, async () => undefined);
       })
@@ -547,6 +557,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
+          session: { usage: () => ($ as any).session.usage() },
         };
         return handler(api, e, async () => undefined);
       })

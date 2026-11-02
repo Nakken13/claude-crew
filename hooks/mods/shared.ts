@@ -84,6 +84,9 @@ export interface ModApi {
   env: {
     get: (name: string) => string | undefined;
   };
+  session?: {
+    usage: () => Promise<any>;
+  };
 }
 
 export type HookHandler<TEvent = Record<string, unknown>, TResult = unknown> = (
