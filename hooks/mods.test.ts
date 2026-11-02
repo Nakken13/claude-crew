@@ -379,7 +379,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(aboveText).toContain('🟢2 ⚡2 📋2');
     expect(aboveText).toContain('T 4/6');
     expect(aboveText).toContain('B 3/4');
-    expect(aboveText).toContain('COLLISION');
+    expect(aboveText).toContain('🚨 2 collisions : stripe.ts, hotfile.ts');
 
     // Mod 10: Batch ETA & Cost calculation from completed tasks
     const eta = computeBatchEta({
