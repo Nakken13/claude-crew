@@ -164,6 +164,9 @@ animation (choix du skill d'implémentation → § Routage des skills de
 4. **Mesure** — métrique de succès, événement à instrumenter, hypothèse
    d'A/B test si l'impact est incertain.
 5. **Alternatives écartées** — 1-2, et pourquoi.
+6. **Relais** — skill d'implémentation à invoquer ensuite : `design-taste-frontend`
+   (taste-skill, anti-slop) pour toute UI web créée ou refondue, avec `frontend-design`
+   / `ui-ux-pro-max` en appui ; `impeccable` pour retoucher un écran existant.
 
 Pas de catalogue exhaustif sans choix : tu tranches.
 
