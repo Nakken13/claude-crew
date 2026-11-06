@@ -6,7 +6,7 @@ import { computeTokenWeather } from './mods/token-weather.ts';
 import { formatTurnRow, turnInspectorState } from './mods/turn-inspector.ts';
 import { stackViewerState } from './mods/stack-viewer.ts';
 import { agentFlowState } from './mods/agent-flow.ts';
-import { crewRadarState, formatCrewRadarLine } from './mods/crew-radar.ts';
+import { crewRadarState, formatCrewRadarLine, formatCrewRadarCompact } from './mods/crew-radar.ts';
 import {
   batchProgressState,
   formatBatchProgressSegment,
@@ -232,8 +232,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(warmStatus.line).toContain('cache_read: 140k');
     expect(warmStatus.line).toContain('cache_creation: 8k');
 
-    // Simulate 255s elapsed on 300s TTL -> 45s left (< 60s alert!)
-    const expiringStatus = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 255_000);
+    // Default TTL is 1h (5 min only via CLAUDE_CACHE_TTL=5m): 3555s elapsed -> 45s left (< 60s alert!)
+    const expiringStatus = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 3_555_000);
     expect(expiringStatus.isExpiringSoon).toBe(true);
     expect(expiringStatus.line).toContain('<60s');
 
@@ -595,6 +595,62 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     const lock = JSON.parse(h.files.get('.claude/crew-sessions.lock') ?? '{}');
     expect(Object.keys(lock.sessions).sort()).toEqual(['real-uuid-1']);
     await h.emit('session.end', { sessionId: 'real-uuid-1' });
+  });
+
+  test('radar: TODO tasks listed in crew_ignored.json leave 📋 and move to 👤', async () => {
+    const h = createHarness({
+      'crew/TODO/mine.md': '# Ma tâche\n- [ ] x\n',
+      'crew/TODO/theirs-1.md': '# A lui\n- [ ] x\n',
+      'crew/TODO/theirs-2.md': '# A lui aussi\n- [ ] x\n',
+      'crew/CLAUDE_CONTEXT/CREW_CONFIG.md': 'remote_claims : true\n',
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': JSON.stringify({ ignored: { 'theirs-1.md': 'Bob', 'theirs-2.md': 'Alice', 'deja-supprimee.md': 'Bob' } }),
+    });
+    await h.emit('session.start', { sessionId: 'sess-ign-1' });
+    expect(crewRadarState.todoTasks).toBe(1);
+    expect(crewRadarState.othersTasks).toBe(2);
+    expect(formatCrewRadarCompact()).toContain('📋1');
+    expect(formatCrewRadarCompact()).toContain('👤2');
+    expect(formatCrewRadarCompact()).not.toContain('Bob');
+    await h.emit('session.end', { sessionId: 'sess-ign-1' });
+  });
+
+  test('radar: team mode off -> base bar even if crew_ignored.json exists (no 👤, 📋 counts everything)', async () => {
+    const h = createHarness({
+      'crew/TODO/a.md': '# A\n- [ ] x\n',
+      'crew/TODO/b.md': '# B\n- [ ] x\n',
+      'crew/CLAUDE_CONTEXT/CREW_CONFIG.md': 'remote_claims : false\n',
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': JSON.stringify({ ignored: ['b.md'] }),
+    });
+    await h.emit('session.start', { sessionId: 'sess-ign-3' });
+    expect(crewRadarState.todoTasks).toBe(2);
+    expect(crewRadarState.othersTasks).toBe(0);
+    expect(formatCrewRadarCompact()).not.toContain('👤');
+    await h.emit('session.end', { sessionId: 'sess-ign-3' });
+  });
+
+  test('radar: older crew_ignored.json format (list) is still counted while team mode is on', async () => {
+    const h = createHarness({
+      'crew/TODO/a.md': '# A\n- [ ] x\n',
+      'crew/TODO/b.md': '# B\n- [ ] x\n',
+      'crew/CLAUDE_CONTEXT/CREW_CONFIG.md': '# cfg\nremote_claims : true\n',
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': JSON.stringify({ owner: 'Bob', ignored: ['b.md'] }),
+    });
+    await h.emit('session.start', { sessionId: 'sess-ign-4' });
+    expect(crewRadarState.todoTasks).toBe(1);
+    expect(crewRadarState.othersTasks).toBe(1);
+    await h.emit('session.end', { sessionId: 'sess-ign-4' });
+  });
+
+  test('radar: without crew_ignored.json (or corrupt), no 👤 and 📋 counts everything', async () => {
+    const h = createHarness({
+      'crew/TODO/a.md': '# A\n- [ ] x\n',
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': '{pas du json',
+    });
+    await h.emit('session.start', { sessionId: 'sess-ign-2' });
+    expect(crewRadarState.todoTasks).toBe(1);
+    expect(crewRadarState.othersTasks).toBe(0);
+    expect(formatCrewRadarCompact()).not.toContain('👤');
+    await h.emit('session.end', { sessionId: 'sess-ign-2' });
   });
 
   test('/crew-ui : une erreur interne remonte son message au lieu d\'un texte générique', async () => {

@@ -20,7 +20,7 @@ import crew_hook as h
 
 
 def _git(root, *args):
-    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 def _last_commit_message(root):
@@ -102,6 +102,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
     monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
     monkeypatch.setattr(h, "MAIN_ROOT", root)
+    monkeypatch.setattr(h, "IGNORED_FILE", ctx / "crew_ignored.json", raising=False)
     return root, dirs, ctx
 
 
@@ -1776,3 +1777,233 @@ def test_count_report_gives_exact_count_and_session_titles(repo):
     assert [b["task"] for b in r["launchable"]] == ["a1", "b1"]
     assert r["report"].startswith("**2 terminaux en parallele**")
     assert "| `a1` | Batch A | src/a/ |" in r["report"]
+
+
+# --- Local ignore list: another dev's tasks that /crew-start must not start ---
+
+@pytest.fixture
+def ign(repo, monkeypatch):
+    root, dirs, ctx = repo
+    monkeypatch.setattr(h, "IGNORED_FILE", ctx / "crew_ignored.json", raising=False)
+    return dirs
+
+
+def test_ignore_snapshot_makes_next_task_skip_existing_todo(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    _put(ign, "TODO", "a2.md")
+    assert h.ignore_cli(["snapshot", "--owner", "Bob"])["ok"] is True
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in r["skipped"]
+
+
+def test_ignore_snapshot_leaves_later_todo_startable(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "mine.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    _put(ign, "TODO", "mine.md")  # added after the snapshot
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "mine.md")
+
+
+def test_ignored_todo_is_not_reported_unclassified(ign):
+    _put(ign, "TODO", "orphan.md")  # in no batch
+    assert h.next_task("S1")["unclassified"] == ["orphan.md"]
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    r = h.next_task("S1")
+    assert r["unclassified"] == [] and r["action"] == "none"
+
+
+def test_ignore_remove_makes_task_startable_again(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["remove", "a1.md"])["ignored"] == []
+    assert h.next_task("S1")["task"] == "a1.md"
+
+
+def test_ignore_add_list_and_idempotent_snapshot(ign):
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["add", "x.md"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["list"])["ignored"] == ["a1.md", "x.md"]
+
+
+def test_ignore_cli_rejects_unknown_subcommand_and_missing_slug(ign):
+    assert h.ignore_cli(["nope"])["ok"] is False
+    assert h.ignore_cli(["add"])["ok"] is False
+    assert h.ignore_cli([])["ok"] is False
+
+
+def test_ignore_corrupt_file_degrades_to_empty(ign):
+    h.IGNORED_FILE.write_text("{pas du json", encoding="utf-8")
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    assert h.next_task("S1")["task"] == "a1.md"
+
+
+# --- Collab mode: dev name + remote claims, switched on by /crew-collab only ---
+
+def _cfg(ctx):
+    return (ctx / "CREW_CONFIG.md").read_text(encoding="utf-8")
+
+
+def test_collab_on_enables_claims_and_sets_owner_name(ign):
+    assert h.claims_enabled() is False
+    r = h.collab_cli(["on", "--name", "Sofian"])
+    assert r["ok"] is True and r["name"] == "Sofian"
+    assert h.claims_enabled() is True
+    assert h._claims_identity() == "Sofian"
+
+
+def test_collab_on_keeps_other_config_lines_and_is_idempotent(ign):
+    cfg = h.CTX / "CREW_CONFIG.md"
+    cfg.write_text("# Ma config\n\nremote_claims : false\nclaims_remote : upstream\n", encoding="utf-8")
+    h.collab_cli(["on", "--name", "A"])
+    h.collab_cli(["on", "--name", "B"])
+    txt = _cfg(h.CTX)
+    assert txt.count("remote_claims") == 1 and txt.count("collab_name") == 1
+    assert "# Ma config" in txt and "claims_remote : upstream" in txt
+    assert h._claims_identity() == "B"
+
+
+@pytest.mark.parametrize("argv", [["on"], ["on", "--name", "   "], ["on", "--name", "a\nremote_claims : false"], ["on", "--name", "x" * 200]])
+def test_collab_on_rejects_missing_or_unsafe_name(ign, argv):
+    assert h.collab_cli(argv)["ok"] is False
+    assert not (h.CTX / "CREW_CONFIG.md").exists() or h.claims_enabled() is False
+
+
+def test_collab_off_resets_to_base_form(ign):
+    _put(ign, "TODO", "a1.md")
+    h.collab_cli(["on", "--name", "Sofian"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.collab_cli(["off"])["ok"] is True
+    assert h.claims_enabled() is False
+    assert "collab_name" not in _cfg(h.CTX)
+    assert not h.IGNORED_FILE.exists()
+    assert h._claims_identity() != "Sofian"
+
+
+def test_collab_status_reports_mode_name_and_ignored_count(ign):
+    off = h.collab_cli(["status"])
+    assert (off["ok"], off["collab"]) == (True, False)
+    _put(ign, "TODO", "a1.md")
+    h.collab_cli(["on", "--name", "Sofian"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    on = h.collab_cli(["status"])
+    assert (on["collab"], on["name"], on["ignored"]) == (True, "Sofian", 1)
+    assert on["people"] == [{"name": "Bob", "tasks": 1, "me": False}]
+
+
+def test_ignore_snapshot_owner_is_named_in_skip_reason_and_list(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    assert h.ignore_cli(["snapshot", "--owner", "Bob"])["ok"] is True
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in h.next_task("S1")["skipped"]
+    h.ignore_cli(["snapshot"])  # without --owner: keeps the known owner
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+
+
+def test_ignore_off_deletes_the_file(ign):
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.IGNORED_FILE.exists()
+    assert h.ignore_cli(["off"])["ignored"] == []
+    assert not h.IGNORED_FILE.exists()
+    assert h.ignore_cli(["off"])["ok"] is True  # idempotent
+
+
+# --- Per-task owner: mention in the TODO, remote claim, else --owner ---
+
+def test_snapshot_uses_owner_mention_written_in_the_todo(ign):
+    _put(ign, "TODO", "a1.md", body="# T\n- **Owner** : Alice\n- [ ] x\n")
+    _put(ign, "TODO", "a2.md", body="# T\nAssigné à : Bob\n- [ ] x\n")
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == []
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "Bob": 1}
+
+
+def test_snapshot_skips_tasks_marked_with_my_own_name(ign):
+    h.collab_cli(["on", "--name", "Sofian"])
+    _put(ign, "TODO", "mine.md", body="# T\nOwner : sofian\n- [ ] x\n")
+    _put(ign, "TODO", "theirs.md", body="# T\nOwner : Alice\n- [ ] x\n")
+    h.ignore_cli(["snapshot"])
+    assert h.ignore_cli(["list"])["ignored"] == ["theirs.md"]
+
+
+def test_snapshot_ignores_unmarked_by_default_as_unassigned_and_owner_option_names_them(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "plain.md")), encoding="utf-8")
+    _put(ign, "TODO", "marked.md", body="# T\nOwner : Alice\n- [ ] x\n")
+    _put(ign, "TODO", "plain.md")
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == ["plain.md"]
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "(unassigned)": 1}
+    assert h.next_task("S1")["action"] == "none"  # never started, without answering anything
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "Bob": 1}  # Alice keeps her mention
+    assert h.ignore_cli(["snapshot"])["unmarked"] == []
+
+
+
+def test_snapshot_uses_remote_claim_owner_without_asking(ign, monkeypatch):
+    h.collab_cli(["on", "--name", "Sofian"])
+    _put(ign, "TODO", "c1.md")
+    _put(ign, "TODO", "c2.md")
+    claims = {"c1.md": {"status": "current", "owner": "carol"}, "c2.md": {"status": "current", "owner": "Sofian"}}
+    monkeypatch.setattr(h, "_claims_local", lambda: ("tip", claims))
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == []
+    assert h.ignore_cli(["list"])["by_owner"] == {"carol": 1}  # c2 is mine: never ignored
+
+
+def test_collab_status_lists_people_with_counts_and_me(ign):
+    h.collab_cli(["on", "--name", "Sofian"])
+    for slug, who in (("a.md", "Bob"), ("b.md", "Bob"), ("c.md", "Alice")):
+        _put(ign, "TODO", slug, body=f"# T\nOwner : {who}\n- [ ] x\n")
+    _put(ign, "CURRENT_TASKS", "mienne.md")
+    h.ignore_cli(["snapshot"])
+    people = h.collab_cli(["status"])["people"]
+    assert people == [{"name": "Bob", "tasks": 2, "me": False}, {"name": "Alice", "tasks": 1, "me": False},
+                      {"name": "Sofian", "tasks": 1, "me": True}]
+
+
+def test_legacy_ignored_file_with_single_owner_still_works(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.IGNORED_FILE.write_text('{"owner": "Bob", "ignored": ["a1.md"]}', encoding="utf-8")
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in h.next_task("S1")["skipped"]
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+
+
+# --- stdin isolation -------------------------------------------------------
+# On Windows a hook can be started with an invalid inherited stdin handle; any
+# child process that inherits it dies with `[WinError 6] invalid handle`, which
+# made the closure auto-commit fail silently. Every subprocess the engine
+# spawns must therefore pin stdin AND stdout/stderr explicitly (no inheritance;
+# pytest's fd capture leaves the OS-level std handles stale for the same reason).
+
+def _unpinned_subprocess_calls(path):
+    import ast
+    tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+    bad = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("run", "Popen", "check_output", "call")
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess"):
+            kw = {k.arg for k in node.keywords}
+            pinned_in = bool(kw & {"stdin", "input"})
+            pinned_out = "capture_output" in kw or {"stdout", "stderr"} <= kw
+            if not (pinned_in and pinned_out):
+                bad.append(f"{path}:{node.lineno}")
+    return bad
+
+
+def test_engine_subprocess_calls_pin_stdin():
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    files = [repo / "crew" / "crew_hook.py", repo / "scripts" / "crew_hook.py",
+             repo / "scripts" / "dashboard" / "server.py"]
+    bad = [b for f in files if f.exists() for b in _unpinned_subprocess_calls(f)]
+    assert not bad, "subprocess call(s) inherit stdin: " + ", ".join(bad)

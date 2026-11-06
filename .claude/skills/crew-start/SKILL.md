@@ -46,6 +46,22 @@ checkout principal.
      `skipped` (verrou, batch actif, chevauchement) ou « TODO vide », et
      s'arrêter. Seul cas où le skill s'arrête sans avoir codé.
 
+2bis. **Claim distant** (opt-in : seulement si `crew/CLAUDE_CONTEXT/CREW_CONFIG.md`
+   contient `remote_claims : true`, sinon sauter ; les claims sont une couche
+   partagée entre devs sur la ref `refs/crew/claims`, cf. `AGENTS.md`) :
+   - si `action: start` et que la tâche n'existe pas localement mais figure dans
+     `remote_todo` : `python "$HOOK" claims materialize <task>` (écrit le `.md`
+     dans `crew/TODO/` depuis la ref) ;
+   - poser le claim avant tout déplacement :
+     `python "$HOOK" claims claim <task> --session "$CLAUDE_CODE_SESSION_ID" --batch "<batch>" --branch "<branch>" --zone "<zone du JSON, séparée par des virgules>"` ;
+   - **à la reprise (`action: resume`) refaire ce même claim** : il rafraîchit `ts`
+     (le TTL est de 8 h, une tâche longue redeviendrait prenable sinon) et publie
+     une tâche démarrée hors ligne ;
+   - `ok: false` (déjà pris, zone chevauchante, conflit) → ne pas insister :
+     relancer l'étape 1 (le script voit le claim et propose la suite) ;
+   - `offline` / `claims_warning` → **non bloquant** : continuer et le signaler
+     à l'utilisateur (« claims distants non vérifiés »).
+
 3. **Verrou + isolation** (à faire avant toute édition) :
    - *Reprise* : exécuter `Bash({command: ': "crew-resume:<task>"'})` (no-op
      qui pose le verrou via le hook `PreToolUse`).

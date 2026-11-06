@@ -31,6 +31,8 @@ export interface CrewRadarState {
   onlineSessions: number;
   currentTasks: number;
   todoTasks: number;
+  /** TODO set aside locally (crew_ignored.json): another dev's tasks, excluded from todoTasks. */
+  othersTasks: number;
   pausedTasks: number;
   sessionIds: string[];
 }
@@ -39,6 +41,7 @@ export const crewRadarState: CrewRadarState = {
   onlineSessions: 1,
   currentTasks: 0,
   todoTasks: 0,
+  othersTasks: 0,
   pausedTasks: 0,
   sessionIds: [],
 };
@@ -48,9 +51,26 @@ export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): str
   return state.pausedTasks > 0 ? `${base} | ⏸️ ${state.pausedTasks} Paused` : base;
 }
 
-/** Version courte pour la bande : `🟢2 ⚡1 📋5 ⏸0` (sessions, en cours, todo, pause) ; 0 affiché, jamais omis. */
+/** Version courte pour la bande : `🟢2 ⚡1 📋5 ⏸0` (sessions, en cours, todo, pause) ; 0 affiché, jamais omis ; ` 👤N` ajouté si le mode collab écarte N tâches d'autres devs. */
 export function formatCrewRadarCompact(state: CrewRadarState = crewRadarState): string {
-  return `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks} ⏸️${state.pausedTasks}`;
+  const others = state.othersTasks > 0 ? ` 👤${state.othersTasks}` : '';
+  return `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks} ⏸️${state.pausedTasks}${others}`;
+}
+
+/** Slugs of `crew/CLAUDE_CONTEXT/crew_ignored.json` ({"ignored": {"x.md": "name"}} or the older list); missing/corrupt -> empty. */
+export function parseIgnoredSlugs(text: string): Set<string> {
+  try {
+    const raw = JSON.parse(text)?.ignored;
+    if (Array.isArray(raw)) return new Set(raw.filter((x: unknown): x is string => typeof x === 'string'));
+    return raw && typeof raw === 'object' ? new Set(Object.keys(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+/** Team mode is on = `remote_claims : true` in crew/CLAUDE_CONTEXT/CREW_CONFIG.md (set by /crew-collab on). */
+export function parseCollabOn(configText: string): boolean {
+  return /^\s*remote_claims\s*[:=]\s*(true|1|yes|oui|on)\s*$/im.test(configText);
 }
 
 export function registerCrewRadar(on: ModRegistrar): void {
@@ -121,9 +141,18 @@ export function registerCrewRadar(on: ModRegistrar): void {
       ...lockedSlugs,
     ]);
 
-    const todoSlugs = filterCrewTaskSlugs(
+    const todoAll = filterCrewTaskSlugs(
       await $.fs.list(joinPath(mainRoot, 'crew/TODO')).catch(() => []),
     );
+    const collabOn = parseCollabOn(
+      await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/CREW_CONFIG.md')).catch(() => ''),
+    );
+    const ignored = collabOn
+      ? parseIgnoredSlugs(
+          await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_ignored.json')).catch(() => ''),
+        )
+      : new Set<string>();
+    const todoSlugs = todoAll.filter((slug) => !ignored.has(slug));
     const pausedSlugs = filterCrewTaskSlugs(
       await $.fs.list(joinPath(mainRoot, 'crew/PAUSED')).catch(() => []),
     );
@@ -137,6 +166,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
     crewRadarState.onlineSessions = crewRadarState.sessionIds.length;
     crewRadarState.currentTasks = uniqueCurrentTasks.size;
     crewRadarState.todoTasks = todoSlugs.length;
+    crewRadarState.othersTasks = todoAll.length - todoSlugs.length;
     crewRadarState.pausedTasks = pausedSlugs.length;
 
     crewRuntimeState.onlineSessionsCount = crewRadarState.onlineSessions;
@@ -199,9 +229,18 @@ export function registerCrewRadar(on: ModRegistrar): void {
       ...lockedSlugs,
     ]);
 
-    const todoSlugs = filterCrewTaskSlugs(
+    const todoAll = filterCrewTaskSlugs(
       await $.fs.list(joinPath(mainRoot, 'crew/TODO')).catch(() => []),
     );
+    const collabOn = parseCollabOn(
+      await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/CREW_CONFIG.md')).catch(() => ''),
+    );
+    const ignored = collabOn
+      ? parseIgnoredSlugs(
+          await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_ignored.json')).catch(() => ''),
+        )
+      : new Set<string>();
+    const todoSlugs = todoAll.filter((slug) => !ignored.has(slug));
     const pausedSlugs = filterCrewTaskSlugs(
       await $.fs.list(joinPath(mainRoot, 'crew/PAUSED')).catch(() => []),
     );
@@ -213,6 +252,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
     crewRadarState.onlineSessions = crewRadarState.sessionIds.length;
     crewRadarState.currentTasks = uniqueCurrentTasks.size;
     crewRadarState.todoTasks = todoSlugs.length;
+    crewRadarState.othersTasks = todoAll.length - todoSlugs.length;
     crewRadarState.pausedTasks = pausedSlugs.length;
 
     crewRuntimeState.onlineSessionsCount = crewRadarState.onlineSessions;

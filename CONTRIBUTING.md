@@ -18,6 +18,13 @@ Open against `main`. Keep the diff scoped to one change; explain what
 problem it solves and how you tested it. No CI gate yet — review happens
 on the PR itself.
 
+## Packaged mirrors are generated
+
+Some files exist twice: the copy this repo dogfoods (`crew/`, `.claude/`) and the
+copy the plugin ships (`scripts/`, `skills/`, `agents/`). **Edit the dogfood copy
+only**, then run `python scripts/dev/sync_engine.py`. `--check` exits 1 on drift,
+and `python scripts/dev/verify_plugin_package.py` fails on it too.
+
 ## Versioning the scaffold
 
 The scaffold's version lives in the `version` field of

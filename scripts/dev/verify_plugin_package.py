@@ -124,6 +124,7 @@ ENGINE_FILE_PAIRS = [
     # by design. check_crew_init_is_plugin_native covers its correctness now.
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
+    (".claude/skills/crew-collab/SKILL.md", "skills/crew-collab/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
     # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in
@@ -190,6 +191,14 @@ def check_crew_scripts_copied(repo_root: Path) -> list[str]:
         elif not _content_equal(source, target):
             problems.append(f"content mismatch: {target} differs from {source}")
     return problems
+
+
+def check_plugin_hook_mirror(repo_root: Path) -> list[str]:
+    """scripts/crew_hook.py must be exactly crew/crew_hook.py with the plugin
+    ROOT line (the two used to be unguarded). Fix: python scripts/dev/sync_engine.py"""
+    import sync_engine
+    drift = [d for d in sync_engine.sync(repo_root, check=True) if d == "scripts/crew_hook.py"]
+    return [f"{d} drifted from crew/crew_hook.py (run: python scripts/dev/sync_engine.py)" for d in drift]
 
 
 EVENT_EXPECTED_SCRIPT = {
@@ -334,6 +343,7 @@ CHECKS = [
     check_template_matches_source,
     check_engine_files_copied,
     check_crew_scripts_copied,
+    check_plugin_hook_mirror,
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,
