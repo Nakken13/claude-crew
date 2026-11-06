@@ -1,51 +1,61 @@
 # -*- coding: utf-8 -*-
-"""Hook Stop/SessionEnd/SessionStart/PreToolUse — gestion des tâches du projet.
-À chaque fin de tour (Stop) :
-  1. régénère crew/<dir>/INDEX.md (titres + liens),
-  2. journalise les transitions (démarrée / terminée / ajoutée) dans
+"""Stop/SessionEnd/SessionStart/PreToolUse hook — project task management.
+At the end of every turn (Stop):
+  1. regenerates crew/<dir>/INDEX.md (titles + links),
+  2. logs transitions (started / finished / added) in
      crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md,
-  3. bloque la fin de tour si une tâche est à la fois dans TODO/, CURRENT_TASKS/
-     et/ou PAUSED/ (jamais deux dossiers a la fois),
-  4. rappelle d'historiser + sortir les tests quand une tâche vient d'être terminée,
-  5. maintient des verrous live PAR SESSION (crew_lock.json, anti-collision
-     multi-Claude, écriture protégée par LocksMutex) et bloque le tour si une
-     tâche démarrée a une voisine de batch déjà verrouillée par une autre
-     session, ou si deux batchs actifs à zones chevauchantes sont verrouillés
-     par des sessions différentes (cf. crew/CLAUDE_CONTEXT/BATCH_LOCKS.md,
-     régénéré à chaque tour),
-  6. commit git LOCAL UNIQUEMENT (jamais de push, cf. `auto_commit_closure`)
-     scopé à `crew/` quand une tâche vient d'être réellement clôturée dans ce
-     même tour (fichier disparu de `CURRENT_TASKS/` + `HISTORIQUE.md`
-     effectivement modifié) — trace git systématique de chaque clôture sans
-     rien pousser automatiquement, le push reste une décision humaine.
-  7. retire de crew/CLAUDE_BATCH.md toute section `## Batch`/`### Batch`
-     dont TOUTES les tâches listées sont barrées (~~`slug.md`~~) — batch
-     entièrement clos (cf. `prune_closed_batches`) — pour empêcher le
-     fichier de grossir indéfiniment ; l'historique complet reste dans
-     HISTORIQUE.md, déjà écrit à la clôture de chaque tâche. Les sections
-     vides/placeholder (0 tâche référencée) ne sont jamais touchées.
-En PreToolUse (matcher Bash|Edit|Write|MultiEdit, cf. gate_pretooluse) :
-  - `Edit`/`Write`/`MultiEdit` : bloque avant écriture si `file_path` tombe
-    sous une `Zone:` de batch verrouillée par une AUTRE session.
-  - `Bash` : contrôle préventif avant exécution d'un `git mv` TODO->CURRENT_TASKS
-    (tâche catégorisée + pas de collision), plus un scan best-effort des
-    commandes mutantes (`rm`/`mv`/`cp`/redirection `>`) contre les mêmes zones
-    verrouillées — Layer 2, filet de sécurité en complément de l'isolation
-    physique par worktree (Layer 1, portée par `/crew-start`).
-Ne casse jamais le tour : toute erreur interne -> exit 0 silencieux (sauf le
-blocage volontaire exit(2) de gate_pretooluse).
+  3. blocks the end of the turn if a task is in TODO/, CURRENT_TASKS/ and/or
+     PAUSED/ at the same time (never two folders at once),
+  4. reminds to log into the history + extract the tests when a task has just been finished,
+  5. maintains live PER-SESSION locks (crew_lock.json, multi-Claude
+     anti-collision, writes protected by LocksMutex) and blocks the turn if a
+     started task has a batch neighbour already locked by another
+     session, or if two active batches with overlapping zones are locked
+     by different sessions (see crew/CLAUDE_CONTEXT/BATCH_LOCKS.md,
+     regenerated every turn),
+  6. LOCAL-ONLY git commit (never a push, see `auto_commit_closure`)
+     scoped to `crew/` when a task has actually been closed in this
+     same turn (file gone from `CURRENT_TASKS/` + `HISTORIQUE.md`
+     actually modified) — systematic git trace of every closure without
+     pushing anything automatically, the push stays a human decision.
+  7. removes from crew/CLAUDE_BATCH.md every `## Batch`/`### Batch` section
+     whose listed tasks are ALL struck through (~~`slug.md`~~) — fully
+     closed batch (see `prune_closed_batches`) — to keep the
+     file from growing indefinitely; the full history stays in
+     HISTORIQUE.md, already written when each task is closed. Empty/
+     placeholder sections (0 referenced tasks) are never touched.
+On PreToolUse (matcher Bash|Edit|Write|MultiEdit, see gate_pretooluse):
+  - `Edit`/`Write`/`MultiEdit`: blocks before writing if `file_path` falls
+    under a batch `Zone:` locked by ANOTHER session.
+  - `Bash`: preventive check before running a `git mv` TODO->CURRENT_TASKS
+    (categorized task + no collision), plus a best-effort scan of mutating
+    commands (`rm`/`mv`/`cp`/`>` redirection) against the same locked
+    zones — Layer 2, a safety net complementing the physical isolation
+    by worktree (Layer 1, handled by `/crew-start`).
+Never breaks the turn: any internal error -> silent exit 0 (except the
+deliberate exit(2) block of gate_pretooluse).
 """
-import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess
+import json, os, re, sys, shlex, time, datetime, pathlib, shutil, fnmatch, subprocess, hashlib
 
-ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent)  # racine du projet
+def _git_root(start):
+    """First git root (folder or worktree `.git` file) walking up
+    from `start`. A session launched in a subfolder (backend/, frontend/)
+    must not create a phantom `crew/` there: with no `.git` found, `start` as is."""
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
+ROOT = _git_root(pathlib.Path(os.environ["CLAUDE_PROJECT_DIR"])) if os.environ.get("CLAUDE_PROJECT_DIR") else pathlib.Path(__file__).resolve().parent.parent  # project root
 
 
 def _resolve_main_root(root):
-    """Racine du checkout principal pour `root`, sans spawn git : `root/.git`
-    dossier -> `root` ; fichier (worktree) -> ligne `gitdir:` puis `commondir`
-    de ce gitdir, dont le parent (`.git`) donne le principal. Repli silencieux
-    sur `root` si la lecture echoue, repo bare, ou pas de `crew/CLAUDE_CONTEXT/` dans le
-    principal resolu — ne leve jamais."""
+    """Root of the main checkout for `root`, without spawning git: `root/.git`
+    folder -> `root`; file (worktree) -> `gitdir:` line then `commondir`
+    of that gitdir, whose parent (`.git`) gives the main checkout. Silent fallback
+    to `root` if reading fails, bare repo, or no `crew/CLAUDE_CONTEXT/` in the
+    resolved main checkout — never raises."""
     try:
         git = root / ".git"
         if not git.is_file():
@@ -68,14 +78,16 @@ def _resolve_main_root(root):
 
 
 def _shared_lock_paths(root):
-    """(MAIN_ROOT, crew_lock.json, mutex) du verrou partage entre le checkout
-    principal et tous ses worktrees de batch."""
+    """(MAIN_ROOT, crew_lock.json, mutex) of the lock shared between the main
+    checkout and all its batch worktrees."""
     main = _resolve_main_root(root)
     ctx = main / "crew" / "CLAUDE_CONTEXT"
     return main, ctx / "crew_lock.json", ctx / ".crew_lock.mutex"
 
 
 MAIN_ROOT, LOCKS_FILE, LOCKS_MUTEX = _shared_lock_paths(ROOT)
+# TODO tasks from other devs that /crew-start must ignore (local, not versioned).
+IGNORED_FILE = LOCKS_FILE.with_name("crew_ignored.json")
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
@@ -91,28 +103,28 @@ CTX = CREW / "CLAUDE_CONTEXT"
 SNAP = CTX / ".task_state.json"
 CHANGELOG = CTX / "CHANGELOG_TACHES.md"
 BATCH_FILE = CREW / "CLAUDE_BATCH.md"
-# LOCKS_FILE/LOCKS_MUTEX : verrou partage dans le checkout principal (cf.
-# _shared_lock_paths ci-dessus), schema session->{batch,tasks,worktree,branch,since}.
+# LOCKS_FILE/LOCKS_MUTEX: lock shared in the main checkout (see
+# _shared_lock_paths above), schema session->{batch,tasks,worktree,branch,since}.
 BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
 HISTORIQUE = CTX / "HISTORIQUE.md"
 HISTORIQUE_ARCHIVE = CTX / "HISTORIQUE_ARCHIVE.md"
-HISTORIQUE_ROTATE_MONTHS = 6  # au-dela, une entree quitte le fichier vivant (cf. rotate_historique)
+HISTORIQUE_ROTATE_MONTHS = 6  # beyond this, an entry leaves the live file (see rotate_historique)
 LOCK_TTL = datetime.timedelta(hours=6)
-MUTEX_TTL_SEC = 30  # mutex bloque plus longtemps -> session crashee en pleine ecriture, on le degage
-MUTEX_WAIT_SEC = 2.0  # attente max avant de continuer sans le mutex (best-effort, ne bloque jamais le tour)
+MUTEX_TTL_SEC = 30  # mutex held longer -> session crashed mid-write, we clear it
+MUTEX_WAIT_SEC = 2.0  # max wait before continuing without the mutex (best-effort, never blocks the turn)
 
 INTRO = {
-    "PROBLEMS": "Problèmes. Résolu → déplacer le contexte vers `HISTORIQUE.md`.\n\n",
-    "TODO": "Tâches pas commencées. Démarrer = déplacer le fichier vers `crew/CURRENT_TASKS/` (cf. `CLAUDE.md`).\n\n",
-    "ICEBOX": "Idées/tâches parkées volontairement (distinct de TODO). Pour reprendre : déplacer vers `crew/TODO/` d'abord.\n\n",
-    "CURRENT_TASKS": "Tâches en cours. Finie → supprimer + entrée `crew/CLAUDE_CONTEXT/HISTORIQUE.md` + `crew/TESTS/<chantier>.md`.\n\n",
-    "PAUSED": "Tâches démarrées mais bloquées sur une validation visuelle/dev que l'IA ne peut pas faire seule. Pour reprendre : déplacer vers `crew/CURRENT_TASKS/` une fois la validation faite.\n\n",
-    "TESTS": ("Checklists de validation des features finies (cf. `README.md`). "
-              "Triées par exécutant :\n"
-              "- [IA](IA/INDEX.md) — tests que l'IA peut dérouler seule (🤖 auto + 🔍 config/curl/DB/logs)\n"
-              "- [DEV](DEV/INDEX.md) — tests nécessitant le dev (🖱️ manuel/visuel + items non outillés)\n\n"),
-    "TESTS/IA": "Tests exécutables par l'IA (🤖 auto + 🔍 config/requête directe). Source unique par chantier ; le pendant 🖱️ est dans `../DEV/`.\n\n",
-    "TESTS/DEV": "Tests nécessitant le dev (🖱️ manuel/visuel navigateur, ou item non outillé pour l'IA). Le pendant automatisable est dans `../IA/`.\n\n",
+    "PROBLEMS": "Problems. Resolved → move the context to `HISTORIQUE.md`.\n\n",
+    "TODO": "Tasks not started yet. Start = move the file to `crew/CURRENT_TASKS/` (see `CLAUDE.md`).\n\n",
+    "ICEBOX": "Ideas/tasks deliberately parked (distinct from TODO). To resume: move to `crew/TODO/` first.\n\n",
+    "CURRENT_TASKS": "Tasks in progress. Done → delete + `crew/CLAUDE_CONTEXT/HISTORIQUE.md` entry + `crew/TESTS/<chantier>.md`.\n\n",
+    "PAUSED": "Tasks started but blocked on a visual/dev validation the AI cannot do alone. To resume: move to `crew/CURRENT_TASKS/` once the validation is done.\n\n",
+    "TESTS": ("Validation checklists for finished features (see `README.md`). "
+              "Sorted by who runs them:\n"
+              "- [IA](IA/INDEX.md) — tests the AI can run on its own (🤖 auto + 🔍 config/curl/DB/logs)\n"
+              "- [DEV](DEV/INDEX.md) — tests that need the dev (🖱️ manual/visual + items without tooling)\n\n"),
+    "TESTS/IA": "Tests the AI can run (🤖 auto + 🔍 config/direct request). Single source per chantier; its 🖱️ counterpart is in `../DEV/`.\n\n",
+    "TESTS/DEV": "Tests that need the dev (🖱️ manual/visual in the browser, or an item with no AI tooling). The automatable counterpart is in `../IA/`.\n\n",
 }
 
 
@@ -147,8 +159,8 @@ def regen_index(name, d):
 
 
 def process_completed_tests():
-    """Vérifie les fichiers de test dans TESTS/IA/. S'ils sont entièrement cochés
-    ([x] présents, 0 [ ]), les déplace vers CLAUDE_CONTEXT/TESTS_DONE/."""
+    """Checks the test files in TESTS/IA/. If they are fully checked
+    ([x] present, 0 [ ]), moves them to CLAUDE_CONTEXT/TESTS_DONE/."""
     done_dir = CTX / "TESTS_DONE"
     done_dir.mkdir(parents=True, exist_ok=True)
     moved = []
@@ -159,7 +171,7 @@ def process_completed_tests():
                 continue
             content = f.read_text(encoding="utf-8")
             if "[ ]" not in content and ("[x]" in content.lower() or "[X]" in content):
-                # Utiliser replace() pour écraser si le fichier existe déjà
+                # Use replace() to overwrite if the file already exists
                 f.replace(done_dir / f.name)
                 moved.append(f.name)
     return moved
@@ -172,13 +184,13 @@ TASK_LINE_RE = re.compile(
 
 
 def check_batches():
-    """Avertit (non bloquant) si une tâche TODO/CURRENT/PAUSED n'est pas catégorisée
-    dans CLAUDE_BATCH.md, ou si le fichier référence une tâche disparue. Refs = slugs
-    des seules lignes de liste (TASK_LINE_RE) → la prose d'en-tête (`CLAUDE.md`), la
-    ligne Zone et les placeholders `<...>.md` sont ignorés. Les refs barrées
-    (~~`slug.md`~~) marquent une tâche déjà terminée/retirée par convention du
-    projet : leur fichier a normalement été supprimé, donc elles sont exclues du
-    scan pour ne pas générer un faux positif à chaque clôture."""
+    """Warns (non-blocking) if a TODO/CURRENT/PAUSED task is not categorized
+    in CLAUDE_BATCH.md, or if the file references a task that no longer exists. Refs = slugs
+    of the list lines only (TASK_LINE_RE) → header prose (`CLAUDE.md`), the
+    Zone line and `<...>.md` placeholders are ignored. Struck-through refs
+    (~~`slug.md`~~) mark a task already finished/removed by project
+    convention: its file has normally been deleted, so they are excluded from the
+    scan to avoid a false positive on every closure."""
     warnings = []
     if not BATCH_FILE.exists():
         return warnings
@@ -186,19 +198,19 @@ def check_batches():
     referenced = {
         m.group(2) for m in TASK_LINE_RE.finditer(text) if not (m.group(1) and m.group(3))
     }
-    actual = active_task_slugs()  # meme scan TODO/CURRENT_TASKS/PAUSED, source unique
+    actual = active_task_slugs()  # same TODO/CURRENT_TASKS/PAUSED scan, single source
     for f in sorted(actual - referenced):
-        warnings.append(f"[batch] Tache non categorisee dans CLAUDE_BATCH.md : `{f}`")
+        warnings.append(f"[batch] Task not categorized in CLAUDE_BATCH.md: `{f}`")
     for f in sorted(referenced - actual):
-        warnings.append(f"[batch] CLAUDE_BATCH.md reference une tache inexistante : `{f}`")
+        warnings.append(f"[batch] CLAUDE_BATCH.md references a task that does not exist: `{f}`")
     return warnings
 
 
 def _task_line_counts(body):
-    """Compte, sur les lignes de liste d'une section batch (`- `/`N. ` suivi
-    d'une ref `slug.md`), combien referencent une tache et combien sont
-    barrees (~~...~~). Ancre en tete de ligne pour ignorer les refs .md
-    incidentes en prose (ex. 'voir `HISTORIQUE.md`') ou dans la ligne Zone."""
+    """Counts, over the list lines of a batch section (`- `/`N. ` followed
+    by a `slug.md` ref), how many reference a task and how many are
+    struck through (~~...~~). Anchored at line start to ignore incidental .md refs
+    in prose (e.g. 'see `HISTORIQUE.md`') or in the Zone line."""
     total = closed = 0
     for m in TASK_LINE_RE.finditer(body):
         total += 1
@@ -208,13 +220,13 @@ def _task_line_counts(body):
 
 
 def prune_closed_batches(text):
-    """Retire de CLAUDE_BATCH.md les sections '## Batch'/'### Batch' dont
-    TOUTES les taches listees sont barrees (batch entierement clos) — evite
-    que le fichier grossisse indefiniment avec des batchs termines (leur
-    historique complet reste dans HISTORIQUE.md, deja ecrit a la cloture de
-    chaque tache). Sections sans aucune tache referencee (batch vide/
-    placeholder, ex. 'Batch A' avec `<slug>.md`) sont laissees intactes.
-    Retourne (nouveau_texte, en-tetes_retires)."""
+    """Removes from CLAUDE_BATCH.md the '## Batch'/'### Batch' sections whose
+    listed tasks are ALL struck through (fully closed batch) — avoids
+    the file growing indefinitely with finished batches (their
+    full history stays in HISTORIQUE.md, already written when each
+    task is closed). Sections with no referenced task (empty batch/
+    placeholder, e.g. 'Batch A' with `<slug>.md`) are left intact.
+    Returns (new_text, removed_headers)."""
     headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
     removed = []
     keep_spans = []
@@ -236,9 +248,9 @@ def prune_closed_batches(text):
 
 
 def rotate_graphify_snapshots(keep=3):
-    """Purge les snapshots datés graphify-out/AAAA-MM-JJ (régénérables via
-    `graphify update .`), en gardant les `keep` plus récents. Tri lexical
-    = tri chronologique sur ce format de nom."""
+    """Purges the dated snapshots graphify-out/YYYY-MM-DD (regenerable via
+    `graphify update .`), keeping the `keep` most recent. Lexical sort
+    = chronological sort with this name format."""
     out = ROOT / "graphify-out"
     if not out.exists():
         return
@@ -253,18 +265,18 @@ _HISTORIQUE_DATE_RE = re.compile(r"^(?P<title>.+?) — (?P<date>\d{4}-\d{2}-\d{2
 
 
 def rotate_historique_entries(text, cutoff):
-    """Separe HISTORIQUE.md en (texte a garder, texte a archiver, slugs
-    archives) : une entree `## <slug> — AAAA-MM-JJ` dont la date est
-    anterieure a `cutoff` (date) part dans le second. Sans rotation le
-    fichier grossit sans fin — chaque future lecture complete (agent,
-    skill) devient plus couteuse en tokens meme en respectant la regle
-    'lire par tranches' (CLAUDE.md § Efficience de contexte), puisque
-    trouver la bonne tranche suppose deja savoir ou chercher. Une entete
-    sans date parseable (entree malformee, ex. `## verif-fork-throwaway`)
-    n'est JAMAIS rotee a l'aveugle — faute de pouvoir la comparer au cutoff,
-    elle reste dans le fichier vivant. Un en-tete a l'interieur d'un bloc de
-    commentaire HTML `<!-- ... -->` (ex. l'exemple de format documente dans
-    HISTORIQUE.md) est ignore : ce n'est pas une vraie entree."""
+    """Splits HISTORIQUE.md into (text to keep, text to archive, archived
+    slugs): an entry `## <slug> — YYYY-MM-DD` whose date is
+    earlier than `cutoff` (date) goes into the second. Without rotation the
+    file grows endlessly — every future full read (agent,
+    skill) gets more expensive in tokens even when following the rule
+    'read by slices' (crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Context efficiency), since
+    finding the right slice already assumes knowing where to look. A header
+    with no parseable date (malformed entry, e.g. `## verif-fork-throwaway`)
+    is NEVER rotated blindly — unable to compare it to the cutoff,
+    it stays in the live file. A header inside an HTML
+    comment block `<!-- ... -->` (e.g. the format example documented in
+    HISTORIQUE.md) is ignored: it is not a real entry."""
     comment_spans = [m.span() for m in _HISTORIQUE_COMMENT_RE.finditer(text)]
 
     def _in_comment(pos):
@@ -275,7 +287,7 @@ def rotate_historique_entries(text, cutoff):
         return text, "", []
 
     bounds = [m.start() for m in headers] + [len(text)]
-    kept = [text[:headers[0].start()]]  # préambule (intro du fichier) toujours gardé
+    kept = [text[:headers[0].start()]]  # preamble (file intro) always kept
     archived = []
     slugs = []
     for i, m in enumerate(headers):
@@ -296,10 +308,10 @@ def rotate_historique_entries(text, cutoff):
 
 
 def rotate_historique(now_dt, months=HISTORIQUE_ROTATE_MONTHS):
-    """Applique rotate_historique_entries à HISTORIQUE.md sur disque : les
-    entrées archivées sont retirées du fichier vivant et ajoutées (append)
-    à HISTORIQUE_ARCHIVE.md, jamais perdues. Retourne les slugs archivés
-    (liste vide = rien à faire, cas normal la plupart des tours)."""
+    """Applies rotate_historique_entries to HISTORIQUE.md on disk: archived
+    entries are removed from the live file and appended
+    to HISTORIQUE_ARCHIVE.md, never lost. Returns the archived slugs
+    (empty list = nothing to do, the normal case most turns)."""
     if not HISTORIQUE.exists():
         return []
     text = HISTORIQUE.read_text(encoding="utf-8")
@@ -310,24 +322,24 @@ def rotate_historique(now_dt, months=HISTORIQUE_ROTATE_MONTHS):
     HISTORIQUE.write_text(kept, encoding="utf-8")
     head = ""
     if not HISTORIQUE_ARCHIVE.exists():
-        head = ("# Historique archivé\n\n"
-                f"> Entrées de plus de {months} mois, déplacées automatiquement "
-                "depuis `HISTORIQUE.md` par le hook Stop (`rotate_historique`). "
-                "Même contenu, juste hors de la lecture par défaut — grep ici "
-                "si une entrée ancienne semble manquante.\n\n")
+        head = ("# Archived history\n\n"
+                f"> Entries older than {months} months, moved automatically "
+                "from `HISTORIQUE.md` by the Stop hook (`rotate_historique`). "
+                "Same content, just outside the default reading path — grep here "
+                "if an old entry seems to be missing.\n\n")
     with HISTORIQUE_ARCHIVE.open("a", encoding="utf-8") as fh:
         fh.write(head + archived)
     return slugs
 
 
 class LocksMutex:
-    """Verrou fichier portable (Windows compris : pas de fcntl) autour de la
-    section critique read-modify-write de crew_lock.json. Implemente via
-    O_CREAT|O_EXCL sur un fichier marqueur a part (creation atomique garantie
-    par l'OS des deux cotes). Best-effort : quelques tentatives courtes puis on
-    continue sans le mutex plutot que de risquer de bloquer le tour (le hook ne
-    doit jamais casser un tour) ; un mutex tenu plus de MUTEX_TTL_SEC est jete
-    (session probablement crashee en pleine ecriture)."""
+    """Portable file lock (Windows included: no fcntl) around the
+    read-modify-write critical section of crew_lock.json. Implemented via
+    O_CREAT|O_EXCL on a separate marker file (atomic creation guaranteed
+    by the OS on both sides). Best-effort: a few short attempts, then we
+    continue without the mutex rather than risk blocking the turn (the hook must
+    never break a turn); a mutex held longer than MUTEX_TTL_SEC is discarded
+    (session probably crashed mid-write)."""
 
     def __init__(self):
         self._acquired = False
@@ -349,15 +361,15 @@ class LocksMutex:
                 except Exception:
                     pass
                 if time.monotonic() >= deadline:
-                    return self  # best-effort : pas acquis, on continue quand meme
+                    return self  # best-effort: not acquired, carry on anyway
                 time.sleep(0.05)
             except Exception:
-                return self  # best-effort : pas de mutex, on continue quand meme
+                return self  # best-effort: no mutex, carry on anyway
 
     def __exit__(self, *exc_info):
-        # Ne jamais retirer le marqueur si CETTE instance ne l'a pas cree
-        # (timeout/erreur au enter) : sinon on efface le verrou d'une AUTRE
-        # session encore en train d'ecrire (cf. code-review).
+        # Never remove the marker if THIS instance did not create it
+        # (timeout/error at enter): otherwise we would delete the lock of ANOTHER
+        # session still writing (see code-review).
         if self._acquired:
             try:
                 LOCKS_MUTEX.unlink()
@@ -366,10 +378,10 @@ class LocksMutex:
 
 
 def load_locks():
-    """Charge crew_lock.json. Forme garantie en retour : {"sessions": {...}}
-    (une entree par session active, cf. module docstring) — un fichier absent,
-    corrompu, ou a l'ancien format plat (.batch_locks.json) retombe sur une
-    base vide plutot que de propager une forme inattendue aux appelants."""
+    """Loads crew_lock.json. Guaranteed return shape: {"sessions": {...}}
+    (one entry per active session, see module docstring) — a missing,
+    corrupted, or old flat-format (.batch_locks.json) file falls back to an empty
+    base rather than propagating an unexpected shape to callers."""
     if LOCKS_FILE.exists():
         try:
             data = json.loads(LOCKS_FILE.read_text(encoding="utf-8"))
@@ -381,8 +393,8 @@ def load_locks():
 
 
 def save_locks(locks):
-    """Ecriture atomique (temp file + os.replace) : evite un crew_lock.json
-    tronque si le process est tue en cours d'ecriture."""
+    """Atomic write (temp file + os.replace): avoids a truncated
+    crew_lock.json if the process is killed mid-write."""
     tmp = LOCKS_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(locks, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(str(tmp), str(LOCKS_FILE))
@@ -393,14 +405,14 @@ GATE_MARKER = ".gate_armed"
 
 
 def _sync_gate_marker(locks):
-    """Marqueur `crew/CLAUDE_CONTEXT/.gate_armed` : present ssi >= 2 sessions dans
-    `locks`, sinon la garde anti-collision est sans objet et la commande shell de
-    hooks.json saute le spawn Python (cf. PreToolUse). Le pre-filtre teste
-    `$CLAUDE_PROJECT_DIR/...` (= worktree courant) alors que le verrou vit dans le
-    principal : le marqueur est pose dans le principal ET dans chaque worktree
-    enregistre. Son contenu liste les worktrees armes, pour pouvoir les desarmer
-    meme apres la disparition de leur session du lock. Best-effort : jamais
-    d'exception."""
+    """Marker `crew/CLAUDE_CONTEXT/.gate_armed`: present iff >= 2 sessions in
+    `locks`, otherwise the anti-collision guard is moot and the shell command of
+    hooks.json skips the Python spawn (see PreToolUse). The pre-filter tests
+    `$CLAUDE_PROJECT_DIR/...` (= current worktree) while the lock lives in the
+    main checkout: the marker is set in the main checkout AND in every registered
+    worktree. Its content lists the armed worktrees, so they can be disarmed
+    even after their session has disappeared from the lock. Best-effort: never
+    raises."""
     try:
         main_marker = LOCKS_FILE.parent / GATE_MARKER
         previous = []
@@ -448,10 +460,10 @@ WARNING_COOLDOWN_MINUTES = 30
 
 
 def migrate_legacy_worktree_lock():
-    """Fusionne dans le verrou partage l'ancien `crew_lock.json` local d'un
-    worktree (avant centralisation dans le principal), sous mutex, puis le
-    supprime. Par session, le `since` le plus recent gagne. No-op depuis le
-    principal ou sans fichier legacy ; jamais d'exception."""
+    """Merges into the shared lock the old local `crew_lock.json` of a
+    worktree (before centralization in the main checkout), under mutex, then
+    deletes it. Per session, the most recent `since` wins. No-op from the
+    main checkout or without a legacy file; never raises."""
     try:
         legacy = CTX / "crew_lock.json"
         if ROOT == MAIN_ROOT or not legacy.exists() or legacy.resolve() == LOCKS_FILE.resolve():
@@ -472,18 +484,18 @@ def migrate_legacy_worktree_lock():
 
 
 def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNING_COOLDOWN_MINUTES):
-    """Ne remonte un avertissement non bloquant (check_batches/check_zone_overlaps)
-    qu'une fois, puis au plus une fois par `cooldown_minutes` tant que la
-    condition qui l'a declenche reste vraie — sans ca la meme ligne est
-    re-imprimee sur stderr a CHAQUE tour Stop (cout contexte proportionnel au
-    nombre de tours, pas au nombre de conditions reelles a corriger). Etat
-    persiste dans locks["warned"][category] : {texte -> dernier horodatage
-    ISO emis}, sauvegarde par le meme save_locks(locks) que le reste du
-    fichier verrous. Une cle dont la condition a disparu est purgee (pas de
-    fuite memoire) et re-avertit immediatement si elle reapparait plus tard
-    plutot que d'heriter un cooldown perime."""
-    # Scope par checkout (le verrou est partage) : sinon deux checkouts se
-    # masquent mutuellement leurs avertissements. Cle inchangee pour le principal.
+    """Only surfaces a non-blocking warning (check_batches/check_zone_overlaps)
+    once, then at most once per `cooldown_minutes` while the
+    condition that triggered it stays true — without this the same line is
+    re-printed on stderr on EVERY Stop turn (context cost proportional to the
+    number of turns, not to the number of real conditions to fix). State
+    persisted in locks["warned"][category]: {text -> last ISO
+    timestamp emitted}, saved by the same save_locks(locks) as the rest of the
+    lock file. A key whose condition has disappeared is purged (no
+    memory leak) and warns again immediately if it reappears later
+    rather than inheriting a stale cooldown."""
+    # Scoped per checkout (the lock is shared): otherwise two checkouts
+    # mask each other's warnings. Key unchanged for the main checkout.
     key = category if ROOT == MAIN_ROOT else f"{category}@{ROOT.name}"
     bucket = locks.setdefault("warned", {}).setdefault(key, {})
     current = set(warnings)
@@ -505,8 +517,8 @@ def _throttle_warnings(category, warnings, locks, now_dt, cooldown_minutes=WARNI
 
 
 def _session_expired(info, now_dt):
-    """Entree de session plus vieille que LOCK_TTL (session probablement
-    crashee) ou corrompue (pas de `since` ISO lisible)."""
+    """Session entry older than LOCK_TTL (session probably
+    crashed) or corrupted (no readable ISO `since`)."""
     since_raw = info.get("since") if isinstance(info, dict) else None
     try:
         return now_dt - datetime.datetime.fromisoformat(since_raw) > LOCK_TTL
@@ -515,9 +527,9 @@ def _session_expired(info, now_dt):
 
 
 def purge_stale_locks(locks, now_dt):
-    """Retire les entrees SESSION plus vieilles que LOCK_TTL (session probablement
-    crashee) — tasks + worktree + branch partent ensemble, une session ne peut
-    pas etre a moitie purgee. Retourne la liste triee des session_id purgees."""
+    """Removes SESSION entries older than LOCK_TTL (session probably
+    crashed) — tasks + worktree + branch go together, a session cannot
+    be half purged. Returns the sorted list of purged session_ids."""
     sessions = locks.setdefault("sessions", {})
     stale = []
     for sid, info in list(sessions.items()):
@@ -528,62 +540,62 @@ def purge_stale_locks(locks, now_dt):
 
 
 def _slug_session_map(locks):
-    """Vue derivee slug -> session_id a partir de sessions[*].tasks — source
-    unique consommee par check_batch_collisions / _section_lock_sessions /
-    regen_batch_locks_md, pour eviter de dupliquer la logique de derivation.
-    Un slug ne devrait jamais appartenir a 2 sessions a la fois (violation
-    d'invariant plutot qu'un cas normal) ; si ca arrive quand meme (bug
-    ailleurs ou edit manuel de crew_lock.json), la derniere session iteree
-    gagne silencieusement sans ce warning — le signaler sur stderr plutot que
-    de laisser passer sans trace."""
+    """Derived slug -> session_id view built from sessions[*].tasks — single
+    source consumed by check_batch_collisions / _section_lock_sessions /
+    regen_batch_locks_md, to avoid duplicating the derivation logic.
+    A slug should never belong to 2 sessions at once (an invariant
+    violation rather than a normal case); if it happens anyway (bug
+    elsewhere or manual edit of crew_lock.json), the last iterated session
+    silently wins without this warning — report it on stderr rather than
+    letting it pass without a trace."""
     out = {}
     for sid, info in locks.get("sessions", {}).items():
         for slug in info.get("tasks", []) or []:
             if slug in out and out[slug] != sid:
                 sys.stderr.write(
-                    f"[crew_lock] incoherence : `{slug}` apparait dans les tasks de 2 sessions "
-                    f"(`{out[slug]}` et `{sid}`) — verrou probablement corrompu, "
-                    f"session `{sid}` retenue.\n"
+                    f"[crew_lock] inconsistency: `{slug}` appears in the tasks of 2 sessions "
+                    f"(`{out[slug]}` and `{sid}`) — lock probably corrupted, "
+                    f"session `{sid}` kept.\n"
                 )
             out[slug] = sid
     return out
 
 
 def _batch_key(header):
-    """Identite stable d'un batch : header tronque au premier ' · ' (le suffixe
-    est un statut affiche — 'pas demarre', 'en cours (prochaine : 04)' — qui
-    change sans que le batch change)."""
+    """Stable identity of a batch: header truncated at the first ' · ' (the suffix
+    is a displayed status — 'pas demarre', 'en cours (prochaine : 04)' — that
+    changes without the batch changing)."""
     return (header or "").split(" · ", 1)[0].strip()
 
 
 def _batch_slug(header):
-    """Slug filesystem/branch-safe derive de la cle du batch (ex.
-    'Batch plugin-packaging' -> 'plugin-packaging'), utilise pour nommer le
-    worktree et la branche dediee de ce batch de facon deterministe."""
+    """Filesystem/branch-safe slug derived from the batch key (e.g.
+    'Batch plugin-packaging' -> 'plugin-packaging'), used to name the
+    dedicated worktree and branch of this batch deterministically."""
     text = re.sub(r"^Batch\b\s*[:\-—]?\s*", "", _batch_key(header), flags=re.IGNORECASE).strip()
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return slug or "batch"
 
 
 def _worktree_paths_for(header):
-    """Chemin worktree (sibling du checkout principal) + nom de branche
-    deterministes pour un batch, derives de son header (cf. _batch_slug)."""
+    """Worktree path (sibling of the main checkout) + deterministic branch
+    name for a batch, derived from its header (see _batch_slug)."""
     slug = _batch_slug(header)
     return f"../{MAIN_ROOT.name}-batch-{slug}", f"crew/batch-{slug}"
 
 
 def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
-    """Ajoute `slug` aux tasks de la session `session_id` dans `locks`
-    (cree l'entree session si absente, en derivant batch/worktree/branch
-    depuis CLAUDE_BATCH.md via find_section_for), rafraichit son `since`.
-    Idempotent : ne duplique pas `slug` si deja present. Une session est
-    supposee ne porter qu'un seul batch a la fois (regle produit de
-    /crew-start, § 'Ce que ce skill ne fait pas') ; si un slug d'un AUTRE
-    batch est enregistre sur une session qui en a deja un, le batch/worktree/
-    branch de l'entree ne sont PAS ecrases (garde la premiere source de
-    verite) mais l'incoherence est signalee sur stderr plutot que de rester
-    invisible (meme esprit que le warning de _slug_session_map). Retourne
-    l'entree session mise a jour."""
+    """Adds `slug` to the tasks of session `session_id` in `locks`
+    (creates the session entry if missing, deriving batch/worktree/branch
+    from CLAUDE_BATCH.md via find_section_for), refreshes its `since`.
+    Idempotent: does not duplicate `slug` if already present. A session is
+    assumed to carry only one batch at a time (product rule of
+    /crew-start, § 'What this skill does not do'); if a slug from ANOTHER
+    batch is registered on a session that already has one, the entry's batch/worktree/
+    branch are NOT overwritten (keeps the first source of
+    truth) but the inconsistency is reported on stderr rather than staying
+    invisible (same spirit as the _slug_session_map warning). Returns
+    the updated session entry."""
     sections = sections if sections is not None else load_sections()
     section = find_section_for(slug, sections)
     sessions = locks.setdefault("sessions", {})
@@ -595,9 +607,9 @@ def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
         info["worktree"], info["branch"] = _worktree_paths_for(section["header"])
     elif section and _batch_key(info.get("batch")) != _batch_key(section["header"]):
         sys.stderr.write(
-            f"[crew_lock] incoherence : session `{session_id}` enregistre `{slug}` "
-            f"(batch « {section['header']} ») alors qu'elle detient deja le batch "
-            f"« {info.get('batch')} » — une session ne devrait porter qu'un seul batch a la fois.\n"
+            f"[crew_lock] inconsistency: session `{session_id}` registers `{slug}` "
+            f"(batch \"{section['header']}\") while it already holds batch "
+            f"\"{info.get('batch')}\" — a session should only carry one batch at a time.\n"
         )
     if slug not in info["tasks"]:
         info["tasks"].append(slug)
@@ -605,22 +617,30 @@ def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
 
 
 def slugs_by_batch_section(text):
-    """Parse CLAUDE_BATCH.md : decoupe sur les en-tetes '## Batch'/'### Batch',
-    extrait pour chaque section les slugs `xxx.md` references entre backticks
-    (format nu ou chemin complet `crew/<sous-dossier>/xxx.md`), et les chemins
-    declares sur sa ligne `Zone : ...` (pour la detection de chevauchement
-    inter-batchs, cf. check_zone_overlaps)."""
+    """Parses CLAUDE_BATCH.md: splits on the '## Batch'/'### Batch' headers,
+    extracts for each section the `xxx.md` slugs referenced in backticks
+    (bare format or full path `crew/<subfolder>/xxx.md`), and the paths
+    declared on its `Zone : ...` line (for cross-batch overlap
+    detection, see check_zone_overlaps)."""
     sections = []
     headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
+    # The "À classer" section (unknown zone) is not a batch: it bounds the
+    # last section instead of being swallowed into it.
+    unclassified = re.search(r"^#{2,3}\s*[AÀ] classer\b", text, re.MULTILINE | re.IGNORECASE)
     for i, m in enumerate(headers):
         start = m.end()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        if unclassified and start < unclassified.start() < end:
+            end = unclassified.start()
         body = text[start:end]
         raw_refs = re.findall(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`", body)
         slugs = set(raw_refs)
+        struck = set(re.findall(r"~~\s*`(?:[\w\-./]*/)?([\w\-.]+\.md)`\s*~~", body))  # closed tasks
+        ordered = list(dict.fromkeys(raw_refs))  # order of appearance = intended sequencing of the batch
         zone_match = re.search(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", body, re.MULTILINE)
         zone_paths = set(re.findall(r"`([^`]+)`", zone_match.group(1))) if zone_match else set()
-        sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths})
+        sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths,
+                         "ordered": ordered, "struck": struck})
     return sections
 
 
@@ -632,16 +652,16 @@ def find_section_for(slug, sections):
 
 
 def load_sections():
-    """Parse CLAUDE_BATCH.md en sections de batch (liste vide si absent).
-    Utilise a la fois par le hook Stop (main) et la garde PreToolUse
-    (gate_pretooluse) — source unique pour eviter la duplication."""
+    """Parses CLAUDE_BATCH.md into batch sections (empty list if missing).
+    Used by both the Stop hook (main) and the PreToolUse guard
+    (gate_pretooluse) — single source to avoid duplication."""
     return slugs_by_batch_section(BATCH_FILE.read_text(encoding="utf-8")) if BATCH_FILE.exists() else []
 
 
 def check_batch_collisions(started, sections, locks, session_id):
-    """Pour chaque tache qui demarre, verifie que ses voisines de meme section
-    de batch ne sont pas deja verrouillees par une AUTRE session. Retourne une
-    raison de blocage combinee (ou None)."""
+    """For each task that starts, checks that its neighbours in the same batch
+    section are not already locked by ANOTHER session. Returns a
+    combined blocking reason (or None)."""
     slug_sessions = _slug_session_map(locks)
     reasons = []
     for f in sorted(started):
@@ -653,24 +673,24 @@ def check_batch_collisions(started, sections, locks, session_id):
             if other_session and other_session != session_id:
                 since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
                 reasons.append(
-                    f"batch « {section['header']} » : `{f}` demarre alors que `{neighbor}` "
-                    f"est deja verrouille par une autre session (depuis {since})"
+                    f"batch \"{section['header']}\": `{f}` starts while `{neighbor}` "
+                    f"is already locked by another session (since {since})"
                 )
     if not reasons:
         return None
-    return ("Verrou live batch — collision detectee : " + " ; ".join(reasons) +
-            ". Attendre la fin de l'autre session ou choisir une tache d'un autre batch.")
+    return ("Live batch lock — collision detected: " + " ; ".join(reasons) +
+            ". Wait for the other session to finish or pick a task from another batch.")
 
 
 def _tokenize_command(command):
-    """Tokenise best-effort une commande Bash (potentiellement composee :
-    `a; b && c`) en tokens normalises separateur POSIX (`/`). `posix=True`
-    est fige (pas `sys.platform`-dependant) : le tool Bash execute toujours
-    du shell POSIX (Git Bash), quel que soit l'OS hote — sinon les guillemets
-    autour d'un chemin restent dans le token sur Windows. Fallback sur un
-    simple `.split()` si `shlex` echoue (shell trop exotique pour lui) —
-    source unique partagee par `_extract_git_mv_task` et
-    `_extract_candidate_paths`, les deux scans best-effort du gate Bash."""
+    """Best-effort tokenization of a Bash command (possibly compound:
+    `a; b && c`) into tokens normalized to the POSIX separator (`/`). `posix=True`
+    is pinned (not `sys.platform`-dependent): the Bash tool always runs
+    a POSIX shell (Git Bash), whatever the host OS — otherwise quotes
+    around a path stay in the token on Windows. Falls back to a plain
+    `.split()` if `shlex` fails (shell too exotic for it) —
+    single source shared by `_extract_git_mv_task` and
+    `_extract_candidate_paths`, the two best-effort scans of the Bash gate."""
     try:
         tokens = shlex.split(command, posix=True)
     except Exception:
@@ -679,17 +699,17 @@ def _tokenize_command(command):
 
 
 def _extract_git_mv_task(command):
-    """Si `command` contient un `git mv` deplacant un fichier depuis
-    crew/TODO/ OU crew/PAUSED/ vers crew/CURRENT_TASKS/, retourne son slug
-    (nom de fichier). Sinon None. Best-effort : ne parse pas un shell
-    complexe, couvre seulement le cas documente `git mv crew/{TODO,PAUSED}/
-    x.md crew/CURRENT_TASKS/x.md` (avec eventuels flags avant les deux
-    chemins). PAUSED est traite comme TODO ici : une reprise post-pause doit
-    retomber sous la meme verification anti-collision batch preventive
-    (`_claim_git_mv_lock`/`check_batch_collisions`) qu'un premier demarrage,
-    cf. code review. Essaie TOUTES les occurrences de `mv` dans la commande
-    (pas seulement la premiere) : une commande composee peut avoir un `mv`
-    sans rapport avant le vrai `git mv` a surveiller."""
+    """If `command` contains a `git mv` moving a file from
+    crew/TODO/ OR crew/PAUSED/ to crew/CURRENT_TASKS/, returns its slug
+    (file name). Otherwise None. Best-effort: does not parse a complex
+    shell, only covers the documented case `git mv crew/{TODO,PAUSED}/
+    x.md crew/CURRENT_TASKS/x.md` (with possible flags before the two
+    paths). PAUSED is treated like TODO here: a post-pause resume must
+    fall under the same preventive batch anti-collision check
+    (`_claim_git_mv_lock`/`check_batch_collisions`) as a first start,
+    see code review. Tries ALL occurrences of `mv` in the command
+    (not only the first): a compound command may have an unrelated `mv`
+    before the real `git mv` to watch."""
     todo_name, current_name = DIRS["TODO"].name, DIRS["CURRENT_TASKS"].name
     paused_name = DIRS["PAUSED"].name
     if "mv" not in command or current_name not in command:
@@ -715,26 +735,26 @@ def _extract_git_mv_task(command):
 
 
 def _extract_resume_claim(command):
-    """Reconnait le marqueur no-op `: "crew-resume:<slug>.md"` qu'un
-    `/crew-start` (Cas A : reprise d'une tache DEJA en CURRENT_TASKS, pas de
-    `git mv` donc rien pour `_extract_git_mv_task` a intercepter) doit executer
-    avant de reprendre le travail. `:` est le no-op Bash (aucun effet de bord)
-    — seul le texte de la commande transporte l'intention jusqu'au hook.
-    Retourne le slug si trouve, sinon None."""
+    """Recognizes the no-op marker `: "crew-resume:<slug>.md"` that a
+    `/crew-start` (Case A: resuming a task ALREADY in CURRENT_TASKS, no
+    `git mv` so nothing for `_extract_git_mv_task` to intercept) must run
+    before resuming work. `:` is the Bash no-op (no side effect)
+    — only the command text carries the intent to the hook.
+    Returns the slug if found, otherwise None."""
     m = re.search(r"crew-resume:([\w\-.]+\.md)", command)
     return m.group(1) if m else None
 
 
 def _claim_lock(slug, session_id, action_verb, sections=None, extra_check=None, on_success=None):
-    """Primitive partagee par `_claim_resume_lock` et `_claim_git_mv_lock` :
-    sous mutex, reload + purge + verifie qu'aucune AUTRE session ne detient
-    deja ce slug exact (TOCTOU-safe vis-a-vis de toute lecture de `locks`
-    faite par l'appelant AVANT le mutex), puis un `extra_check(locks) ->
-    reason|None` optionnel (ex. `check_batch_collisions` pour les voisines de
-    batch), enregistre le verrou (`_register_task_lock`) et sauvegarde.
-    Bloque (exit 2 + stderr) sur toute collision — `action_verb` ('reprendre'/
-    'demarrer') humanise le message. `on_success(locks)` optionnel s'execute
-    juste apres `save_locks`, toujours sous mutex (ex. regen_batch_locks_md)."""
+    """Primitive shared by `_claim_resume_lock` and `_claim_git_mv_lock`:
+    under mutex, reload + purge + check that no OTHER session already holds
+    this exact slug (TOCTOU-safe with respect to any read of `locks`
+    done by the caller BEFORE the mutex), then an optional `extra_check(locks) ->
+    reason|None` (e.g. `check_batch_collisions` for batch
+    neighbours), registers the lock (`_register_task_lock`) and saves.
+    Blocks (exit 2 + stderr) on any collision — `action_verb` ('resume'/
+    'start') humanizes the message. Optional `on_success(locks)` runs
+    right after `save_locks`, still under mutex (e.g. regen_batch_locks_md)."""
     with LocksMutex():
         locks = load_locks()
         now_dt = datetime.datetime.now()
@@ -743,9 +763,9 @@ def _claim_lock(slug, session_id, action_verb, sections=None, extra_check=None, 
         if other_session and other_session != session_id:
             since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
             sys.stderr.write(
-                f"Verrou live — `{slug}` est deja repris par une autre session "
-                f"(depuis {since}). Attendre la fin de cette session avant de {action_verb} la meme tache "
-                "(ou choisir une autre tache).\n"
+                f"Live lock — `{slug}` has already been picked up by another session "
+                f"(since {since}). Wait for that session to finish before you {action_verb} the same task "
+                "(or pick another task).\n"
             )
             sys.exit(2)
         if extra_check is not None:
@@ -760,43 +780,43 @@ def _claim_lock(slug, session_id, action_verb, sections=None, extra_check=None, 
 
 
 def _claim_resume_lock(slug, session_id):
-    """Reclame (ou rafraichit) le verrou live pour une tache DEJA presente en
-    CURRENT_TASKS qu'une session reprend (`/crew-start` Cas A). Ferme le trou
-    du mecanisme historique : le verrou n'etait pose qu'au moment du `git mv`
-    TODO->CURRENT_TASKS (cf. `_extract_git_mv_task`/`started` dans `main()`),
-    donc deux sessions qui reprenaient independamment la MEME tache deja
-    presente en CURRENT_TASKS (aucun `git mv`, donc aucun `started`) ne
-    declenchaient jamais aucune verification — ni verrou, ni collision.
-    Preventif (avant que la session commence a editer la tache), pas
-    retroactif comme le controle Stop. Cf. `_claim_lock` pour le detail."""
-    _claim_lock(slug, session_id, "reprendre")
+    """Claims (or refreshes) the live lock for a task ALREADY present in
+    CURRENT_TASKS that a session resumes (`/crew-start` Case A). Closes the hole
+    in the historical mechanism: the lock was only set at the time of the `git mv`
+    TODO->CURRENT_TASKS (see `_extract_git_mv_task`/`started` in `main()`),
+    so two sessions independently resuming the SAME task already
+    in CURRENT_TASKS (no `git mv`, hence no `started`) never
+    triggered any check — neither lock nor collision.
+    Preventive (before the session starts editing the task), not
+    retroactive like the Stop check. See `_claim_lock` for details."""
+    _claim_lock(slug, session_id, "resume")
 
 
 def _claim_git_mv_lock(slug, session_id, sections):
-    """Enregistre le verrou live pour une tache demarree via `git mv`
-    TODO->CURRENT_TASKS (gate_pretooluse), AVANT que le mv ne s'execute reellement
-    — ferme le trou worktree (le hook Stop est ROOT-anchored, il ne voit jamais
-    un `git mv` fait depuis `../<repo>-batch-<slug>/`, cf. tache
-    fix-worktree-gitmv-lock-registration-gap). Ajoute a `_claim_lock` la
-    verification des voisines de batch (`check_batch_collisions`, fraiche sous
-    mutex — ferme le TOCTOU avec la lecture `locks` deja faite plus haut dans
-    gate_pretooluse pour le scan generique de la meme invocation) et la
-    regeneration de BATCH_LOCKS.md : sinon la doc humaine resterait en retard
-    sur crew_lock.json jusqu'au prochain tour Stop. `active` calcule HORS
-    mutex (I/O disque sans rapport avec crew_lock.json, meme raisonnement que
-    dans `main()`)."""
+    """Registers the live lock for a task started via `git mv`
+    TODO->CURRENT_TASKS (gate_pretooluse), BEFORE the mv actually runs
+    — closes the worktree hole (the Stop hook is ROOT-anchored, it never sees
+    a `git mv` done from `../<repo>-batch-<slug>/`, see task
+    fix-worktree-gitmv-lock-registration-gap). Adds to `_claim_lock` the
+    batch-neighbour check (`check_batch_collisions`, fresh under
+    mutex — closes the TOCTOU with the `locks` read already done earlier in
+    gate_pretooluse for the generic scan of the same invocation) and the
+    regeneration of BATCH_LOCKS.md: otherwise the human doc would lag
+    behind crew_lock.json until the next Stop turn. `active` computed OUTSIDE
+    the mutex (disk I/O unrelated to crew_lock.json, same reasoning as
+    in `main()`)."""
     active = active_task_slugs()
     _claim_lock(
-        slug, session_id, "demarrer", sections=sections,
+        slug, session_id, "start", sections=sections,
         extra_check=lambda locks: check_batch_collisions({slug}, sections, locks, session_id),
         on_success=lambda locks: regen_batch_locks_md(sections, locks, active),
     )
 
 
 def _locked_zones_by_others(sections, locks, session_id):
-    """Retourne [(zone_path, section_header, other_session_id, since), ...]
-    pour chaque `Zone:` d'un batch ACTIF (>=1 tache verrouillee) par une
-    session != session_id — la liste que le gate hardened doit bloquer."""
+    """Returns [(zone_path, section_header, other_session_id, since), ...]
+    for each `Zone:` of an ACTIVE batch (>=1 task locked) by a
+    session != session_id — the list the hardened gate must block."""
     out = []
     sessions = locks.get("sessions", {})
     slug_sessions = _slug_session_map(locks)
@@ -812,16 +832,16 @@ def _locked_zones_by_others(sections, locks, session_id):
 
 
 def _repo_relative_path(path, locks=None):
-    """Normalise `path` (absolu ou relatif, separateurs Windows ou POSIX) en
-    chemin relatif POSIX au depot logique, pour comparaison avec les `Zone:`
-    de CLAUDE_BATCH.md (toujours exprimees relatives a la racine du depot).
-    `Edit`/`Write`/`MultiEdit` fournissent toujours un `file_path` ABSOLU :
-    sans cette normalisation la comparaison directe avec une Zone: relative
-    ne matche jamais (bug releve en code review de worktree-batch-isolation).
-    Un chemin sous le worktree d'un batch connu (crew_lock.json) est ramene
-    au meme chemin relatif logique que sous ROOT, puisqu'un `git worktree`
-    mirrore la structure du depot principal. Fail-open sur echec de
-    resolution (retombe sur un simple nettoyage de separateurs)."""
+    """Normalizes `path` (absolute or relative, Windows or POSIX separators) into a
+    POSIX path relative to the logical repo, for comparison with the `Zone:`
+    entries of CLAUDE_BATCH.md (always expressed relative to the repo root).
+    `Edit`/`Write`/`MultiEdit` always provide an ABSOLUTE `file_path`:
+    without this normalization a direct comparison with a relative Zone:
+    never matches (bug found in the worktree-batch-isolation code review).
+    A path under the worktree of a known batch (crew_lock.json) is brought back
+    to the same logical relative path as under ROOT, since a `git worktree`
+    mirrors the structure of the main repo. Fail-open if
+    resolution fails (falls back to a plain separator cleanup)."""
     try:
         p = pathlib.Path(str(path))
     except Exception:
@@ -848,11 +868,11 @@ def _repo_relative_path(path, locks=None):
 
 
 def _path_matches_zone(norm, zdir):
-    """`norm` (chemin relatif POSIX, cf. _repo_relative_path) tombe-t-il sous
-    la zone `zdir` (un membre deja expanse par _expand_brace_glob) ? Gere le
-    cas prefixe simple (`crew/`) ET le cas glob `*` (ex. `.claude/skills/
-    crew-*`, utilise tel quel par ce depot dans CLAUDE_BATCH.md) via fnmatch
-    — best-effort, pas un moteur de glob complet."""
+    """Does `norm` (POSIX relative path, see _repo_relative_path) fall under
+    the zone `zdir` (a member already expanded by _expand_brace_glob)? Handles the
+    simple prefix case (`crew/`) AND the `*` glob case (e.g. `.claude/skills/
+    crew-*`, used as is by this repo in CLAUDE_BATCH.md) via fnmatch
+    — best-effort, not a full glob engine."""
     zdir = zdir.rstrip("/")
     if any(ch in zdir for ch in "*?["):
         return fnmatch.fnmatchcase(norm, zdir) or fnmatch.fnmatchcase(norm, zdir + "/*")
@@ -860,9 +880,9 @@ def _path_matches_zone(norm, zdir):
 
 
 def _path_locked_by_other(path, zones, locks=None):
-    """`path` (chemin brut, absolu ou relatif, Windows ou POSIX) tombe-t-il
-    sous l'une des zones de `zones` (sortie de _locked_zones_by_others) ?
-    Renvoie (header, other_session, since) si oui, sinon None."""
+    """Does `path` (raw path, absolute or relative, Windows or POSIX) fall
+    under one of the `zones` (output of _locked_zones_by_others)?
+    Returns (header, other_session, since) if so, otherwise None."""
     norm = _repo_relative_path(path, locks)
     for zp, header, other, since in zones:
         for expanded in _expand_brace_glob(zp):
@@ -872,15 +892,15 @@ def _path_locked_by_other(path, zones, locks=None):
 
 
 def _gate_check_path(path, session_id, locks=None, sections=None):
-    """Bloque (exit 2) si `path` tombe sous une `Zone:` de batch verrouillee
-    par une AUTRE session. Fail-open (retourne silencieusement) si aucune
-    zone active n'est verrouillee par quelqu'un d'autre, ou si le chemin n'en
-    croise aucune — coherent avec le contrat 'ne casse jamais le tour sur
-    ambiguite' du reste du hook (Layer 2 = filet, pas la seule defense).
-    `locks`/`sections` optionnels : un appelant qui scanne plusieurs chemins
-    dans la meme invocation (ex. `gate_pretooluse` sur une commande Bash a
-    plusieurs candidats) les charge une seule fois et les passe ici plutot
-    que de relire/re-parser crew_lock.json/CLAUDE_BATCH.md a chaque chemin."""
+    """Blocks (exit 2) if `path` falls under a batch `Zone:` locked
+    by ANOTHER session. Fail-open (returns silently) if no active
+    zone is locked by someone else, or if the path crosses none of them —
+    consistent with the 'never break the turn on ambiguity' contract of the
+    rest of the hook (Layer 2 = safety net, not the only defense).
+    Optional `locks`/`sections`: a caller scanning several paths
+    in the same invocation (e.g. `gate_pretooluse` on a Bash command with
+    several candidates) loads them once and passes them here rather
+    than re-reading/re-parsing crew_lock.json/CLAUDE_BATCH.md for every path."""
     if not path:
         return
     locks = locks if locks is not None else load_locks()
@@ -893,20 +913,20 @@ def _gate_check_path(path, session_id, locks=None, sections=None):
         return
     header, other, since = hit
     sys.stderr.write(
-        f"[worktree-gate] `{path}` est sous la Zone: du batch « {header} », deja "
-        f"verrouillee par une autre session (depuis {since}). Collision potentielle — "
-        "travaille depuis le worktree de ton propre batch (cf. /crew-start), ou attends "
-        "la fin de l'autre session.\n"
+        f"[worktree-gate] `{path}` is under the Zone: of batch \"{header}\", already "
+        f"locked by another session (since {since}). Potential collision — "
+        "work from the worktree of your own batch (see /crew-start), or wait for "
+        "the other session to finish.\n"
     )
     sys.exit(2)
 
 
 def _extract_candidate_paths(command):
-    """Scan best-effort (pas un parseur shell complet, meme esprit que
-    `_extract_git_mv_task`) : repere les tokens qui ressemblent a un chemin de
-    fichier apres `rm`/`mv`/`cp`, plus toute cible de redirection `>`/`>>`,
-    dans une commande Bash potentiellement composee. Fail-open sur le reste —
-    Layer 2 est un filet, pas la seule ligne de defense (cf. spec § Error
+    """Best-effort scan (not a full shell parser, same spirit as
+    `_extract_git_mv_task`): spots tokens that look like a file path
+    after `rm`/`mv`/`cp`, plus any `>`/`>>` redirection target,
+    in a possibly compound Bash command. Fail-open on the rest —
+    Layer 2 is a safety net, not the only line of defense (see spec § Error
     handling > 'Gate false positive')."""
     norm = _tokenize_command(command)
     paths = []
@@ -925,32 +945,32 @@ def _extract_candidate_paths(command):
 
 
 def gate_pretooluse(payload):
-    """Hook PreToolUse (matcher Bash|Edit|Write|MultiEdit) : Layer 2 du design
-    worktree-batch-isolation (cf. docs/superpowers/specs/2026-08-22-worktree-
-    batch-isolation-design.md) — filet de securite pour tout ce qui contourne
-    l'isolation physique par worktree (Layer 1, portee par /crew-start).
+    """PreToolUse hook (matcher Bash|Edit|Write|MultiEdit): Layer 2 of the
+    worktree-batch-isolation design (see docs/superpowers/specs/2026-08-22-worktree-
+    batch-isolation-design.md) — safety net for anything that bypasses
+    the physical worktree isolation (Layer 1, handled by /crew-start).
 
-    - `Edit`/`Write`/`MultiEdit` : bloque avant ecriture si `tool_input.file_path`
-      tombe sous une `Zone:` verrouillee par une AUTRE session (`_gate_check_path`).
-    - `Bash` :
-        1. marqueur de reprise `crew-resume:<slug>` (Cas A de `/crew-start`,
-           cf. `_claim_resume_lock`) ;
-        2. `git mv` TODO->CURRENT_TASKS : bloque si la tache n'est categorisee
-           dans aucun batch, ou si une voisine de son batch est deja
-           verrouillee par une AUTRE session (meme regle que
-           check_batch_collisions au Stop) ;
-        3. scan generique best-effort (`_extract_candidate_paths`) contre les
-           memes zones verrouillees, pour `rm`/`mv`/`cp`/redirection.
+    - `Edit`/`Write`/`MultiEdit`: blocks before writing if `tool_input.file_path`
+      falls under a `Zone:` locked by ANOTHER session (`_gate_check_path`).
+    - `Bash`:
+        1. resume marker `crew-resume:<slug>` (Case A of `/crew-start`,
+           see `_claim_resume_lock`);
+        2. `git mv` TODO->CURRENT_TASKS: blocks if the task is not categorized
+           in any batch, or if a neighbour in its batch is already
+           locked by ANOTHER session (same rule as
+           check_batch_collisions at Stop);
+        3. best-effort generic scan (`_extract_candidate_paths`) against the
+           same locked zones, for `rm`/`mv`/`cp`/redirection.
 
-    Preventif plutot que retroactif : contrairement au controle Stop (qui se
-    declenche apres que les edits du tour ont deja eu lieu), celui-ci empeche
-    l'action de s'executer. Bloque via exit(2) + stderr (protocole hook
-    standard). Les chemins `crew-resume:` ET `git mv` TODO->CURRENT_TASKS
-    ecrivent tous deux dans `crew_lock.json` (sous mutex, cf. `_claim_resume_lock`/
-    `_claim_git_mv_lock`) — necessaire pour le `git mv` car depuis un worktree de
-    batch le hook Stop (ROOT-anchored) ne voit jamais ce deplacement (cf. tache
-    fix-worktree-gitmv-lock-registration-gap) ; seul le scan generique
-    (`rm`/`mv`/`cp`/redirection) reste lecture seule."""
+    Preventive rather than retroactive: unlike the Stop check (which
+    fires after the turn's edits have already happened), this one prevents
+    the action from running. Blocks via exit(2) + stderr (standard hook
+    protocol). The `crew-resume:` AND `git mv` TODO->CURRENT_TASKS paths
+    both write to `crew_lock.json` (under mutex, see `_claim_resume_lock`/
+    `_claim_git_mv_lock`) — needed for the `git mv` because from a batch
+    worktree the Stop hook (ROOT-anchored) never sees that move (see task
+    fix-worktree-gitmv-lock-registration-gap); only the generic scan
+    (`rm`/`mv`/`cp`/redirection) stays read-only."""
     tool_name = payload.get("tool_name")
     tool_input = payload.get("tool_input") or {}
     session_id = payload.get("session_id")
@@ -969,9 +989,9 @@ def gate_pretooluse(payload):
         _claim_resume_lock(resume_slug, session_id)
         return
 
-    # Charges une seule fois pour tout le reste de la commande (git mv +
-    # scan generique ci-dessous) plutot que relus/re-parses par candidat —
-    # une commande composee peut produire plusieurs chemins a verifier.
+    # Loaded once for the rest of the command (git mv +
+    # generic scan below) rather than re-read/re-parsed per candidate —
+    # a compound command may produce several paths to check.
     sections = load_sections()
     locks = load_locks()
 
@@ -980,9 +1000,9 @@ def gate_pretooluse(payload):
         section = find_section_for(slug, sections)
         if section is None:
             sys.stderr.write(
-                f"[batch] `{slug}` n'est categorisee dans aucun batch de CLAUDE_BATCH.md. "
-                "Ajoute-la a un batch (avec sa Zone :) avant de la demarrer — voir CLAUDE.md § Batching, "
-                "ou dispatch le persona manager (/crew-start) qui le fait pour toi.\n"
+                f"[batch] `{slug}` is not categorized in any batch of CLAUDE_BATCH.md. "
+                "Add it to a batch (with its Zone :) before starting it — see crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Batching, "
+                "or dispatch the manager persona (/crew-start), which does it for you.\n"
             )
             sys.exit(2)
         reason = check_batch_collisions({slug}, sections, locks, session_id)
@@ -997,22 +1017,22 @@ def gate_pretooluse(payload):
 
 
 def _task_slugs(*dirs):
-    """Slugs de tache (.md hors INDEX/README/_*) presents dans `dirs`."""
+    """Task slugs (.md excluding INDEX/README/_*) present in `dirs`."""
     return {f.name for d in dirs if d.exists() for f in d.glob("*.md")
             if f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")}
 
 
 def active_task_slugs():
-    """Slugs (fichiers .md) actuellement en crew/TODO/, crew/CURRENT_TASKS/ ou
-    crew/PAUSED/ (une tache en pause reste bloquee, pas abandonnee : elle
-    garde sa zone de fichiers pour l'anti-collision de batch)."""
+    """Slugs (.md files) currently in crew/TODO/, crew/CURRENT_TASKS/ or
+    crew/PAUSED/ (a paused task stays blocked, not abandoned: it
+    keeps its file zone for the batch anti-collision)."""
     return _task_slugs(DIRS["TODO"], DIRS["CURRENT_TASKS"], DIRS["PAUSED"])
 
 
 def in_progress_task_slugs(locks, now_dt=None):
-    """« Batch actif » de CLAUDE.md : slugs en CURRENT_TASKS/ + PAUSED/, plus
-    ceux tenus par une session non expiree (taches demarrees dans un worktree,
-    encore en TODO/ ici). Pas de TODO seul, contrairement a active_task_slugs()."""
+    """'Active batch' of CLAUDE.md: slugs in CURRENT_TASKS/ + PAUSED/, plus
+    those held by a non-expired session (tasks started in a worktree,
+    still in TODO/ here). No TODO alone, unlike active_task_slugs()."""
     slugs = _task_slugs(DIRS["CURRENT_TASKS"], DIRS["PAUSED"])
     now_dt = now_dt or datetime.datetime.now()
     for info in locks.get("sessions", {}).values():
@@ -1022,14 +1042,14 @@ def in_progress_task_slugs(locks, now_dt=None):
 
 
 def purge_closed_task_locks(locks):
-    """Retire des verrous les taches closes hors du checkout principal : une
-    tache demarree puis close dans un worktree n'a jamais ete vue en
-    CURRENT_TASKS/ ici, donc n'entre jamais dans `finished` et son verrou
-    survivait (session fantome). Vivante = presente dans TODO/CURRENT_TASKS
-    (/PAUSED) du checkout principal OU du worktree de la session. Une session
-    sans tache restante est retiree. No-op hors checkout principal (`.git`
-    fichier) : l'etat crew vu depuis un worktree peut etre en retard.
-    Retourne la liste triee des slugs purges."""
+    """Removes from the locks the tasks closed outside the main checkout: a
+    task started then closed in a worktree was never seen in
+    CURRENT_TASKS/ here, so it never enters `finished` and its lock
+    survived (ghost session). Alive = present in TODO/CURRENT_TASKS
+    (/PAUSED) of the main checkout OR of the session's worktree. A session
+    with no remaining task is removed. No-op outside the main checkout (`.git`
+    file): the crew state seen from a worktree may be stale.
+    Returns the sorted list of purged slugs."""
     if not (ROOT / ".git").is_dir():
         return []
     rel_dirs = [DIRS[k].relative_to(ROOT) for k in ("TODO", "CURRENT_TASKS", "PAUSED")]
@@ -1053,8 +1073,8 @@ def purge_closed_task_locks(locks):
 
 
 def _expand_brace_glob(path):
-    """Expanse tous les segments `{a,b,c}` d'un chemin en chemins concrets
-    (produit cartesien des membres). Sans brace-glob, retourne [path] inchange."""
+    """Expands every `{a,b,c}` segment of a path into concrete paths
+    (cartesian product of the members). Without a brace-glob, returns [path] unchanged."""
     m = re.search(r"\{([^{}]+)\}", path)
     if not m:
         return [path]
@@ -1063,8 +1083,8 @@ def _expand_brace_glob(path):
 
 
 def _path_overlaps(a, b):
-    """Deux chemins se chevauchent si l'un est prefixe (par segment) de l'autre,
-    apres expansion des brace-globs (`{a,b,c}/`) de chaque cote en chemins concrets."""
+    """Two paths overlap if one is a prefix (per segment) of the other,
+    after expanding the brace-globs (`{a,b,c}/`) on each side into concrete paths."""
     for pa in _expand_brace_glob(a):
         sa = pa.rstrip("/").split("/")
         for pb in _expand_brace_glob(b):
@@ -1076,29 +1096,29 @@ def _path_overlaps(a, b):
 
 
 def _section_lock_sessions(section, locks, slug_sessions=None):
-    """Sessions ayant actuellement un verrou live sur au moins une tache de la
-    section (derive de sessions[*].tasks via _slug_session_map, alimente par
-    la boucle `for f in started` de main()). `slug_sessions` optionnel : un
-    appelant qui boucle sur plusieurs sections (check_zone_overlaps,
-    _locked_zones_by_others) le calcule une fois et le passe ici plutot que
-    de reconstruire la map complete a chaque section."""
+    """Sessions currently holding a live lock on at least one task of the
+    section (derived from sessions[*].tasks via _slug_session_map, fed by
+    the `for f in started` loop of main()). Optional `slug_sessions`: a
+    caller looping over several sections (check_zone_overlaps,
+    _locked_zones_by_others) computes it once and passes it here rather
+    than rebuilding the full map for every section."""
     slug_sessions = slug_sessions if slug_sessions is not None else _slug_session_map(locks)
     return {slug_sessions[s] for s in section["slugs"] if s in slug_sessions}
 
 
 def check_zone_overlaps(sections, active, locks, session_id=None, observer=False):
-    """Detecte les chevauchements de `Zone :` entre deux batchs ACTIFS (>=1 slug
-    de `active` — l'appelant passe in_progress_task_slugs()). Devient bloquant
-    (liste `blocking`) uniquement quand les deux batchs en collision sont
-    verrouilles par des session_id differentes ET que la session courante
-    (`session_id`) est l'une des deux (ou `observer=True` : vue dashboard,
-    tout conflit cross-session est signale bloquant) : une 3e session etrangere a la
-    collision n'y peut rien, la bloquer boucle Stop->reinvoke. Memes regles
-    que check_batch_collisions, pour ne PAS bloquer une session solo qui
-    travaille sequentiellement sur deux batchs a zones voisines (aucun des
-    deux n'est alors verrouille par une AUTRE session).
-    Sinon reste un avertissement non bloquant : garde-fou automatise
-    complementaire a la verification manuelle du manager avant de demarrer."""
+    """Detects `Zone :` overlaps between two ACTIVE batches (>=1 slug
+    of `active` — the caller passes in_progress_task_slugs()). Becomes blocking
+    (`blocking` list) only when the two colliding batches are
+    locked by different session_ids AND the current session
+    (`session_id`) is one of the two (or `observer=True`: dashboard view,
+    any cross-session conflict is reported as blocking): a 3rd session foreign to the
+    collision can do nothing about it, blocking it loops Stop->reinvoke. Same rules
+    as check_batch_collisions, so as NOT to block a solo session that
+    works sequentially on two batches with neighbouring zones (neither
+    is then locked by ANOTHER session).
+    Otherwise stays a non-blocking warning: automated safeguard
+    complementing the manager's manual check before starting."""
     warnings = []
     blocking = []
     slug_sessions = _slug_session_map(locks)
@@ -1113,30 +1133,27 @@ def check_zone_overlaps(sections, active, locks, session_id=None, observer=False
                 for pb in sec_b["zone_paths"]:
                     if not _path_overlaps(pa, pb):
                         continue
-                    base = (f"[zone] Chevauchement detecte entre batchs actifs « {sec_a['header']} » "
-                            f"et « {sec_b['header']} » : `{pa}` vs `{pb}`.")
+                    base = (f"[zone] Overlap detected between active batches \"{sec_a['header']}\" "
+                            f"and \"{sec_b['header']}\": `{pa}` vs `{pb}`.")
                     if cross_session and involved:
-                        blocking.append(base + " Verrouilles par des sessions differentes — "
-                                         "attendre la fin de l'une avant de continuer l'autre.")
+                        blocking.append(base + " Locked by different sessions — "
+                                         "wait for one to finish before continuing the other.")
                     else:
-                        warnings.append(base + " Verifier CLAUDE_BATCH.md avant de demarrer une "
-                                         "tache de l'un ou l'autre (risque de collision fichiers).")
+                        warnings.append(base + " Check CLAUDE_BATCH.md before starting a "
+                                         "task of either one (risk of file collision).")
     return warnings, blocking
 
 
 CONTEXT_BUDGET_TOKENS = 150_000
-CONTEXT_BUDGET_TOKENS_1M = 800_000
-# Au-dela, une fenetre 200k est impossible : fenetre 1M inferee meme sans `[1m]`.
-CONTEXT_WINDOW_200K_MAX = 210_000
 CONTEXT_REPEAT_STEP = 50_000
 
 
 def _iter_lines_reverse(path, chunk_size=65536):
-    """Genere les lignes d'un fichier texte en partant de la fin, sans le
-    charger entierement en memoire. Le transcript grossit a chaque tour ;
-    ce qu'on cherche (dernier message assistant) est presque toujours tout
-    pres de la fin, donc lire depuis la fin garde le cout proportionnel a la
-    distance jusqu'a ce message, pas a la taille totale du transcript."""
+    """Yields the lines of a text file starting from the end, without
+    loading it entirely into memory. The transcript grows every turn;
+    what we look for (the last assistant message) is almost always very
+    close to the end, so reading from the end keeps the cost proportional to the
+    distance to that message, not to the total size of the transcript."""
     with path.open("rb") as fh:
         fh.seek(0, os.SEEK_END)
         pos = fh.tell()
@@ -1155,24 +1172,21 @@ def _iter_lines_reverse(path, chunk_size=65536):
 
 
 def check_context_budget(payload, state=None):
-    """Avertit (non bloquant) quand le contexte de la session principale
-    depasse ~150k tokens (800k en fenetre 1M ; cf. CLAUDE.md § Efficience de
-    contexte / Reset de session). Aucune API de comptage de tokens dediee
-    n'est exposee aux hooks Claude Code : approxime via le dernier message
-    assistant du transcript (`transcript_path` du payload Stop) —
+    """Warns (non-blocking) when the main session's context
+    exceeds ~150k tokens, whatever the window size (see
+    crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Context efficiency / Reset de session). No dedicated token-counting API
+    is exposed to Claude Code hooks: approximated via the last
+    assistant message of the transcript (`transcript_path` of the Stop payload) —
     usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens,
-    proxy raisonnable puisque chaque tour renvoie l'historique complet en
-    entree. Fenetre 1M detectee par `model` contenant `[1m]` ou par un total
-    > CONTEXT_WINDOW_200K_MAX. `state` ({session_id -> total au dernier
-    avertissement}, mute en place) limite la repetition a un palier de
-    CONTEXT_REPEAT_STEP tokens ; repasse sous le seuil (/clear, compaction)
-    -> entree purgee, re-avertit au prochain franchissement. state=None ->
-    sans memoire (un avertissement a chaque appel au-dessus du seuil).
-    Limite connue : le transcript porte souvent l'id modele nu (sans `[1m]`) ;
-    une session 1M n'est alors reconnue qu'au-dela de 210k (alerte 150k possible
-    avant, faux positif accepte).
-    Best-effort : toute erreur (transcript absent, format inattendu, ligne
-    corrompue) -> pas d'avertissement."""
+    a reasonable proxy since every turn sends the full history as
+    input. Single threshold (200k or 1M window: quality degrades before the
+    limit). `state` ({session_id -> total at the last
+    warning}, mutated in place) limits repetition to a step of
+    CONTEXT_REPEAT_STEP tokens; going back under the threshold (/clear, compaction)
+    -> entry purged, warns again at the next crossing. state=None ->
+    no memory (a warning on every call above the threshold).
+    Best-effort: any error (missing transcript, unexpected format, corrupted
+    line) -> no warning."""
     transcript_path = payload.get("transcript_path")
     if not transcript_path:
         return []
@@ -1181,7 +1195,6 @@ def check_context_budget(payload, state=None):
         return []
     try:
         last_usage = None
-        model = ""
         for raw_line in _iter_lines_reverse(path):
             line = raw_line.strip()
             if not line:
@@ -1190,7 +1203,6 @@ def check_context_budget(payload, state=None):
             msg = entry.get("message") or {}
             if msg.get("role") == "assistant" and msg.get("usage"):
                 last_usage = msg["usage"]
-                model = str(msg.get("model") or "")
                 break
     except Exception:
         return []
@@ -1201,10 +1213,8 @@ def check_context_budget(payload, state=None):
         + (last_usage.get("cache_read_input_tokens") or 0)
         + (last_usage.get("cache_creation_input_tokens") or 0)
     )
-    window_1m = "[1m]" in model.lower() or total > CONTEXT_WINDOW_200K_MAX
-    threshold = CONTEXT_BUDGET_TOKENS_1M if window_1m else CONTEXT_BUDGET_TOKENS
     sid = str(payload.get("session_id"))
-    if total <= threshold:
+    if total <= CONTEXT_BUDGET_TOKENS:
         if state is not None:
             state.pop(sid, None)
         return []
@@ -1214,23 +1224,23 @@ def check_context_budget(payload, state=None):
             return []
         state[sid] = total
     return [
-        f"[contexte] ~{total:,} tokens de contexte estimes (seuil "
-        f"{threshold:,}) — /clear ou nouvelle session "
-        "recommande avant de continuer (cf. CLAUDE.md § Efficience de "
-        "contexte)."
+        f"[context] ~{total:,} estimated context tokens (threshold "
+        f"{CONTEXT_BUDGET_TOKENS:,}) — /clear or a new session "
+        "recommended before continuing (see crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md "
+        "§ Context efficiency)."
     ]
 
 
 def regen_batch_locks_md(sections, locks, active):
-    """Regenere crew/CLAUDE_CONTEXT/BATCH_LOCKS.md : une entree par section de
-    batch ayant au moins une tache actuellement en TODO/, CURRENT_TASKS/ ou
-    PAUSED/. Colonne `worktree` affichee quand l'entree session en porte une.
-    No-op hors checkout principal : la vue d'un worktree peut etre en retard."""
+    """Regenerates crew/CLAUDE_CONTEXT/BATCH_LOCKS.md: one entry per batch
+    section having at least one task currently in TODO/, CURRENT_TASKS/ or
+    PAUSED/. `worktree` column shown when the session entry carries one.
+    No-op outside the main checkout: a worktree's view may be stale."""
     if ROOT != MAIN_ROOT:
         return
-    lines = ["# Verrous batch (temps reel)\n\n",
-              "> Regenere automatiquement par `crew/crew_hook.py` a chaque tour. "
-              "Ne pas editer a la main.\n\n"]
+    lines = ["# Batch locks (real time)\n\n",
+              "> Regenerated automatically by `crew/crew_hook.py` every turn. "
+              "Do not edit by hand.\n\n"]
     slug_sessions = _slug_session_map(locks)
     sessions = locks.get("sessions", {})
     any_section = False
@@ -1250,41 +1260,42 @@ def regen_batch_locks_md(sections, locks, active):
                     since_fmt = info.get("since", "?")
                 worktree = info.get("worktree")
                 suffix = f", worktree `{worktree}`" if worktree else ""
-                lines.append(f"- 🔒 `{slug}` — verrouille (session `{sid}`, depuis {since_fmt}{suffix})\n")
+                lines.append(f"- 🔒 `{slug}` — locked (session `{sid}`, since {since_fmt}{suffix})\n")
             else:
-                lines.append(f"- 🔓 `{slug}` — libre\n")
+                lines.append(f"- 🔓 `{slug}` — free\n")
         lines.append("\n")
     if not any_section:
-        lines.append("_Aucun batch actif avec tache en TODO/CURRENT_TASKS/PAUSED pour le moment._\n")
+        lines.append("_No active batch with a task in TODO/CURRENT_TASKS/PAUSED for now._\n")
     BATCH_LOCKS_MD.write_text("".join(lines), encoding="utf-8")
 
 
 def _git_tracked(rel):
     r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel],
-                        cwd=str(ROOT), capture_output=True, text=True)
+                        cwd=str(ROOT), capture_output=True, text=True, stdin=subprocess.DEVNULL)
     return r.returncode == 0
 
 
 def _git_ignored(rel):
-    r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=str(ROOT))
+    r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL, capture_output=True)
     return r.returncode == 0
 
 
 def _closure_commit_scope(slug):
-    """Chemins crew/ (relatifs a ROOT, POSIX) a inclure dans le commit auto
-    de cloture pour `slug` (sans extension `.md`) : le fichier CURRENT_TASKS
-    disparu, HISTORIQUE.md, les tests sortis (IA/DEV, s'ils existent), et
-    tous les INDEX.md + CLAUDE_BATCH.md + BATCH_LOCKS.md + CHANGELOG_TACHES.md
-    regeneres par le hook dans la meme passe. Ne renvoie que des chemins que
-    `git add` acceptera reellement :
-    - deja suivi par git -> inclus systematiquement (couvre une suppression
-      a stager, meme si le fichier n'existe plus sur disque) ;
-    - jamais suivi mais absent -> exclu (un `git add` dessus echouerait avec
-      'did not match any files') ;
-    - jamais suivi, present sur disque, mais gitignore (ex.
-      `crew/CLAUDE_CONTEXT/BATCH_LOCKS.md`, regenere a chaque tour mais
-      jamais destine a etre commite — un `git add` explicite dessus est
-      refuse par git) -> exclu."""
+    """crew/ paths (relative to ROOT, POSIX) to include in the automatic
+    closure commit for `slug` (without the `.md` extension): the CURRENT_TASKS file
+    that disappeared, HISTORIQUE.md, the extracted tests (IA/DEV, if they exist), and
+    all INDEX.md + CLAUDE_BATCH.md + BATCH_LOCKS.md + CHANGELOG_TACHES.md
+    regenerated by the hook in the same pass. Only returns paths that
+    `git add` will actually accept:
+    - already tracked by git -> always included (covers a deletion
+      to stage, even if the file no longer exists on disk);
+    - never tracked but absent -> excluded (a `git add` on it would fail with
+      'did not match any files');
+    - never tracked, present on disk, but gitignored (e.g.
+      `crew/CLAUDE_CONTEXT/BATCH_LOCKS.md`, regenerated every turn but
+      never meant to be committed — an explicit `git add` on it is
+      refused by git) -> excluded."""
     candidates = [
         DIRS["CURRENT_TASKS"] / f"{slug}.md",
         CTX / "HISTORIQUE.md",
@@ -1312,23 +1323,23 @@ def _closure_commit_scope(slug):
 
 
 def auto_commit_closure(finished, now_dt):
-    """Commit git LOCAL UNIQUEMENT (jamais de push) scope a crew/, declenche
-    par slug reellement cloture : un slug de `finished` (disparu de
-    CURRENT_TASKS/ ce tour) n'est retenu QUE s'il a une entree correspondante
-    dans le diff (non commit) de HISTORIQUE.md — pas juste "le fichier a
-    bouge quelque part" (couvre le cas ou 2 taches finissent le meme tour
-    mais une seule a une vraie entree, et le cas ou `finished` est non vide
-    sans historisation reelle, ex. suppression manuelle du fichier).
-    Idempotent par construction : rien de NOUVEAU sur le scope calcule ->
-    aucun commit (verifie via `git diff --cached` restreint au scope, pas
-    l'index entier). Commit SCOPE au
-    pathspec (`git commit -- <paths>`) plutot qu'un `git commit` nu : ne
-    touche jamais un changement de l'utilisateur deja stage ailleurs dans le
-    depot au moment du hook, meme si `git add` l'a laisse dans l'index avant
-    ce commit-ci — c'est exactement l'incident (ProjetA) que cette tache
-    corrige. Ne casse jamais le tour : toute erreur (git absent, hook
-    pre-commit qui rejette, etc.) est loggee sur stderr et avalee, jamais
-    levee — meme contrat que le reste du hook."""
+    """LOCAL-ONLY git commit (never a push) scoped to crew/, triggered
+    per slug actually closed: a slug of `finished` (gone from
+    CURRENT_TASKS/ this turn) is only kept if it has a matching entry
+    in the (uncommitted) diff of HISTORIQUE.md — not just "the file
+    changed somewhere" (covers the case where 2 tasks finish the same turn
+    but only one has a real entry, and the case where `finished` is non-empty
+    without any real history entry, e.g. manual deletion of the file).
+    Idempotent by construction: nothing NEW on the computed scope ->
+    no commit (checked via `git diff --cached` restricted to the scope, not
+    the whole index). Commit SCOPED to the
+    pathspec (`git commit -- <paths>`) rather than a bare `git commit`: never
+    touches a user change already staged elsewhere in the
+    repo at hook time, even if `git add` left it in the index before
+    this commit — this is exactly the incident (ProjetA) this task
+    fixes. Never breaks the turn: any error (git missing, rejecting
+    pre-commit hook, etc.) is logged on stderr and swallowed, never
+    raised — same contract as the rest of the hook."""
     if not finished:
         return
     paths = []
@@ -1336,39 +1347,39 @@ def auto_commit_closure(finished, now_dt):
         histo_rel = str((CTX / "HISTORIQUE.md").relative_to(ROOT)).replace("\\", "/")
         diff_text = (
             subprocess.run(["git", "diff", "--", histo_rel], cwd=str(ROOT),
-                            capture_output=True, text=True).stdout
+                            capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
             + subprocess.run(["git", "diff", "--cached", "--", histo_rel], cwd=str(ROOT),
-                              capture_output=True, text=True).stdout
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
         )
         all_slugs = sorted(f[:-3] if f.endswith(".md") else f for f in finished)
-        # Ne retient que les slugs ayant reellement une entree correspondante
-        # dans le diff HISTORIQUE.md (pas juste "le fichier a bouge quelque
-        # part") : si 2 taches finissent le meme tour et qu'une seule a une
-        # vraie entree, l'autre n'est pas incluse dans ce commit.
+        # Only keep the slugs that really have a matching entry
+        # in the HISTORIQUE.md diff (not just "the file changed somewhere"):
+        # if 2 tasks finish the same turn and only one has a
+        # real entry, the other is not included in this commit.
         slugs = [s for s in all_slugs if s in diff_text]
         if not slugs:
-            return  # aucun slug fini n'a d'entree correspondante dans HISTORIQUE.md
+            return  # no finished slug has a matching entry in HISTORIQUE.md
         paths = sorted({p for slug in slugs for p in _closure_commit_scope(slug)})
         if not paths:
             return
         subprocess.run(["git", "add", "--"] + paths, cwd=str(ROOT), check=True,
-                        capture_output=True, text=True)
+                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if subprocess.run(["git", "diff", "--cached", "--quiet", "--"] + paths,
-                           cwd=str(ROOT)).returncode == 0:
-            return  # rien de reellement nouveau sur CE scope -> deja commit (idempotence)
-        msg = "chore(crew): cloture tache " + ", ".join(slugs)
+                           cwd=str(ROOT), stdin=subprocess.DEVNULL, capture_output=True).returncode == 0:
+            return  # nothing really new on THIS scope -> already committed (idempotence)
+        msg = "chore(crew): close task " + ", ".join(slugs)
         subprocess.run(["git", "commit", "-m", msg, "--"] + paths, cwd=str(ROOT),
-                        check=True, capture_output=True, text=True)
+                        check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     except Exception as e:
-        sys.stderr.write(f"[auto-commit] commit de cloture non effectue (non bloquant) : {e}\n")
-        # Best-effort : si `git add` a partiellement reussi avant l'echec
-        # (ex. un chemin du scope invalide plus loin dans la liste), ne pas
-        # laisser ces chemins staged pour l'utilisateur — desstage uniquement
-        # NOTRE scope, jamais le reste de l'index (memes garanties que le
-        # commit lui-meme).
+        sys.stderr.write(f"[auto-commit] closure commit not made (non-blocking): {e}\n")
+        # Best-effort: if `git add` partially succeeded before the failure
+        # (e.g. an invalid path of the scope further down the list), do not
+        # leave those paths staged for the user — unstage only
+        # OUR scope, never the rest of the index (same guarantees as the
+        # commit itself).
         if paths:
             try:
-                subprocess.run(["git", "reset", "--"] + paths, cwd=str(ROOT), capture_output=True)
+                subprocess.run(["git", "reset", "--"] + paths, cwd=str(ROOT), capture_output=True, stdin=subprocess.DEVNULL)
             except Exception:
                 pass
 
@@ -1378,30 +1389,31 @@ DIGEST_LINE_MAX = 160
 _CHECKBOX_RE = re.compile(r"^[ \t]*[-*]\s*\[( |x|X)\]", re.MULTILINE)
 
 
-def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP):
-    """Digest crew <= `cap` caracteres (fonction pure). Ordre fixe : CURRENT_TASKS,
-    PAUSED, batchs actifs, verrous d'autres sessions, warnings, HISTORIQUE. Quand
-    une ligne ne tient plus, tout le reste est remplace par « … (+N) » : les
-    sections de tete ne sont donc jamais sacrifiees au profit des suivantes."""
+def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP, remote=()):
+    """Crew digest <= `cap` characters (pure function). Fixed order: CURRENT_TASKS,
+    PAUSED, active batches, locks of other sessions, warnings, HISTORIQUE. When
+    a line no longer fits, everything else is replaced by "… (+N)": the
+    leading sections are therefore never sacrificed in favour of the following ones."""
     items = [
         "[%s] %s — %s (%d/%d)" % (tag, slug, title, done, total)
-        for tag, rows in (("en cours", current), ("pause", paused))
+        for tag, rows in (("in progress", current), ("paused", paused))
         for slug, title, done, total in rows
     ]
-    items += ["[batch actif] %s — Zone : %s" % (header, zone) for header, zone in batches]
-    items += ["[verrou] %s" % lock for lock in other_locks]
+    items += ["[active batch] %s — Zone : %s" % (header, zone) for header, zone in batches]
+    items += ["[lock] %s" % lock for lock in other_locks]
+    items += ["[remote] %s" % r for r in remote]
     items += list(warnings)
-    items += ["[historique] %s" % t for t in history]
+    items += ["[history] %s" % t for t in history]
     if not items:
-        return "crew : aucune tâche en cours ni en pause."
+        return "crew: no task in progress or paused."
     items = [i if len(i) <= DIGEST_LINE_MAX else i[:DIGEST_LINE_MAX - 1] + "…" for i in items]
-    lines = ["Digest crew (vue dérivée — vérifier sur fichier avant d'écrire) :"] + items
+    lines = ["Crew digest (derived view — check the file before writing):"] + items
     dropped = 0
     while len("\n".join(lines)) > cap and len(lines) > 1:
         lines.pop()
         dropped += 1
     if dropped:
-        # le marqueur remplace au moins la derniere ligne gardee s'il ne tient pas
+        # the marker replaces at least the last kept line if it does not fit
         while len("\n".join(lines + ["… (+%d)" % dropped])) > cap and len(lines) > 1:
             lines.pop()
             dropped += 1
@@ -1410,7 +1422,7 @@ def build_session_digest(current, paused, batches, other_locks, warnings, histor
 
 
 def _digest_task_rows(d):
-    """(fichier, titre, cases cochees, cases totales) par tache, en une lecture."""
+    """(file, title, checked boxes, total boxes) per task, in a single read."""
     rows = []
     for f in sorted(d.glob("*.md")) if d.exists() else []:
         if f.name in ("INDEX.md", "README.md") or f.name.startswith("_"):
@@ -1423,7 +1435,7 @@ def _digest_task_rows(d):
 
 
 def _safe(fn, default):
-    """Une source illisible ne doit pas tuer tout le digest : repli sur `default`."""
+    """An unreadable source must not kill the whole digest: fall back to `default`."""
     try:
         return fn()
     except Exception:
@@ -1449,7 +1461,7 @@ def _digest_locks(session_id):
 
 
 def _digest_history(n=3):
-    # HISTORIQUE.md est trie du plus recent au plus ancien : on s'arrete au n-ieme titre.
+    # HISTORIQUE.md is sorted from most recent to oldest: stop at the n-th title.
     titles = []
     with open(HISTORIQUE, encoding="utf-8") as fh:
         for line in fh:
@@ -1460,9 +1472,25 @@ def _digest_history(n=3):
     return titles
 
 
+def _digest_remote_claims():
+    """One line per open task published by a dev (local ref, NO network),
+    excluding tasks already present in crew/ here. The texts have already been reduced to
+    one line by `_claims_clean`."""
+    if not claims_enabled():
+        return []
+    local = active_task_slugs()
+    rows = [(s, e) for s, e in sorted(_claims_expire(_claims_local()[1], _claims_now()).items()) if s not in local]
+    if not rows:
+        return []                                   # common case: no identity git spawn
+    me = _claims_identity()
+    return ["%s — %s (%s)" % (s, (e.get("title") or "?")[:80],
+                              "me" if e.get("owner") == me else (e.get("owner") or e.get("author") or "?")[:40])
+            for s, e in rows]
+
+
 def session_digest(session_id):
-    """Lit crew/ (lecture seule : aucune ecriture, aucun save_locks) et rend le
-    digest ; None si le projet n'a pas de crew/ (rien a injecter)."""
+    """Reads crew/ (read-only: no write, no save_locks) and renders the
+    digest; None if the project has no crew/ (nothing to inject)."""
     if not CREW.is_dir():
         return None
     current = _safe(lambda: _digest_task_rows(DIRS["CURRENT_TASKS"]), [])
@@ -1474,10 +1502,919 @@ def session_digest(session_id):
         _safe(lambda: _digest_locks(session_id), []),
         _safe(check_batches, []),
         _safe(_digest_history, []),
+        remote=_safe(_digest_remote_claims, []),
     )
 
 
+SESSION_COLORS = ("🔴 red", "🟠 orange", "🟡 yellow", "🟢 green", "🔵 blue", "🟣 purple", "🟤 brown")
+
+
+def session_color(session_id):
+    """Stable dot + colour name for a session (sessionTitle fallback
+    when no single task names it); tells sessions apart at a glance."""
+    h = hashlib.sha1(str(session_id).encode("utf-8")).digest()
+    return SESSION_COLORS[h[0] % len(SESSION_COLORS)]
+
+
+def session_title(session_id, payload):
+    """Title (task slug) for the SessionStart `sessionTitle`; None if
+    the session is already named, if the source is not startup/resume/fork, or if
+    the task is ambiguous. This session's lock first, otherwise the only task in
+    CURRENT_TASKS not locked by another session. Read-only."""
+    if payload.get("session_title") or payload.get("source") not in ("startup", "resume", "fork", "clear"):
+        return None
+    now_dt = datetime.datetime.now()
+    sessions = load_locks().get("sessions", {})
+    names = [n for n in sessions.get(session_id, {}).get("tasks") or [] if isinstance(n, str)]
+    if not names:
+        taken = {t for sid, info in sessions.items()
+                 if sid != session_id and not _session_expired(info, now_dt)
+                 for t in info.get("tasks") or []}
+        names = [n for n in _task_names(DIRS["CURRENT_TASKS"]) if n not in taken]
+    return names[0].removesuffix(".md") if len(names) == 1 else session_color(session_id)
+
+
+def _task_names(d):
+    return [f.name for f in sorted(d.glob("*.md"))
+            if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
+
+
+def _read_ignored():
+    """{slug: owner | None} from crew_ignored.json; missing/corrupt -> {}.
+    The older format (list + a single `owner`) is still read."""
+    try:
+        data = json.loads(IGNORED_FILE.read_text(encoding="utf-8"))
+        raw = data.get("ignored", {})
+        if isinstance(raw, list):
+            owner = data.get("owner") if isinstance(data.get("owner"), str) and data.get("owner") else None
+            return {x: owner for x in raw if isinstance(x, str)}
+        return {k: (v if isinstance(v, str) and v else None) for k, v in raw.items() if isinstance(k, str)}
+    except Exception:
+        return {}
+
+
+def load_ignored():
+    """`.md` slugs skipped by `next_task`."""
+    return set(_read_ignored())
+
+
+def _valid_person_name(name):
+    """Name safe for a config line, a claim and a shell argument: 1-60 chars
+    (letters, digits, space, `.` `@` `-` `_`), single line."""
+    return isinstance(name, str) and re.fullmatch(r"[\w .@-]{1,60}", name.strip()) is not None
+
+
+def _opts(argv, known):
+    """(known `--key value` options, positionals); an unknown option or one without a value -> ValueError."""
+    opts, pos, i = {}, [], 0
+    while i < len(argv):
+        if argv[i].startswith("--"):
+            if argv[i][2:] not in known or i + 1 >= len(argv):
+                raise ValueError(f"invalid option: {argv[i]}")
+            opts[argv[i][2:]], i = argv[i + 1], i + 2
+        else:
+            pos.append(argv[i])
+            i += 1
+    return opts, pos
+
+
+_OWNER_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?\**\s*(?:owner|assigned(?:\s+to)?|assign[ée]e?(?:\s+[àa])?|claimed?(?:\s+by)?|responsible|responsable)\s*\**\s*:\s*\**\s*(.+?)\s*\**\s*$",
+    re.IGNORECASE)
+_UNASSIGNED = "(unassigned)"
+
+
+def _todo_owner_mention(slug):
+    """Name written in the TODO file (`Owner: x`, `Assigned to: x`, `Claimed by: x`, `Responsible: x`,
+    French aliases `Assigné à` / `Responsable` accepted; first 40 lines); None if there is no mention."""
+    try:
+        with open(DIRS["TODO"] / slug, encoding="utf-8-sig") as fh:
+            for _ in range(40):
+                line = fh.readline()
+                if not line:
+                    break
+                m = _OWNER_LINE_RE.match(line)
+                if m and _valid_person_name(m.group(1)):
+                    return m.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
+def _collab_name():
+    return _claims_config().get("collab_name", "").strip() or None
+
+
+def _same_person(a, b):
+    return bool(a) and bool(b) and a.strip().casefold() == b.strip().casefold()
+
+
+def _by_owner(store):
+    out = {}
+    for who in store.values():
+        out[who or _UNASSIGNED] = out.get(who or _UNASSIGNED, 0) + 1
+    return out
+
+
+def ignore_cli(argv):
+    """`crew_hook.py ignore <snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off>`:
+    local list of TODO tasks that `/crew-start` must not start, with their owner (a teammate's tasks
+    brought in by a pull). `snapshot` assigns every TODO present: a mention in the file, else a remote
+    claim, else `--owner`; with none of the three it is set aside anyway as "unassigned" (listed in
+    `unmarked`). Tasks marked with your own name are never ignored. `off` deletes the list."""
+    usage = {"ok": False, "reason": "usage: ignore snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off"}
+    try:
+        opts, slugs = _opts(argv[1:], {"owner"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub not in ("snapshot", "add", "remove", "list", "off"):
+        return usage
+    if "owner" in opts and not _valid_person_name(opts["owner"]):
+        return {"ok": False, "reason": "invalid --owner (1-60 chars: letters, digits, space . @ - _)"}
+    if sub in ("add", "remove") and not slugs:
+        return {"ok": False, "reason": f"`ignore {sub}`: slug required"}
+    slugs = [x if x.endswith(".md") else x + ".md" for x in slugs]
+    if sub == "off":
+        try:
+            IGNORED_FILE.unlink()
+        except FileNotFoundError:
+            pass
+        return {"ok": True, "ignored": [], "by_owner": {}}
+    before = _read_ignored()
+    store, owner = dict(before), opts.get("owner", "").strip() or None
+    if sub == "snapshot":
+        me = _collab_name()
+        claims = _claims_local()[1] if claims_enabled() else {}
+        for slug in _task_names(DIRS["TODO"]):
+            if store.get(slug):
+                continue
+            c = claims.get(slug) or {}
+            who = _todo_owner_mention(slug) or c.get("owner") or c.get("author")
+            if _same_person(who, me):
+                continue  # it is mine
+            store[slug] = who or owner  # no known owner: still ignored ("unassigned"), never started
+    elif sub == "add":
+        for slug in slugs:
+            store[slug] = owner or store.get(slug)
+    elif sub == "remove":
+        for slug in slugs:
+            store.pop(slug, None)
+    if store != before:
+        IGNORED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = IGNORED_FILE.with_name(IGNORED_FILE.name + ".tmp")
+        tmp.write_text(json.dumps({"ignored": dict(sorted(store.items()))}, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, IGNORED_FILE)
+    out = {"ok": True, "ignored": sorted(store), "added": sorted(set(store) - set(before)), "by_owner": _by_owner(store)}
+    if sub == "snapshot":
+        out["unmarked"] = sorted(t for t, who in store.items() if not who)
+    return out
+
+
+def next_task(session_id):
+    """Deterministic task choice for `/crew-start` (read-only: neither
+    lock nor move — the skill sets them afterwards via the `crew-resume:` marker
+    or the `git mv`, which gate_pretooluse checks under mutex).
+    Returns a dict `action` in {resume, start, classify, none} + `task`,
+    `batch`, `worktree`, `branch` when applicable, `skipped` [{slug, reason}]
+    for every candidate set aside, `paused`, `unclassified` (TODO tasks in no
+    batch) and `ambiguous` (ties on resume)."""
+    sections = load_sections()
+    locks = load_locks()
+    now_dt = datetime.datetime.now()
+    locks = {"sessions": {sid: i for sid, i in locks.get("sessions", {}).items() if not _session_expired(i, now_dt)}}
+    owners = _slug_session_map(locks)
+    rows = _digest_task_rows(DIRS["CURRENT_TASKS"])
+    current = [r[0] for r in rows]
+    paused = _task_names(DIRS["PAUSED"])
+    ignored = _read_ignored()
+    todo_all = _task_names(DIRS["TODO"])
+    todo = [t for t in todo_all if t not in ignored]
+    skipped = [{"slug": t, "reason": f"ignored locally (task of {ignored[t]})" if ignored[t]
+                else "ignored locally (another dev's task)"}
+               for t in todo_all if t in ignored]
+    out = {"action": "none", "paused": paused, "skipped": skipped,
+           "unclassified": [t for t in todo if find_section_for(t, sections) is None]}
+
+    remote = {}  # active claims of OTHER devs (opt-in remote_claims); empty otherwise
+    if claims_enabled():
+        warning, remote, remote_todo = claims_remote_view()
+        if warning:
+            out["claims_warning"] = warning
+        if remote_todo:
+            out["remote_todo"] = remote_todo
+
+    mine = []
+    for name, _title, done, _total in rows:
+        owner = owners.get(name)
+        if owner and owner != session_id:
+            skipped.append({"slug": name, "reason": f"lock: picked up by session {str(owner)[:8]}"})
+        elif name in remote:
+            skipped.append({"slug": name, "reason": f"remote claim: {remote[name]['owner']}"})
+        else:
+            mine.append((done, name))
+    if mine:
+        best = max(d for d, _ in mine)
+        tied = sorted(n for d, n in mine if d == best)
+        out.update(action="resume", task=tied[0])
+        if len(tied) > 1:
+            out["ambiguous"] = tied
+        sec = find_section_for(tied[0], sections)
+        if sec:
+            out["batch"] = _batch_key(sec["header"])
+            out["zone"] = sorted(sec["zone_paths"])
+            out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
+        return out
+
+    held = set(current) | set(paused)
+    active = [s for s in sections if s["slugs"] & held or _section_lock_sessions(s, locks, owners) - {session_id}]
+    for sec in sections:
+        cands = [t for t in sec["ordered"] if t in todo]
+        if not cands:
+            continue
+        if sec in active:
+            skipped += [{"slug": t, "reason": f"active batch: {_batch_key(sec['header'])}"} for t in cands]
+            continue
+        if not sec["zone_paths"]:
+            skipped += [{"slug": t, "reason": f"unknown zone: {_batch_key(sec['header'])}"} for t in cands]
+            continue
+        sec_claims = sec["slugs"] & set(remote)
+        if sec_claims:
+            first_owner = remote[sorted(sec_claims)[0]]["owner"]
+            skipped += [{"slug": t, "reason": f"remote claim: {remote[t]['owner']}" if t in remote
+                         else f"active batch (remote claim: {first_owner})"} for t in cands]
+            continue
+        rclash = next(((s, e) for s, e in remote.items()
+                       if _claims_zone_clash(sec["zone_paths"], e.get("zone"))), None)
+        if rclash:
+            skipped += [{"slug": t, "reason": f"remote claim: zone overlaps {rclash[0]} ({rclash[1]['owner']})"}
+                        for t in cands]
+            continue
+        clash = next((a for a in active if any(_path_overlaps(x, y) for x in sec["zone_paths"] for y in a["zone_paths"])), None)
+        if clash:
+            skipped += [{"slug": t, "reason": f"zone overlaps the active batch {_batch_key(clash['header'])}"} for t in cands]
+            continue
+        out.update(action="start", task=cands[0], batch=_batch_key(sec["header"]), zone=sorted(sec["zone_paths"]))
+        out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
+        return out
+    if out["unclassified"]:
+        out["action"] = "classify"
+    return out
+
+
+def _zones_overlap(a, b):
+    """First pair of paths that overlap between two sections (or None)."""
+    return next(((x, y) for x in a["zone_paths"] for y in b["zone_paths"] if _path_overlaps(x, y)), None)
+
+
+def _is_placeholder_section(sec):
+    return "<" in sec["header"] or any("<" in z for z in sec["zone_paths"])
+
+
+def count_batches():
+    """Read-only report for `/crew-count`: active batches, launchable in
+    parallel (zones disjoint from the active ones AND from each other, file order =
+    priority), excluded (overlap). A batch with no remaining task (all
+    struck through) or with a template placeholder is ignored (the latter is reported)."""
+    held = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+    active, launchable, excluded, placeholders = [], [], [], []
+    secs = []
+    for sec in load_sections():
+        if _is_placeholder_section(sec):
+            placeholders.append(_batch_key(sec["header"]))
+            continue
+        remaining = [t for t in sec["ordered"] if t not in sec["struck"]]
+        if remaining:
+            secs.append((sec, remaining))
+    info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem),
+                                  "task": rem[0].removesuffix(".md")}
+    taken = []  # active then launchable sections kept, in order
+    for sec, rem in secs:
+        if set(rem) & held:
+            active.append(info(sec, rem))
+            taken.append(sec)
+    for sec, rem in secs:
+        if set(rem) & held:
+            continue
+        clash = next(((o, _zones_overlap(sec, o)) for o in taken if _zones_overlap(sec, o)), None)
+        if not sec["zone_paths"]:
+            excluded.append({**info(sec, rem), "reason": "unknown zone"})
+        elif clash:
+            o, (x, y) = clash
+            excluded.append({**info(sec, rem), "reason": f"overlaps {_batch_key(o['header'])} ({x} / {y})"})
+        else:
+            launchable.append(info(sec, rem))
+            taken.append(sec)
+    return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
+            "excluded": excluded, "placeholders": placeholders,
+            "report": _count_report(launchable, active, excluded, placeholders)}
+
+
+def _count_report(launchable, active, excluded, placeholders):
+    """Compact text rendering of `/crew-count`: number of terminals and, per terminal,
+    the session title (= slug of the batch's next task)."""
+    n = len(launchable)
+    if n:
+        lines = [f"**{n} {'terminals' if n > 1 else 'terminal'} in parallel**", "",
+                 "| Session title | Batch | Zone |", "|---|---|---|"]
+        lines += [f"| `{b['task']}` | {b['name']} | {', '.join(b['zone'])} |" for b in launchable]
+    else:
+        why = "all active" if active else "nothing launchable (closed batches, 'A classer' or conflicting zones)"
+        lines = [f"**0 terminals**: {why}"]
+    if active:
+        lines.append("Active: " + ", ".join(b["name"] for b in active))
+    if excluded:
+        lines.append("Excluded: " + " ; ".join(f"{b['name']} ({b['reason']})" for b in excluded))
+    if placeholders:
+        lines.append("Unresolved placeholder, ignored: " + ", ".join(placeholders))
+    return "\n".join(lines)
+
+
+def _orphan_worktrees(locks):
+    """`*-batch-*` worktrees present on disk with no session carrying them."""
+    try:
+        out = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=str(MAIN_ROOT),
+                             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
+    except Exception:
+        return []
+    norm = lambda x: str(pathlib.Path(x).resolve()).replace("\\", "/").lower()
+    known = {norm(MAIN_ROOT / i["worktree"]) for i in locks.get("sessions", {}).values() if i.get("worktree")}
+    paths = [l[len("worktree "):].strip() for l in out.splitlines() if l.startswith("worktree ")]
+    return [w for w in paths if "-batch-" in pathlib.Path(w).name and norm(w) not in known]
+
+
+def crew_status():
+    """Read-only report for `/crew-status`."""
+    sections = [s for s in load_sections() if not _is_placeholder_section(s)]
+    current = _digest_task_rows(DIRS["CURRENT_TASKS"])
+    paused = _task_names(DIRS["PAUSED"])
+    held = {r[0] for r in current} | set(paused)
+    active = [s for s in sections if s["slugs"] & held]
+    overlaps = []
+    for i, a in enumerate(active):
+        for b in active[i + 1:]:
+            hit = _zones_overlap(a, b)
+            if hit:
+                overlaps.append({"batches": [_batch_key(a["header"]), _batch_key(b["header"])], "paths": list(hit)})
+    tests = []
+    for f in sorted(DIRS["TESTS/IA"].glob("*.md")) if DIRS["TESTS/IA"].exists() else []:
+        if f.name in ("INDEX.md", "README.md"):
+            continue
+        n = sum(1 for m in _CHECKBOX_RE.findall(f.read_text(encoding="utf-8")) if m == " ")
+        if n:
+            tests.append({"file": f.name, "unchecked": n})
+    return {
+        "active_batches": [{"name": _batch_key(s["header"]), "zone": sorted(s["zone_paths"])} for s in active],
+        "zone_overlaps": overlaps,
+        "current": [{"slug": r[0], "done": r[2], "total": r[3]} for r in current],
+        "paused": paused,
+        "tests_ia_unchecked": tests,
+        "todo_orphans": [t for t in _task_names(DIRS["TODO"]) if find_section_for(t, sections) is None],
+        "bootstrap_pending": (ROOT / "check_placeholders.py").exists(),
+        "orphan_worktrees": _orphan_worktrees(load_locks()),
+    }
+
+
+# --- Remote claims: git ref `refs/crew/claims` (multi-dev sync) -------------
+# Shared layer "who does what + open tasks", pushed ALONE (never on
+# main). The crew/ folders remain the truth of the task state. The claim is
+# a compare-and-swap: `push --force-with-lease=<ref>:<tip>` only overwrites the ref
+# if it still equals the tip we based ourselves on. Opt-in via CREW_CONFIG.md
+# (`remote_claims : true`). Never called from a hook (no network in
+# PreToolUse): only `claims ...` and `next-task`, launched by the skills.
+CLAIMS_REF = "refs/crew/claims"
+CLAIMS_FILE = "claims.json"
+CLAIMS_CONFIG = "CREW_CONFIG.md"
+CLAIMS_TTL = datetime.timedelta(hours=8)
+CLAIMS_RETRIES = 3
+CLAIMS_GIT_TIMEOUT_SEC = 20
+_CLAIMS_GIT_ENV = {"LC_ALL": "C", "LANGUAGE": "C", "GIT_TERMINAL_PROMPT": "0"}  # stable git messages, never a prompt
+_CLAIMS_SLUG_RE = re.compile(r"[A-Za-z0-9][\w.-]*\.md")
+_CLAIMS_REF_RE = re.compile(r"refs/crew/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*|refs/heads/crew-[A-Za-z0-9_-]+")
+_CLAIMS_REMOTE_RE = re.compile(r"[A-Za-z0-9_][\w.@:/~-]*")
+# Stop words of French and English task titles (matching data: keep the French words)
+_CLAIMS_STOPWORDS = {"des", "les", "une", "pour", "avec", "dans", "sur", "the", "and", "for", "ajouter",
+                     "creer", "faire", "tache", "task", "mise", "jour"}
+
+
+def _claims_now():
+    """Current time in UTC (aware): a TTL must stay correct between devs in different time zones."""
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _claims_config():
+    out = {}
+    try:
+        for line in (CTX / CLAIMS_CONFIG).read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\s*([A-Za-z_][\w-]*)\s*[:=]\s*(.*?)\s*$", line)
+            if m:
+                out[m.group(1)] = m.group(2)
+    except Exception:
+        pass
+    return out
+
+
+def claims_enabled():
+    return _claims_config().get("remote_claims", "").strip().lower() in ("true", "1", "yes", "oui", "on")
+
+
+def _claims_git(*args, input_bytes=None, env=None):
+    """(returncode, stdout, stderr); never raises (git missing, timeout...)."""
+    try:
+        r = subprocess.run(["git", *args], cwd=str(ROOT), input=input_bytes, capture_output=True,
+                           stdin=None if input_bytes is not None else subprocess.DEVNULL,
+                           timeout=CLAIMS_GIT_TIMEOUT_SEC, env={**os.environ, **_CLAIMS_GIT_ENV, **(env or {})})
+        return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+    except Exception as e:
+        return 1, "", str(e)
+
+
+_CLAIMS_ID_CACHE = {}
+
+
+def _claims_identity():
+    """Name chosen via `/crew-collab` (config `collab_name`), else the checkout's
+    user.email (memoised per root: one git spawn per process)."""
+    name = _claims_config().get("collab_name", "").strip()
+    if name:
+        return name
+    key = str(ROOT)
+    if key not in _CLAIMS_ID_CACHE:
+        rc, out, _ = _claims_git("config", "user.email")
+        _CLAIMS_ID_CACHE[key] = out.strip() if rc == 0 and out.strip() else \
+            (os.environ.get("USERNAME") or os.environ.get("USER") or "unknown") + "@local"
+    return _CLAIMS_ID_CACHE[key]
+
+
+def _claims_valid_slug(slug):
+    return isinstance(slug, str) and ".." not in slug and _CLAIMS_SLUG_RE.fullmatch(slug) is not None
+
+
+_CLAIMS_STR_FIELDS = (("owner", 200), ("author", 200), ("session", 200), ("batch", 200), ("branch", 200), ("title", 300))
+
+
+def _claims_str(value, cap=500):
+    """Text from someone else: a single line (no fake multi-line instruction) and capped."""
+    return re.sub(r"\s+", " ", value).strip()[:cap] if isinstance(value, str) else None
+
+
+def _claims_clean(data):
+    """Normalizes the remote ref: this is data from OTHER devs, hence untrusted.
+    Invalid keys (path traversal...) and non-dict entries discarded; types forced;
+    unreadable `ts` -> None (the claim then never expires: visible, to be released by hand)."""
+    out = {}
+    for slug, e in (data or {}).items():
+        if not _claims_valid_slug(slug) or not isinstance(e, dict):
+            continue
+        zone = e.get("zone")
+        ts = _claims_parse_ts(e.get("ts")) if isinstance(e.get("ts"), str) else None
+        out[slug] = {
+            "status": "current" if e.get("status") == "current" else "todo",
+            **{k: _claims_str(e.get(k), cap) for k, cap in _CLAIMS_STR_FIELDS},
+            "body": e.get("body") if isinstance(e.get("body"), str) else None,
+            "zone": [z[:300] for z in zone if isinstance(z, str)] if isinstance(zone, list) else [],
+            "ts": ts.isoformat(timespec="seconds") if ts else None}
+    return out
+
+
+def _claims_local():
+    """(tip, tasks) read from the local ref — no network."""
+    rc, out, _ = _claims_git("rev-parse", "--verify", "-q", _claims_ref())
+    if rc != 0 or not out.strip():
+        return None, {}
+    tip = out.strip()
+    rc, blob, _ = _claims_git("show", f"{tip}:{CLAIMS_FILE}")
+    try:
+        data = json.loads(blob) if rc == 0 else {}
+    except Exception:
+        data = {}
+    return tip, _claims_clean(data if isinstance(data, dict) else {})
+
+
+def claims_fetch():
+    """Fetches the remote ref. {ok, offline, tasks, tip}. Offline: ok False,
+    tasks/tip = last local view (stale information, never blocking)."""
+    ref = _claims_ref()
+    rc, _, err = _claims_git("fetch", "--quiet", _claims_remote(), f"+{ref}:{ref}")
+    if rc != 0:
+        if "couldn't find remote ref" in err or "could not find remote ref" in err:
+            return {"ok": True, "offline": False, "tasks": {}, "tip": None}  # nobody has published anything yet
+        tip, tasks = _claims_local()
+        return {"ok": False, "offline": True, "tasks": tasks, "tip": tip}
+    tip, tasks = _claims_local()
+    return {"ok": True, "offline": False, "tasks": tasks, "tip": tip}
+
+
+def _claims_ref():
+    """Ref carrying the claims. `claims_ref` (CREW_CONFIG.md) allows falling back to a `refs/heads/crew-*`
+    branch if the server rejects custom refs. Confined to `refs/crew/*` or
+    `refs/heads/crew-*`: never `main` (the config file is versioned). Invalid = default."""
+    ref = _claims_config().get("claims_ref", "")
+    return ref if _CLAIMS_REF_RE.fullmatch(ref) else CLAIMS_REF
+
+
+def _claims_remote():
+    remote = _claims_config().get("claims_remote", "")
+    return remote if _CLAIMS_REMOTE_RE.fullmatch(remote) else "origin"  # never a value read as a git option
+
+
+def _claims_parse_ts(value):
+    try:
+        ts = datetime.datetime.fromisoformat(value)
+    except Exception:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=datetime.timezone.utc)
+
+
+def _claims_to_todo(e):
+    """Entry returned to the `todo` queue (released or expired), body and title kept."""
+    return {**e, "status": "todo", "owner": None, "session": None, "batch": None, "branch": None}
+
+
+def _claims_expire(tasks, now):
+    """Copy of `tasks` where claims older than CLAIMS_TTL are released:
+    back to `todo` if the entry has a body, removed otherwise."""
+    out = {}
+    for slug, e in tasks.items():
+        ts = _claims_parse_ts(e.get("ts")) if e.get("status") == "current" else None
+        if ts is not None and now - ts > CLAIMS_TTL:
+            if not e.get("body"):
+                continue
+            e = _claims_to_todo(e)
+        out[slug] = e
+    return out
+
+
+def _claims_commit(tasks, parent, message):
+    blob = json.dumps(tasks, ensure_ascii=False, indent=1, sort_keys=True).encode("utf-8")
+    rc, sha, _ = _claims_git("hash-object", "-w", "--stdin", input_bytes=blob)
+    if rc != 0:
+        return None
+    rc, tree, _ = _claims_git("mktree", input_bytes=f"100644 blob {sha.strip()}\t{CLAIMS_FILE}\n".encode())
+    if rc != 0:
+        return None
+    me = _claims_identity()
+    env = {**os.environ, "GIT_AUTHOR_NAME": me, "GIT_AUTHOR_EMAIL": me,
+           "GIT_COMMITTER_NAME": me, "GIT_COMMITTER_EMAIL": me}
+    args = ["commit-tree", tree.strip(), "-m", message] + (["-p", parent] if parent else [])
+    rc, commit, _ = _claims_git(*args, env=env)
+    return commit.strip() if rc == 0 and commit.strip() else None
+
+
+_CLAIMS_NOOP = object()
+
+
+def _claims_mutate(fn, message):
+    """CAS loop: fetch -> `fn(tasks)` (mutates; returns None = write, str = refusal,
+    _CLAIMS_NOOP = nothing to write) -> commit -> push with lease on the tip read.
+    Push refused (someone wrote in the meantime): we refetch and revalidate.
+    Offline: `ok True` + `offline True` + `warning` (soft mode, NOTHING is published:
+    callers read `offline`, never only `ok`)."""
+    ref, remote = _claims_ref(), _claims_remote()
+    for _ in range(CLAIMS_RETRIES):
+        f = claims_fetch()
+        if not f["ok"]:
+            return {"ok": True, "offline": True, "warning": "offline: remote claims not checked, "
+                    "action not published (best-effort)"}
+        tasks = _claims_expire(f["tasks"], _claims_now())
+        verdict = fn(tasks)
+        if verdict is _CLAIMS_NOOP:
+            return {"ok": True}
+        if verdict is not None:
+            return {"ok": False, "reason": verdict}
+        commit = _claims_commit(tasks, f["tip"], message)
+        if not commit:
+            return {"ok": False, "reason": "cannot write the ref (git)"}
+        rc, _, _ = _claims_git("push", "--quiet", f"--force-with-lease={ref}:{f['tip'] or ''}",
+                               remote, f"{commit}:{ref}")
+        if rc == 0:
+            _claims_git("update-ref", ref, commit)
+            return {"ok": True}
+    return {"ok": False, "reason": f"conflict: push rejected after {CLAIMS_RETRIES} attempts (retry)"}
+
+
+def _claims_zone_clash(zone_a, zone_b):
+    return any(_path_overlaps(a, b) for a in zone_a or [] for b in zone_b or [])
+
+
+def _claims_op(slug, message, fn):
+    """Single entry point for writes: validates the slug once, then runs the CAS loop."""
+    if not _claims_valid_slug(slug):
+        return {"ok": False, "reason": "invalid slug"}
+    return _claims_mutate(fn, message)
+
+
+def claims_claim(slug, session, batch, zone, branch):
+    me, zone = _claims_identity(), list(zone or [])
+
+    def fn(tasks):
+        e = tasks.get(slug) or {}
+        if e.get("status") == "current" and e.get("owner") not in (None, me):
+            return f"already taken by {e['owner']} ({e.get('batch') or 'unknown batch'})"
+        for other, oe in tasks.items():
+            if other != slug and oe.get("status") == "current" and oe.get("owner") not in (None, me) \
+                    and _claims_zone_clash(zone, oe.get("zone")):
+                return f"zone overlaps the claim of {oe['owner']} on {other}"
+        tasks[slug] = {**e, "status": "current", "owner": me, "session": session, "batch": batch,
+                       "zone": zone or e.get("zone") or [], "branch": branch,
+                       "ts": _claims_now().isoformat(timespec="seconds")}
+        return None
+
+    return _claims_op(slug, f"claim {slug}", fn)
+
+
+def claims_release(slug, done=False):
+    me = _claims_identity()
+
+    def fn(tasks):
+        e = tasks.get(slug)
+        if e is None:
+            return _CLAIMS_NOOP
+        if e.get("owner") not in (None, me):
+            return f"claim of {e['owner']}: release refused"
+        if done or not e.get("body"):
+            del tasks[slug]
+        else:
+            tasks[slug] = _claims_to_todo(e)
+        return None
+
+    return _claims_op(slug, f"{'close' if done else 'release'} {slug}", fn)
+
+
+def claims_publish(slug, title, zone, body):
+    me, zone = _claims_identity(), list(zone or [])
+
+    def fn(tasks):
+        e = tasks.get(slug)
+        if e is not None:
+            if e.get("author") not in (None, me):
+                return _CLAIMS_NOOP if e.get("body") == body else \
+                    f"existing entry by {e['author']}: modification by another dev refused"
+            if e.get("status") == "current" and e.get("owner") not in (None, me):
+                return f"already taken by {e['owner']}: modification refused"
+        base = e or {"status": "todo", "owner": None}
+        tasks[slug] = {**base, "title": title, "zone": zone, "body": body, "author": me,
+                       "ts": base.get("ts") or _claims_now().isoformat(timespec="seconds")}
+        return None
+
+    return _claims_op(slug, f"publish {slug}", fn)
+
+
+def _claims_tokens(title):
+    s = re.sub(r"[^a-z0-9 ]+", " ", (title or "").lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")))
+    return {t for t in s.split() if len(t) >= 3 and t not in _CLAIMS_STOPWORDS}
+
+
+def claims_check_dup(title, zone):
+    """Nearby open entries (overlapping zone OR >= 2 significant words
+    in common, >= 60 % of the shorter title). Reads the local ref: no network."""
+    mine = _claims_tokens(title)
+    out = []
+    for slug, e in sorted(_claims_local()[1].items()):
+        theirs = _claims_tokens(e.get("title"))
+        common = mine & theirs
+        by_title = len(common) >= 2 and len(common) / max(1, min(len(mine), len(theirs))) >= 0.6
+        by_zone = _claims_zone_clash(list(zone or []), e.get("zone"))
+        if by_title or by_zone:
+            out.append({"slug": slug, "title": e.get("title"), "owner": e.get("owner") or e.get("author"),
+                        "reason": "similar title" if by_title else "overlapping zone"})
+    return out
+
+
+def _claims_local_path(slug):
+    """Local path of the task (TODO / CURRENT_TASKS / PAUSED) or None."""
+    return next((DIRS[d] / slug for d in ("TODO", "CURRENT_TASKS", "PAUSED") if (DIRS[d] / slug).exists()), None)
+
+
+def claims_materialize(slug):
+    if not _claims_valid_slug(slug):
+        return {"ok": False, "reason": "invalid slug"}
+    existing = _claims_local_path(slug)
+    if existing:
+        return {"ok": True, "path": str(existing), "exists": True}
+    e = _claims_local()[1].get(slug)
+    if e is None or not e.get("body"):
+        e = claims_fetch()["tasks"].get(slug)       # missing from the local view: a single fetch, not systematic
+    if e is None or not e.get("body"):
+        return {"ok": False, "reason": f"`{slug}` not found in the remote claims"}
+    target = DIRS["TODO"] / slug
+    if target.resolve().parent != DIRS["TODO"].resolve():
+        return {"ok": False, "reason": "path outside crew/TODO refused"}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(target, "x", encoding="utf-8", newline="\n") as fh:  # "x": never overwrites
+            fh.write(e["body"])
+    except FileExistsError:
+        return {"ok": True, "path": str(target), "exists": True}
+    return {"ok": True, "path": str(target), "exists": False}
+
+
+def _claims_ref_on_disk():
+    """Does the claims ref exist here? Reads the filesystem only
+    (no subprocess): called by the Stop hook on EVERY project, solo ones included."""
+    try:
+        ref = _claims_ref()
+        git = MAIN_ROOT / ".git"
+        if git.joinpath(*ref.split("/")).is_file():
+            return True
+        packed = git / "packed-refs"
+        return packed.is_file() and ref.encode() in packed.read_bytes()
+    except Exception:
+        return False
+
+
+def check_claims_optin():
+    """Warns (non-blocking) if claims exist in the repo but
+    `remote_claims` is not enabled: this dev is then not protected from duplicates."""
+    if claims_enabled() or not _claims_ref_on_disk():
+        return []
+    return ["[claims] `refs/crew/claims` exists in this repo but `remote_claims : true` is missing from "
+            "crew/CLAUDE_CONTEXT/CREW_CONFIG.md: you are not protected from tasks taken by other devs."]
+
+
+def claims_board(refresh=False):
+    """READ-ONLY Kanban view of the claims for the dashboard: `todo` /
+    `current` columns. `refresh=True` does a fetch (network); otherwise reads the local ref.
+    Expired claims (> TTL) stay displayed but marked `expired`."""
+    empty = {"enabled": False, "offline": False, "me": None, "columns": {"todo": [], "current": []}}
+    if not claims_enabled():
+        return empty
+    offline = False
+    if refresh:
+        f = claims_fetch()
+        tasks, offline = f["tasks"], not f["ok"]
+    else:
+        tasks = _claims_local()[1]
+    now, me = _claims_now(), _claims_identity()
+    cols = {"todo": [], "current": []}
+    for slug, e in sorted(tasks.items()):
+        current = e.get("status") == "current"
+        ts = _claims_parse_ts(e.get("ts")) if current else None
+        age = max(0, int((now - ts).total_seconds() // 60)) if ts else None
+        cols["current" if current else "todo"].append({
+            "slug": slug, "title": e.get("title") or slug, "owner": e.get("owner") or e.get("author"),
+            "mine": e.get("owner") == me, "batch": e.get("batch"), "zone": e.get("zone") or [],
+            "branch": e.get("branch"), "age_minutes": age,
+            "expired": age is not None and age > CLAIMS_TTL.total_seconds() // 60})
+    return {**empty, "enabled": True, "offline": offline, "me": me, "columns": cols}
+
+
+def claims_remote_view():
+    """Claims view for next-task: (warning, claims_of_others, remote_todos).
+    `claims_of_others` = {slug: entry} for the active claims of OTHER devs."""
+    me = _claims_identity()
+    f = claims_fetch()
+    tasks = _claims_expire(f["tasks"], _claims_now())
+    warning = None if f["ok"] else "remote claims not checked (offline or remote unreachable)"
+    others = {s: e for s, e in tasks.items() if e.get("status") == "current" and e.get("owner") not in (None, me)}
+    local = active_task_slugs()
+    todo = [{"slug": s, "title": e.get("title"), "zone": e.get("zone")} for s, e in sorted(tasks.items())
+            if e.get("status") == "todo" and s not in local]
+    return warning, others, todo
+
+
+def claims_cli(argv):
+    """`crew_hook.py claims <fetch|claim|release|publish|check-dup|materialize|list> ...`"""
+    if not argv:
+        return {"ok": False, "reason": "usage: claims fetch|claim|release|publish|check-dup|materialize|list"}
+    if not claims_enabled():
+        return {"ok": False, "disabled": True, "reason": "remote_claims disabled (crew/CLAUDE_CONTEXT/CREW_CONFIG.md)"}
+    sub, rest = argv[0], argv[1:]
+    opts, pos, i = {}, [], 0
+    while i < len(rest):
+        if rest[i].startswith("--"):
+            key = rest[i][2:]
+            if key == "done":
+                opts[key], i = True, i + 1
+            else:
+                opts[key], i = (rest[i + 1] if i + 1 < len(rest) else ""), i + 2
+        else:
+            pos.append(rest[i])
+            i += 1
+    zone = [z for z in (opts.get("zone") or "").split(",") if z]
+    slug = pos[0] if pos else ""
+    if sub == "fetch":
+        f = claims_fetch()
+        return {"ok": f["ok"], "offline": f["offline"], "tasks": f["tasks"]}
+    if sub == "list":
+        return {"ok": True, "tasks": _claims_expire(_claims_local()[1], _claims_now())}
+    if sub == "check-dup":
+        return {"ok": True, "duplicates": claims_check_dup(opts.get("title", ""), zone)}
+    if not slug:
+        return {"ok": False, "reason": f"`claims {sub}`: slug required"}
+    if sub == "claim":
+        return claims_claim(slug, opts.get("session") or os.environ.get("CLAUDE_CODE_SESSION_ID"),
+                            opts.get("batch"), zone, opts.get("branch"))
+    if sub == "release":
+        return claims_release(slug, done=bool(opts.get("done")))
+    if sub == "publish":
+        try:
+            body = pathlib.Path(opts["body-file"]).read_text(encoding="utf-8-sig")  # without any BOM
+        except Exception:
+            return {"ok": False, "reason": "--body-file unreadable"}
+        return claims_publish(slug, opts.get("title", slug), zone, body)
+    if sub == "materialize":
+        return claims_materialize(slug)
+    return {"ok": False, "reason": f"unknown subcommand: {sub}"}
+
+
+def _config_set(key, value):
+    """Set `key : value` in CREW_CONFIG.md (a single line, the rest is kept);
+    value=None removes the key. Atomic write."""
+    path = CTX / CLAIMS_CONFIG
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    pat, out, done = re.compile(rf"^\s*{re.escape(key)}\s*[:=]"), [], False
+    for ln in lines:
+        if pat.match(ln):
+            if value is not None and not done:
+                out.append(f"{key} : {value}")
+                done = True
+            continue
+        out.append(ln)
+    if value is not None and not done:
+        out.append(f"{key} : {value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _collab_people():
+    """[{name, tasks, me}] sorted by task count: ignored TODO (per owner), other devs' remote claims
+    (local view, no network) and my own current / paused tasks."""
+    me, store = _collab_name(), _read_ignored()
+    slugs = {}
+    for slug, who in store.items():
+        slugs.setdefault(who or _UNASSIGNED, set()).add(slug)
+    if claims_enabled():
+        for slug, e in _claims_expire(_claims_local()[1], _claims_now()).items():
+            who = e.get("owner") or e.get("author")
+            if who and slug not in store:
+                slugs.setdefault(who, set()).add(slug)
+    if me:
+        mine = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+        key = next((k for k in slugs if _same_person(k, me)), me)
+        slugs[key] = slugs.get(key, set()) | mine
+    people = [{"name": k, "tasks": len(v), "me": _same_person(k, me)} for k, v in slugs.items() if v]
+    return sorted(people, key=lambda x: (-x["tasks"], x["name"]))
+
+
+def collab_cli(argv):
+    """`crew_hook.py collab <on --name <name>|off|status>`: team mode, switched by `/crew-collab`.
+    `on` sets `remote_claims : true` + `collab_name` (the name owning your claims);
+    `off` returns to the base form (claims off, name removed, ignore list deleted)."""
+    try:
+        opts, _ = _opts(argv[1:], {"name"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub == "on":
+        if not _valid_person_name(opts.get("name")):
+            return {"ok": False, "reason": "`collab on`: --name required (1-60 chars: letters, digits, space . @ - _)"}
+        name = opts["name"].strip()
+        _config_set("remote_claims", "true")
+        _config_set("collab_name", name)
+        out = {"ok": True, "collab": True, "name": name}
+        if _claims_git("remote", "get-url", _claims_remote())[0] != 0:
+            out["warning"] = f"git remote `{_claims_remote()}` not found: claims run in soft mode (nothing is published)"
+        return out
+    if sub == "off":
+        _config_set("remote_claims", "false")
+        _config_set("collab_name", None)
+        ignore_cli(["off"])
+        return {"ok": True, "collab": False}
+    if sub == "status":
+        return {"ok": True, "collab": claims_enabled(), "name": _collab_name(),
+                "ignored": len(_read_ignored()), "people": _collab_people()}
+    return {"ok": False, "reason": "usage: collab on --name <name>|off|status"}
+
+
+def _utf8_stdout():
+    """JSON in UTF-8 whatever the console (cp1252 on Windows): the titles come from other devs."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+
 def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else None
+    if cmd == "claims":
+        _utf8_stdout()
+        print(json.dumps(claims_cli(sys.argv[2:]), ensure_ascii=False))
+        return
+    if cmd in ("ignore", "collab"):
+        _utf8_stdout()
+        print(json.dumps((ignore_cli if cmd == "ignore" else collab_cli)(sys.argv[2:]), ensure_ascii=False))
+        return
+    if cmd in ("count", "status"):
+        print(json.dumps(count_batches() if cmd == "count" else crew_status(), ensure_ascii=False))
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "next-task":
+        _utf8_stdout()
+        print(json.dumps(next_task(os.environ.get("CLAUDE_CODE_SESSION_ID")), ensure_ascii=False))
+        return
     try:
         raw = sys.stdin.read()
     except Exception:
@@ -1490,26 +2427,29 @@ def main():
     hook_event = payload.get("hook_event_name")
 
     if hook_event == "SessionStart":
-        # Digest en lecture seule (additionalContext) ; CREW_SESSION_DIGEST=off le coupe.
-        # Volontairement avant toute la plomberie Stop/SessionEnd (purge, verrous, index) :
-        # ce chemin ne doit rien ecrire.
+        # Read-only digest (additionalContext); CREW_SESSION_DIGEST=off turns it off.
+        # Deliberately before all the Stop/SessionEnd plumbing (purge, locks, index):
+        # this path must write nothing.
         if os.environ.get("CREW_SESSION_DIGEST", "").strip().lower() == "off":
             return
+        out = {"hookEventName": "SessionStart"}
         digest = session_digest(session_id)
         if digest:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": digest,
-            }}))
+            out["additionalContext"] = digest
+        title = _safe(lambda: session_title(session_id, payload), None)
+        if title:
+            out["sessionTitle"] = title
+        if len(out) > 1:
+            print(json.dumps({"hookSpecificOutput": out}))
         return
 
     if hook_event == "PreToolUse":
-        # Escape hatch : CREW_HOOK_PROFILE=minimal desactive la garde (latence).
-        # Stop/SessionEnd restent actifs (index, verrous).
+        # Escape hatch: CREW_HOOK_PROFILE=minimal disables the guard (latency).
+        # Stop/SessionEnd stay active (index, locks).
         if os.environ.get("CREW_HOOK_PROFILE", "").strip().lower() == "minimal":
             return
-        # Garde preventive uniquement (git mv TODO->CURRENT_TASKS) : pas de sync
-        # d'index/journal/verrous ici, ça reste le travail du hook Stop.
+        # Preventive guard only (git mv TODO->CURRENT_TASKS): no sync of
+        # index/journal/locks here, that stays the Stop hook's job.
         gate_pretooluse(payload)
         return
 
@@ -1530,43 +2470,43 @@ def main():
     cur_t, prev_t = set(state["TODO"]), set(prev.get("TODO", []))
     cur_p, prev_p = set(state["PAUSED"]), set(prev.get("PAUSED", []))
     started = cur_c - prev_c
-    # NB: `resumed` est un sous-ensemble de `started`, jamais soustrait de
-    # `started` — sinon `check_batch_collisions(started, ...)` plus bas
-    # sauterait la verification anti-collision batch pour une tache qui
-    # reprend juste apres une pause (cf. code review).
-    resumed = started & prev_p  # revenue de PAUSED, pas une vraie premiere prise en charge
+    # NB: `resumed` is a subset of `started`, never subtracted from
+    # `started` — otherwise `check_batch_collisions(started, ...)` below
+    # would skip the batch anti-collision check for a task
+    # resuming right after a pause (see code review).
+    resumed = started & prev_p  # back from PAUSED, not a real first pick-up
     paused_now = cur_p - prev_p
-    # Une tache qui quitte CURRENT_TASKS/ pour PAUSED/ n'est PAS terminee.
+    # A task leaving CURRENT_TASKS/ for PAUSED/ is NOT finished.
     finished = prev_c - cur_c - cur_p
     added = (cur_t - prev_t) - started
 
     now = now_dt.date().isoformat()
     entries = []
     for f in sorted(started - resumed):
-        entries.append(f"- {now} ▶️ **démarrée** : `{f}`")
+        entries.append(f"- {now} ▶️ **started**: `{f}`")
     for f in sorted(resumed):
-        entries.append(f"- {now} ▶️ **reprise (post-pause)** : `{f}`")
+        entries.append(f"- {now} ▶️ **resumed (post-pause)**: `{f}`")
     for f in sorted(paused_now):
-        entries.append(f"- {now} ⏸️ **mise en pause** : `{f}`")
+        entries.append(f"- {now} ⏸️ **paused**: `{f}`")
     for f in sorted(finished):
-        entries.append(f"- {now} ✅ **terminée** : `{f}`")
+        entries.append(f"- {now} ✅ **finished**: `{f}`")
     for f in sorted(added):
-        entries.append(f"- {now} ➕ **ajoutée au backlog** : `{f}`")
+        entries.append(f"- {now} ➕ **added to backlog**: `{f}`")
 
-    if finished:  # rappel non bloquant tracé au changelog
-        entries.append(f"  ↳ ⚠️ vérifier : entrée dans `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` "
-                       "pour " + ", ".join(sorted(finished)))
+    if finished:  # non-blocking reminder logged in the changelog
+        entries.append(f"  ↳ ⚠️ check: entry in `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` "
+                       "for " + ", ".join(sorted(finished)))
 
     completed_tests = process_completed_tests()
     for f in sorted(completed_tests):
-        entries.append(f"- {now} 🧪 **tests validés** : `{f}` (déplacé vers `TESTS_DONE/`)")
-        # Forcer la regénération de l'index IA puisqu'on a déplacé un fichier
+        entries.append(f"- {now} 🧪 **tests validated**: `{f}` (moved to `TESTS_DONE/`)")
+        # Force regeneration of the IA index since a file was moved
         state["TESTS/IA"] = regen_index("TESTS/IA", DIRS["TESTS/IA"])
 
     rotated_historique = rotate_historique(now_dt)
     for slug in rotated_historique:
-        entries.append(f"- {now} 🗄️ **historique archivé** : `{slug}` → `HISTORIQUE_ARCHIVE.md` "
-                       f"(> {HISTORIQUE_ROTATE_MONTHS} mois)")
+        entries.append(f"- {now} 🗄️ **history archived**: `{slug}` → `HISTORIQUE_ARCHIVE.md` "
+                       f"(> {HISTORIQUE_ROTATE_MONTHS} months)")
 
     pruned_headers = []
     if BATCH_FILE.exists():
@@ -1575,16 +2515,16 @@ def main():
         if pruned_headers:
             BATCH_FILE.write_text(pruned_text, encoding="utf-8")
             for h in pruned_headers:
-                entries.append(f"- {now} 🧹 **batch clos retiré de CLAUDE_BATCH.md** : `{h}` "
-                               "(historique déjà dans HISTORIQUE.md)")
+                entries.append(f"- {now} 🧹 **closed batch removed from CLAUDE_BATCH.md**: `{h}` "
+                               "(history already in HISTORIQUE.md)")
 
-    # Verrous live par batch (anti-collision multi-Claude). Seule la section
-    # read-modify-write de crew_lock.json (load -> mutate -> save) est
-    # protégée par le mutex fichier (LocksMutex), pour éviter qu'une écriture
-    # concurrente (deux sessions qui finissent leur tour à la même seconde)
-    # n'en écrase une autre en silence, sans retenir le mutex plus longtemps
-    # que nécessaire (check_zone_overlaps est du calcul pur, pas de la
-    # section critique — il tourne après la libération, sur `locks` déjà à jour).
+    # Live locks per batch (multi-Claude anti-collision). Only the
+    # read-modify-write section of crew_lock.json (load -> mutate -> save) is
+    # protected by the file mutex (LocksMutex), to prevent a concurrent
+    # write (two sessions finishing their turn in the same second)
+    # from silently overwriting another, without holding the mutex longer
+    # than necessary (check_zone_overlaps is pure computation, not part of the
+    # critical section — it runs after release, on the already up-to-date `locks`).
     sections = load_sections()
     active = active_task_slugs()
     collision_reason = None
@@ -1592,18 +2532,18 @@ def main():
     with LocksMutex():
         locks = load_locks()
         for sid in purge_stale_locks(locks, now_dt):
-            entries.append(f"- {now} ⚠️ **verrou expiré (>6h) purgé (session `{sid}`)**")
+            entries.append(f"- {now} ⚠️ **expired lock (>6h) purged (session `{sid}`)**")
         for slug in purge_closed_task_locks(locks):
-            entries.append(f"- {now} 🧹 **verrou de tâche close hors checkout principal purgé** : `{slug}`")
+            entries.append(f"- {now} 🧹 **lock of a task closed outside the main checkout purged**: `{slug}`")
 
-        # Tache finie : sort des `tasks` de TOUTES les sessions qui la tenaient
-        # (normalement une seule). Si une session se retrouve sans aucune tache,
-        # son entree entiere (batch/worktree/branch) est purgee immediatement —
-        # pas d'enchainement implicite sur une autre tache du meme batch (ca
-        # causait des assignations batch/worktree perimees quand la session
-        # redemarrait ensuite sur un batch different, cf. bug remonte par
-        # d'autres sessions). Redemarrer une tache re-enregistre une entree
-        # fraiche via _register_task_lock.
+        # Finished task: leaves the `tasks` of ALL the sessions that held it
+        # (normally just one). If a session ends up with no task at all,
+        # its whole entry (batch/worktree/branch) is purged immediately —
+        # no implicit chaining onto another task of the same batch (that
+        # caused stale batch/worktree assignments when the session
+        # later restarted on a different batch, see bug reported by
+        # other sessions). Restarting a task re-registers a fresh entry
+        # via _register_task_lock.
         if finished:
             sessions = locks.get("sessions", {})
             for sid, info in list(sessions.items()):
@@ -1615,21 +2555,21 @@ def main():
             if session_id:
                 locks.get("sessions", {}).pop(session_id, None)
         else:
-            # `started_for_collision` est la sous-partie de `started` que CETTE
-            # session possede reellement (ou que personne ne possede encore) —
-            # calculee une fois et partagee par TOUS les consommateurs qui
-            # attribuent une action a `session_id` (boucle d'enregistrement +
-            # check_batch_collisions juste en dessous). Necessaire car `SNAP`
-            # (.task_state.json) est un fichier UNIQUE partage par toutes les
-            # sessions du meme checkout (pas de worktree dedie) : le premier
-            # tour Stop d'une session B avec `prev` encore vide voit TOUTE
-            # tache deja presente dans CURRENT_TASKS/ comme "started", y
-            # compris une tache deja verrouillee par une session A differente.
-            # Sans ce filtrage en amont, B se l'attribuerait a tort au moment
-            # de l'enregistrement ET declencherait une fausse collision de
-            # batch si une voisine de cette tache est verrouillee par une 3e
-            # session (bug remonte : de fausses "collisions multi-sessions"
-            # qui etaient en realite cette mis-attribution silencieuse).
+            # `started_for_collision` is the subset of `started` that THIS
+            # session really owns (or that nobody owns yet) —
+            # computed once and shared by ALL the consumers that
+            # attribute an action to `session_id` (registration loop +
+            # check_batch_collisions just below). Needed because `SNAP`
+            # (.task_state.json) is a SINGLE file shared by all the sessions
+            # of the same checkout (no dedicated worktree): the first
+            # Stop turn of a session B with `prev` still empty sees EVERY
+            # task already in CURRENT_TASKS/ as "started", including
+            # a task already locked by a different session A.
+            # Without this upstream filtering, B would wrongly claim it at registration
+            # time AND trigger a false batch collision
+            # if a neighbour of that task is locked by a 3rd
+            # session (reported bug: false "multi-session collisions"
+            # that were actually this silent mis-attribution).
             started_for_collision = started
             if session_id:
                 slug_sessions = _slug_session_map(locks)
@@ -1639,24 +2579,24 @@ def main():
                 }
                 for f in started - started_for_collision:
                     sys.stderr.write(
-                        f"[crew_lock] `{f}` detectee comme demarree par la session "
-                        f"`{session_id}` mais deja verrouillee par `{slug_sessions[f]}` — "
-                        "verrou NON vole, proprietaire existant conserve.\n"
+                        f"[crew_lock] `{f}` detected as started by session "
+                        f"`{session_id}` but already locked by `{slug_sessions[f]}` — "
+                        "lock NOT stolen, existing owner kept.\n"
                     )
-                # Fallback conserve deliberement (pas redondant) : couvre le
-                # `git mv` fait directement dans le checkout principal SANS
-                # passer par gate_pretooluse (ex. hook PreToolUse desactive/
-                # bypass, ou mutex non acquis en best-effort). Pour le flux
-                # worktree normal, `_claim_git_mv_lock` a deja enregistre le
-                # verrou en amont — `_register_task_lock` est idempotent (slug
-                # pas duplique, batch/worktree/branch deja poses pas ecrases),
-                # donc ce replay ne fait que rafraichir `since`.
+                # Fallback kept deliberately (not redundant): covers the
+                # `git mv` done directly in the main checkout WITHOUT going
+                # through gate_pretooluse (e.g. PreToolUse hook disabled/
+                # bypassed, or mutex not acquired in best-effort). For the normal
+                # worktree flow, `_claim_git_mv_lock` has already registered the
+                # lock upstream — `_register_task_lock` is idempotent (slug
+                # not duplicated, batch/worktree/branch already set not overwritten),
+                # so this replay only refreshes `since`.
                 for f in started_for_collision:
                     _register_task_lock(f, session_id, locks, now_dt, sections)
-                # Rafraichit aussi le verrou deja detenu par CETTE session si elle
-                # a encore des taches actives (Cas A resume via _claim_resume_lock,
-                # ou simplement une session longue) : sans ca, purge_stale_locks
-                # finirait par liberer le verrou d'une session encore au travail.
+                # Also refreshes the lock already held by THIS session if it
+                # still has active tasks (Case A resume via _claim_resume_lock,
+                # or simply a long session): without this, purge_stale_locks
+                # would end up releasing the lock of a session still at work.
                 info = locks.get("sessions", {}).get(session_id)
                 if info and any(f in cur_c for f in info.get("tasks", [])):
                     info["since"] = now_dt.isoformat()
@@ -1668,18 +2608,19 @@ def main():
     zone_warnings, zone_blocking = check_zone_overlaps(
         sections, in_progress_task_slugs(locks, now_dt), locks, session_id=session_id)
 
-    # Throttle des avertissements non bloquants (cf. _throttle_warnings) : mute
-    # locks["warned"], donc re-sauvegarde derriere le mutex comme toute autre
-    # mutation de crew_lock.json. Best-effort si deux sessions terminent leur
-    # tour a la meme seconde (pire cas : une ligne re-emise une fois de trop,
-    # pas une incoherence de verrou) — pas besoin de retenir le mutex plus
-    # longtemps pour ca.
+    # Throttling of non-blocking warnings (see _throttle_warnings): mutates
+    # locks["warned"], hence saved again behind the mutex like any other
+    # mutation of crew_lock.json. Best-effort if two sessions finish their
+    # turn in the same second (worst case: a line re-emitted once too many,
+    # not a lock inconsistency) — no need to hold the mutex any
+    # longer for that.
     due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
     due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
-    # Alerte contexte : palier par session dans locks["warned"]["context"]
-    # (persiste avec le reste de `warned` ci-dessous, pas de nouveau fichier).
-    # Sans session_id : pas de memoire (cle partagee entre sessions sinon).
-    # SessionEnd : pas d'alerte, entree de la session purgee.
+    due_claims_warnings = _throttle_warnings("claims", _safe(check_claims_optin, []), locks, now_dt)
+    # Context alert: step per session in locks["warned"]["context"]
+    # (persisted with the rest of `warned` below, no new file).
+    # Without session_id: no memory (key shared between sessions otherwise).
+    # SessionEnd: no alert, the session's entry is purged.
     ctx_state = locks.setdefault("warned", {}).setdefault("context", {})
     ctx_key = str(session_id)
     if hook_event == "SessionEnd":
@@ -1688,14 +2629,14 @@ def main():
     else:
         context_warnings = check_context_budget(payload, ctx_state if session_id else None)
     with LocksMutex():
-        # Recharge : seul `warned` est a persister ici. Re-sauver l'objet `locks`
-        # charge plus haut ecraserait une session enregistree entre-temps (et
-        # desarmerait a tort le marqueur .gate_armed).
+        # Reload: only `warned` is to be persisted here. Re-saving the `locks` object
+        # loaded above would overwrite a session registered in the meantime (and
+        # wrongly disarm the .gate_armed marker).
         fresh = load_locks()
         fresh_ctx = (fresh.get("warned") or {}).get("context") or {}
         fresh["warned"] = locks.get("warned", {})
-        # `context` : ne reporter que l'entree de CETTE session (celles des
-        # sessions concurrentes, relues sous mutex, sont conservees).
+        # `context`: only carry over THIS session's entry (those of
+        # concurrent sessions, re-read under mutex, are kept).
         merged_ctx = dict(fresh_ctx)
         if session_id:
             if ctx_key in ctx_state:
@@ -1705,11 +2646,11 @@ def main():
         fresh["warned"]["context"] = merged_ctx
         save_locks(fresh)
 
-    if entries and prev:  # ne pas journaliser le premier snapshot de référence
+    if entries and prev:  # do not log the first reference snapshot
         head = ""
         if not CHANGELOG.exists():
-            head = ("# Changelog des tâches\n\n"
-                    "> Alimenté automatiquement par le hook Stop (`crew/crew_hook.py`).\n\n")
+            head = ("# Task changelog\n\n"
+                    "> Fed automatically by the Stop hook (`crew/crew_hook.py`).\n\n")
         with CHANGELOG.open("a", encoding="utf-8") as fh:
             fh.write(head + "\n".join(entries) + "\n")
 
@@ -1717,40 +2658,42 @@ def main():
 
     SNAP.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
-    # Batching : avertissements non bloquants (stderr) — n'interfère pas avec le
-    # JSON de décision émis sur stdout. Throttlés (cf. _throttle_warnings) pour
-    # ne pas re-imprimer la même ligne à chaque tour tant que rien n'a changé.
-    # L'alerte contexte (context_warnings) part, elle, dans le JSON stdout sous
-    # "systemMessage" (palier de 50k par session, cf. check_context_budget).
+    # Batching: non-blocking warnings (stderr) — does not interfere with the
+    # decision JSON emitted on stdout. Throttled (see _throttle_warnings) so as
+    # not to re-print the same line every turn as long as nothing has changed.
+    # The context alert (context_warnings) goes instead into the stdout JSON under
+    # "systemMessage" (50k step per session, see check_context_budget).
     for w in due_batch_warnings:
         sys.stderr.write(w + "\n")
     for w in due_zone_warnings:
         sys.stderr.write(w + "\n")
+    for w in due_claims_warnings:
+        sys.stderr.write(w + "\n")
 
-    # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)
+    # Blocking invariants (combined into a single decision if several fire)
     reasons = []
 
     t_stems, c_stems, p_stems = ({f[:-3] for f in s} for s in (cur_t, cur_c, cur_p))
 
     dup = t_stems & c_stems
     if dup:
-        reasons.append("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
-                        "crew/TODO/ et crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup)) +
-                        ". Retire-les de crew/TODO/ (une tâche commencée ne reste pas dans le backlog).")
+        reasons.append("Lifecycle inconsistency: task(s) present in both "
+                        "crew/TODO/ and crew/CURRENT_TASKS/: " + ", ".join(sorted(dup)) +
+                        ". Remove them from crew/TODO/ (a started task does not stay in the backlog).")
 
     dup_p = p_stems & (t_stems | c_stems)
     if dup_p:
-        reasons.append("Incohérence cycle de vie : tâche(s) présente(s) à la fois dans "
-                        "crew/PAUSED/ et crew/TODO/ ou crew/CURRENT_TASKS/ : " + ", ".join(sorted(dup_p)) +
-                        ". Une tâche n'est jamais dans deux dossiers à la fois.")
+        reasons.append("Lifecycle inconsistency: task(s) present in both "
+                        "crew/PAUSED/ and crew/TODO/ or crew/CURRENT_TASKS/: " + ", ".join(sorted(dup_p)) +
+                        ". A task is never in two folders at once.")
 
     if collision_reason:
         reasons.append(collision_reason)
 
     if zone_blocking:
-        reasons.append("Verrou live zone — chevauchement entre batchs actifs verrouillés par des "
-                        "sessions différentes : " + " ; ".join(zone_blocking) +
-                        " Attendre la fin de l'autre session avant de continuer.")
+        reasons.append("Live zone lock — overlap between active batches locked by "
+                        "different sessions: " + " ; ".join(zone_blocking) +
+                        " Wait for the other session to finish before continuing.")
 
     out = {}
     if reasons:

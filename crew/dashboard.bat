@@ -1,19 +1,32 @@
 @echo off
-REM Lance le crew dashboard (scripts/dashboard/server.py) pour ce projet, en
-REM standalone (double-clic, hors session Claude) plutot que via le skill
-REM /crew-dashboard. Venv isole (jamais l'environnement Python du projet
-REM cible), cwd = racine du repo pour que le serveur lise/ecrive ./crew/.
+setlocal
+REM Launches the crew dashboard standalone (double-click, outside a Claude session).
+REM Isolated venv at the project root (%ROOT%\.dashboard-venv, gitignored), never
+REM the project's own Python environment. cwd = repo root (the server reads/writes
+REM ./crew/).
 REM
-REM Venv place a la racine du projet (%ROOT%\.dashboard-venv), PAS au meme
-REM endroit que le skill (${CLAUDE_PLUGIN_ROOT}/.dashboard-venv, un seul venv
-REM partage entre tous les projets) : CLAUDE_PLUGIN_ROOT n'existe que dans
-REM l'environnement d'une session Claude, jamais pour un .bat lance a la
-REM main hors Claude Code. Deux venvs distincts, deux contextes de lancement
-REM distincts, pas une incoherence. Voir .claude/skills/crew-dashboard/SKILL.md
-REM et docs/superpowers/specs/2026-09-02-crew-dashboard-design.md § Delivery.
+REM Where server.py is looked up, in priority order:
+REM   1. %CREW_DASHBOARD_DIR%  (folder containing server.py, manual override)
+REM   2. %ROOT%\scripts\dashboard  (clone of crew-mates itself)
+REM   3. installed plugin: %USERPROFILE%\.claude\plugins\cache\crew-mates\
+REM      crew-mates\<version>\scripts\dashboard  (highest version containing server.py)
+REM CLAUDE_PLUGIN_ROOT only exists inside a Claude session, hence this scan.
 
 set "ROOT=%~dp0.."
 set "VENV=%ROOT%\.dashboard-venv"
+set "SRV="
+
+if defined CREW_DASHBOARD_DIR if exist "%CREW_DASHBOARD_DIR%\server.py" set "SRV=%CREW_DASHBOARD_DIR%"
+if not defined SRV if exist "%ROOT%\scripts\dashboard\server.py" set "SRV=%ROOT%\scripts\dashboard"
+if not defined SRV (
+    for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "$c = Join-Path $env:USERPROFILE '.claude\plugins\cache\crew-mates\crew-mates'; if (Test-Path -LiteralPath $c) { Get-ChildItem -LiteralPath $c -Directory | Where-Object { $_.Name -match '^\d+(\.\d+)+$' } | Sort-Object { [version]$_.Name } -Descending | ForEach-Object { Join-Path $_.FullName 'scripts\dashboard' } | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'server.py') } | Select-Object -First 1 }"`) do set "SRV=%%D"
+)
+if not defined SRV (
+    echo [dashboard.bat] server.py not found. Install the crew-mates plugin
+    echo   ^(/plugin install crew-mates@crew-mates^) or set CREW_DASHBOARD_DIR.
+    call :fail
+    exit /b 1
+)
 
 if not exist "%VENV%\Scripts\python.exe" (
     where py >nul 2>nul
@@ -24,12 +37,19 @@ if not exist "%VENV%\Scripts\python.exe" (
     )
 )
 
-"%VENV%\Scripts\python.exe" -m pip install -q -r "%ROOT%\scripts\dashboard\requirements.txt"
+"%VENV%\Scripts\python.exe" -m pip install -q -r "%SRV%\requirements.txt"
 if errorlevel 1 (
-    echo [dashboard.bat] echec de l'installation des dependances.
+    echo [dashboard.bat] dependency installation failed.
+    call :fail
     exit /b 1
 )
 
 pushd "%ROOT%"
-"%VENV%\Scripts\python.exe" "%ROOT%\scripts\dashboard\server.py"
+"%VENV%\Scripts\python.exe" "%SRV%\server.py"
 popd
+exit /b 0
+
+:fail
+REM Double-click: keep the window open so the error can be read.
+echo %cmdcmdline% | "%SystemRoot%\System32\find.exe" /i "/c" >nul && pause
+exit /b 0

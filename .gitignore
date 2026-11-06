@@ -18,6 +18,7 @@ graphify-out/*
 crew/CLAUDE_CONTEXT/.task_state.json
 crew/CLAUDE_CONTEXT/.hook_debug_dump.json
 crew/CLAUDE_CONTEXT/crew_lock.json
+crew/CLAUDE_CONTEXT/crew_ignored.json
 crew/CLAUDE_CONTEXT/.crew_lock.mutex
 crew/CLAUDE_CONTEXT/.gate_armed
 crew/CLAUDE_CONTEXT/BATCH_LOCKS.md
@@ -40,4 +41,27 @@ Thumbs.db
 # Claude Code — état local/perso, jamais partagé entre postes
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/crew-sessions.lock
+.claude/crew-batch-metrics.json
 .claude/worktrees/
+
+# Données de suivi crew (locales ; le moteur crew_hook.py/tests/AGENTS.md reste versionné)
+crew/TODO/
+crew/CURRENT_TASKS/
+crew/PAUSED/
+crew/PROBLEMS/
+crew/ICEBOX/
+crew/TESTS/
+crew/CLAUDE_BATCH.md
+crew/CLAUDE_CONTEXT/HISTORIQUE.md
+crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md
+crew/CLAUDE_CONTEXT/TESTS_DONE/
+
+# Artefact runtime des mods (vitest lance depuis hooks/)
+hooks/.claude/
+/tsconfig.json
+
+# Local tooling output
+.playwright-mcp/
+.claude/crew-batch-metrics.json
+.claude/crew-sessions.lock

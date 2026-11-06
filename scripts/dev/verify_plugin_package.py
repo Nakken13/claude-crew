@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural integrity checks for the claude-crew plugin package.
+"""Structural integrity checks for the crew-mates plugin package.
 
 Run directly: python scripts/dev/verify_plugin_package.py
 Exits 0 if every check passes, 1 otherwise (with problems printed).
@@ -54,8 +54,8 @@ def check_manifests(repo_root: Path) -> list[str]:
             plugins = data.get("plugins")
             if not plugins or not isinstance(plugins, list):
                 problems.append(f"{marketplace_path} missing non-empty 'plugins' list")
-            elif not any(p.get("name") == "claude-crew" for p in plugins):
-                problems.append(f"{marketplace_path} 'plugins' list has no entry named claude-crew")
+            elif not any(p.get("name") == "crew-mates" for p in plugins):
+                problems.append(f"{marketplace_path} 'plugins' list has no entry named crew-mates")
 
     return problems
 
@@ -77,6 +77,7 @@ TEMPLATE_WHITELIST = [
     ".gitignore",
     "crew/CLAUDE_BATCH.md",
     "crew/CLAUDE_CONTEXT/AGENTS.md",
+    "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md",
     "crew/CLAUDE_CONTEXT/HISTORIQUE.md",
     "crew/CLAUDE_CONTEXT/TESTS_DONE/README.md",
     "crew/CURRENT_TASKS/README.md",
@@ -123,13 +124,14 @@ ENGINE_FILE_PAIRS = [
     # by design. check_crew_init_is_plugin_native covers its correctness now.
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
+    (".claude/skills/crew-collab/SKILL.md", "skills/crew-collab/SKILL.md"),
+    (".claude/skills/crew-count/SKILL.md", "skills/crew-count/SKILL.md"),
+    (".claude/skills/crew-dashboard/SKILL.md", "skills/crew-dashboard/SKILL.md"),
+    (".claude/skills/crew-version/SKILL.md", "skills/crew-version/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
-    (".claude/agents/architect.md", "agents/architect.md"),
-    (".claude/agents/ceo.md", "agents/ceo.md"),
-    (".claude/agents/comms.md", "agents/comms.md"),
-    (".claude/agents/legal.md", "agents/legal.md"),
-    (".claude/agents/manager.md", "agents/manager.md"),
+    # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in
+    # check_engine_files_copied, so adding one needs no entry here.
     # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally
     # excluded: the plugin-distributed copies under scripts/ must resolve
     # the target project's directory via CLAUDE_PROJECT_DIR (see Fix 1 /
@@ -143,7 +145,11 @@ ENGINE_FILE_PAIRS = [
 
 def check_engine_files_copied(repo_root: Path) -> list[str]:
     problems = []
-    for source_rel, target_rel in ENGINE_FILE_PAIRS:
+    personas = sorted(p.name for p in (repo_root / ".claude/agents").glob("*.md"))
+    if not personas:
+        problems.append(f"no persona found under {repo_root / '.claude/agents'}")
+    pairs = ENGINE_FILE_PAIRS + [(f".claude/agents/{n}", f"agents/{n}") for n in personas]
+    for source_rel, target_rel in pairs:
         source = repo_root / source_rel
         target = repo_root / target_rel
         if not target.exists():
@@ -190,12 +196,52 @@ def check_crew_scripts_copied(repo_root: Path) -> list[str]:
     return problems
 
 
+def check_plugin_hook_mirror(repo_root: Path) -> list[str]:
+    """scripts/crew_hook.py must be exactly crew/crew_hook.py with the plugin
+    ROOT line (the two used to be unguarded). Fix: python scripts/dev/sync_engine.py"""
+    import sync_engine
+    drift = [d for d in sync_engine.sync(repo_root, check=True) if d == "scripts/crew_hook.py"]
+    return [f"{d} drifted from crew/crew_hook.py (run: python scripts/dev/sync_engine.py)" for d in drift]
+
+
+def check_public_surface(repo_root: Path) -> list[str]:
+    """What an outside user sees right after `/plugin install` must be finished:
+    no unresolved project placeholder in the shipped personas/skills, and the
+    README version badge must not be a hard-coded (stale) number."""
+    problems = []
+    for folder in ("agents", "skills"):
+        for f in sorted((repo_root / folder).rglob("*.md")):
+            text = f.read_text(encoding="utf-8")
+            # crew-init legitimately names the placeholder it resolves.
+            if "<NOM_PROJET>" in text and f.parent.name != "crew-init":
+                problems.append(f"{f.relative_to(repo_root)} ships an unresolved <NOM_PROJET> placeholder")
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    if "img.shields.io/badge/version-" in readme:
+        problems.append("README.md has a hard-coded version badge; use the dynamic one fed by plugin.json")
+    return problems
+
+
 EVENT_EXPECTED_SCRIPT = {
     "SessionStart": "scripts/crew_hook.py",
     "Stop": "scripts/crew_hook.py",
     "SessionEnd": "scripts/crew_hook.py",
     "PostToolUse": "scripts/spec_to_task_hook.py",
 }
+
+EXPECTED_MOD_FILES = [
+    "hooks/register.ts",
+    "hooks/mods/shared.ts",
+    "hooks/mods/prompt-cache-control.ts",
+    "hooks/mods/token-weather.ts",
+    "hooks/mods/turn-inspector.ts",
+    "hooks/mods/stack-viewer.ts",
+    "hooks/mods/agent-flow.ts",
+    "hooks/mods/crew-radar.ts",
+    "hooks/mods/batch-progress.ts",
+    "hooks/mods/batch-dependency-graph.ts",
+    "hooks/mods/file-lock-monitor.ts",
+    "hooks/mods/batch-eta-cost.ts",
+]
 
 
 def check_hooks_json(repo_root: Path) -> list[str]:
@@ -212,6 +258,14 @@ def check_hooks_json(repo_root: Path) -> list[str]:
     except json.JSONDecodeError as e:
         problems.append(f"{hooks_path} is not valid JSON: {e}")
         return problems
+
+    modules = data.get("modules")
+    if not isinstance(modules, list) or "./register.ts" not in modules:
+        problems.append(f"{hooks_path} missing './register.ts' in 'modules'")
+
+    for mod_rel in EXPECTED_MOD_FILES:
+        if not (repo_root / mod_rel).exists():
+            problems.append(f"missing Zero-Token mod file: {repo_root / mod_rel}")
 
     events = data.get("hooks", {})
     for event_name, script_rel in EVENT_EXPECTED_SCRIPT.items():
@@ -253,9 +307,12 @@ def check_readme_has_marketplace_install(repo_root: Path) -> list[str]:
     problems = []
     readme = repo_root / "README.md"
     text = readme.read_text(encoding="utf-8")
-    if "/plugin marketplace add Nakken13/claude-crew" not in text:
-        problems.append(f"{readme} missing the /plugin marketplace add command")
-    if "/plugin install claude-crew@claude-crew" not in text:
+    # The slug comes from plugin.json so a rename/transfer is a one-place change.
+    plugin = json.loads((repo_root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    slug = "/".join(plugin.get("repository", "").rstrip("/").split("/")[-2:])
+    if not slug or f"/plugin marketplace add {slug}" not in text:
+        problems.append(f"{readme} missing the /plugin marketplace add {slug or '<owner/repo>'} command")
+    if "/plugin install crew-mates@crew-mates" not in text:
         problems.append(f"{readme} missing the /plugin install command")
     return problems
 
@@ -309,6 +366,8 @@ CHECKS = [
     check_template_matches_source,
     check_engine_files_copied,
     check_crew_scripts_copied,
+    check_plugin_hook_mirror,
+    check_public_surface,
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,

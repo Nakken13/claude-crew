@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Tests pour crew_hook.py. Aucune suite pytest n'existait avant (verifie -
-seule validation existante = les checklists crew/TESTS/IA|DEV/, non
-automatisees). Se concentre sur auto_commit_closure (tache
-hook-auto-commit-cloture-tache) : chaque test construit un depot git
-temporaire isole (jamais le vrai depot) et monkeypatch les constantes
-module-level de crew_hook pour y pointer, avant d'appeler la fonction
-reelle — pas de mock sur subprocess/git, comportement reel verifie."""
+"""Tests for crew_hook.py. No pytest suite existed before (checked -
+the only existing validation = the crew/TESTS/IA|DEV/ checklists, not
+automated). Focuses on auto_commit_closure (task
+hook-auto-commit-cloture-tache): each test builds an isolated temporary
+git repo (never the real repo) and monkeypatches the module-level
+constants of crew_hook to point to it, before calling the
+real function — no mock on subprocess/git, real behavior verified."""
 import datetime
 import io
 import json
@@ -20,7 +20,7 @@ import crew_hook as h
 
 
 def _git(root, *args):
-    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 def _last_commit_message(root):
@@ -35,9 +35,9 @@ def _last_commit_files(root):
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    """Depot git temporaire avec l'arborescence crew/ minimale, HEAD deja
-    pose (commit initial), et les constantes de crew_hook monkeypatchees
-    pour y pointer pendant la duree du test."""
+    """Temporary git repo with the minimal crew/ tree, HEAD already
+    set (initial commit), and the crew_hook constants monkeypatched
+    to point to it for the duration of the test."""
     root = tmp_path
     crew = root / "crew"
     ctx = crew / "CLAUDE_CONTEXT"
@@ -68,31 +68,31 @@ def repo(tmp_path, monkeypatch):
     _git(root, "init", "-q")
     _git(root, "config", "user.email", "test@test.local")
     _git(root, "config", "user.name", "test")
-    # BATCH_LOCKS.md est gitignore et jamais suivi dans le vrai depot (voir
-    # .gitignore racine) mais regenere a chaque tour par regen_batch_locks_md
-    # -> existe toujours sur disque en pratique. Reproduire ca ici, sinon le
-    # fixture divergerait de la realite et masquerait un vrai bug (cf. code
-    # review : _closure_commit_scope doit filtrer les chemins ignores-et-
-    # jamais-suivis, pas seulement les chemins jamais-suivis-et-absents).
+    # BATCH_LOCKS.md is gitignored and never tracked in the real repo (see
+    # root .gitignore) but regenerated every turn by regen_batch_locks_md
+    # -> always exists on disk in practice. Reproduce that here, otherwise the
+    # fixture would diverge from reality and mask a real bug (see code
+    # review: _closure_commit_scope must filter ignored-and-
+    # never-tracked paths, not only never-tracked-and-absent paths).
     (root / ".gitignore").write_text("crew/CLAUDE_CONTEXT/BATCH_LOCKS.md\n", encoding="utf-8")
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "init")
-    batch_locks_md.write_text("# Verrous\n", encoding="utf-8")
+    batch_locks_md.write_text("# Locks\n", encoding="utf-8")
 
     monkeypatch.setattr(h, "ROOT", root)
     monkeypatch.setattr(h, "CREW", crew)
     monkeypatch.setattr(h, "DIRS", dirs)
     monkeypatch.setattr(h, "CTX", ctx)
-    # SNAP est calcule UNE FOIS a l'import (`SNAP = CTX / ".task_state.json"`
-    # avec le CTX reel) : repatcher `h.CTX` seul ne le recalcule pas. Sans ce
-    # monkeypatch, tout test appelant `h.main()` lit/ecrit le vrai
-    # `.task_state.json` du projet au lieu du tmp_path isole (bug reel trouve
-    # en ecrivant les tests PAUSED : `main()` avait clobber le snapshot reel).
+    # SNAP is computed ONCE at import (`SNAP = CTX / ".task_state.json"`
+    # with the real CTX): re-patching `h.CTX` alone does not recompute it. Without this
+    # monkeypatch, any test calling `h.main()` reads/writes the real
+    # `.task_state.json` of the project instead of the isolated tmp_path (real bug found
+    # while writing the PAUSED tests: `main()` had clobbered the real snapshot).
     monkeypatch.setattr(h, "SNAP", ctx / ".task_state.json")
-    # Meme piege que SNAP : HISTORIQUE/HISTORIQUE_ARCHIVE sont calcules une
-    # fois a l'import depuis le vrai CTX. Sans ce monkeypatch,
-    # _closure_commit_scope (via HISTORIQUE_ARCHIVE) plante avec "not in the
-    # subpath" des que ROOT pointe vers tmp_path (bug reel trouve en ecrivant
+    # Same trap as SNAP: HISTORIQUE/HISTORIQUE_ARCHIVE are computed once
+    # at import from the real CTX. Without this monkeypatch,
+    # _closure_commit_scope (via HISTORIQUE_ARCHIVE) crashes with "not in the
+    # subpath" as soon as ROOT points to tmp_path (real bug found while writing
     # rotate_historique).
     monkeypatch.setattr(h, "HISTORIQUE", ctx / "HISTORIQUE.md")
     monkeypatch.setattr(h, "HISTORIQUE_ARCHIVE", ctx / "HISTORIQUE_ARCHIVE.md")
@@ -102,64 +102,65 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
     monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
     monkeypatch.setattr(h, "MAIN_ROOT", root)
+    monkeypatch.setattr(h, "IGNORED_FILE", ctx / "crew_ignored.json", raising=False)
     return root, dirs, ctx
 
 
 def _simulate_closure(root, dirs, ctx, slug):
-    """Simule ce que le hook a deja fait avant d'appeler auto_commit_closure :
-    le fichier CURRENT_TASKS/<slug>.md disparait (etait tracke), HISTORIQUE.md
-    gagne une entree. Les deux modifications sont laissees NON stagees,
-    comme un vrai tour de hook (auto_commit_closure doit stager lui-meme)."""
+    """Simulates what the hook has already done before calling auto_commit_closure:
+    the CURRENT_TASKS/<slug>.md file disappears (it was tracked), HISTORIQUE.md
+    gains an entry. Both changes are left UNSTAGED,
+    like a real hook turn (auto_commit_closure must stage them itself)."""
     task_file = dirs["CURRENT_TASKS"] / f"{slug}.md"
     task_file.write_text(f"# {slug}\n", encoding="utf-8")
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", f"seed: {slug} in CURRENT_TASKS")
     task_file.unlink()
     histo = ctx / "HISTORIQUE.md"
-    histo.write_text(histo.read_text(encoding="utf-8") + f"\n## {slug}\nQuoi : fait.\n", encoding="utf-8")
+    histo.write_text(histo.read_text(encoding="utf-8") + f"\n## {slug}\nWhat: done.\n", encoding="utf-8")
 
 
 def test_auto_commit_closure_creates_commit_with_scope_and_message(repo):
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     _simulate_closure(root, dirs, ctx, slug)
 
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
 
-    assert _git(root, "diff", "--cached", "--quiet").returncode == 0, "rien ne doit rester staged apres le commit"
+    assert _git(root, "diff", "--cached", "--quiet").returncode == 0, "nothing must remain staged after the commit"
     msg = _last_commit_message(root)
     assert slug in msg, msg
     files = _last_commit_files(root)
     assert "crew/CLAUDE_CONTEXT/HISTORIQUE.md" in files
     assert f"crew/CURRENT_TASKS/{slug}.md" in files
     assert "crew/CLAUDE_CONTEXT/BATCH_LOCKS.md" not in files, \
-        "BATCH_LOCKS.md est gitignore/jamais suivi -> ne doit jamais etre propose a git add"
+        "BATCH_LOCKS.md is gitignored/never tracked -> must never be offered to git add"
 
 
 def test_auto_commit_closure_ignores_gitignored_regenerated_file(repo):
-    """Regression : BATCH_LOCKS.md est regenere sur disque a chaque tour par
-    regen_batch_locks_md mais gitignore/jamais suivi — un `git add` explicite
-    dessus est refuse par git et faisait auparavant echouer TOUT le `git add`
-    (aucun commit n'etait jamais cree, silencieusement, dans le vrai depot)."""
+    """Regression: BATCH_LOCKS.md is regenerated on disk every turn by
+    regen_batch_locks_md but is gitignored/never tracked — an explicit `git add`
+    on it is refused by git and used to make the WHOLE `git add` fail
+    (no commit was ever created, silently, in the real repo)."""
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     _simulate_closure(root, dirs, ctx, slug)
-    assert (ctx / "BATCH_LOCKS.md").exists()  # regenere par le "hook", jamais suivi
+    assert (ctx / "BATCH_LOCKS.md").exists()  # regenerated by the "hook", never tracked
 
     sha_before = _git(root, "rev-parse", "HEAD").stdout.strip()
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
     sha_after = _git(root, "rev-parse", "HEAD").stdout.strip()
 
-    assert sha_before != sha_after, "le commit doit reussir malgre BATCH_LOCKS.md gitignore present sur disque"
+    assert sha_before != sha_after, "the commit must succeed despite the gitignored BATCH_LOCKS.md present on disk"
 
 
 def test_auto_commit_closure_never_sweeps_unrelated_staged_changes(repo):
-    """Regression : le commit ne doit JAMAIS embarquer un fichier deja stage
-    par l'utilisateur en dehors du scope crew/ calcule — c'est exactement
-    l'incident (config backend committee/poussee sans revue) que cette
-    fonctionnalite existe pour eviter."""
+    """Regression: the commit must NEVER sweep up a file already staged
+    by the user outside the computed crew/ scope — this is exactly the
+    incident (backend config committed/pushed without review) that this
+    feature exists to prevent."""
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     _simulate_closure(root, dirs, ctx, slug)
 
     unrelated = root / "app_config.py"
@@ -169,26 +170,26 @@ def test_auto_commit_closure_never_sweeps_unrelated_staged_changes(repo):
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
 
     files = _last_commit_files(root)
-    assert "app_config.py" not in files, "un fichier hors crew/ deja stage par l'utilisateur ne doit jamais etre committe"
+    assert "app_config.py" not in files, "a file outside crew/ already staged by the user must never be committed"
     still_staged = _git(root, "diff", "--cached", "--name-only", "--", "app_config.py").stdout.strip()
     assert still_staged == "app_config.py", \
-        "le fichier de l'utilisateur doit rester stage tel quel, pas touche par le commit de cloture"
+        "the user's file must stay staged as is, untouched by the closure commit"
 
 
 def test_auto_commit_closure_only_includes_slugs_with_matching_histo_entry(repo):
-    """2 taches finissent le meme tour, une seule a une vraie entree
-    HISTORIQUE.md correspondante (l'autre : fichier CURRENT_TASKS disparu
-    sans historisation reelle, ex. suppression manuelle) -> seule la
-    premiere doit apparaitre dans le commit, pas juste 'HISTORIQUE.md a
-    bouge quelque part' (detection par slug, pas globale)."""
+    """2 tasks finish the same turn, only one has a real matching
+    HISTORIQUE.md entry (the other: CURRENT_TASKS file gone
+    without real history logging, e.g. manual deletion) -> only the
+    first must appear in the commit, not just 'HISTORIQUE.md changed
+    somewhere' (per-slug detection, not global)."""
     root, dirs, ctx = repo
-    real_slug, fake_slug = "vraie-tache", "fausse-tache"
+    real_slug, fake_slug = "real-task", "fake-task"
     fake_task_file = dirs["CURRENT_TASKS"] / f"{fake_slug}.md"
     fake_task_file.write_text(f"# {fake_slug}\n", encoding="utf-8")
     _git(root, "add", "--", str(fake_task_file.relative_to(root)).replace("\\", "/"))
     _git(root, "commit", "-qm", f"seed: {fake_slug}")
     fake_task_file.unlink()
-    _simulate_closure(root, dirs, ctx, real_slug)  # touche HISTORIQUE.md APRES, non stage
+    _simulate_closure(root, dirs, ctx, real_slug)  # touches HISTORIQUE.md AFTER, unstaged
 
     h.auto_commit_closure({f"{real_slug}.md", f"{fake_slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
 
@@ -200,7 +201,7 @@ def test_auto_commit_closure_only_includes_slugs_with_matching_histo_entry(repo)
 
 def test_auto_commit_closure_idempotent_no_new_commit_without_new_closure(repo):
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     _simulate_closure(root, dirs, ctx, slug)
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
     sha_after_first = _git(root, "rev-parse", "HEAD").stdout.strip()
@@ -208,12 +209,12 @@ def test_auto_commit_closure_idempotent_no_new_commit_without_new_closure(repo):
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 5, 0))
     sha_after_second = _git(root, "rev-parse", "HEAD").stdout.strip()
 
-    assert sha_after_first == sha_after_second, "un deuxieme appel sans nouvelle cloture ne doit rien committer"
+    assert sha_after_first == sha_after_second, "a second call without a new closure must commit nothing"
 
 
 def test_auto_commit_closure_swallows_commit_failure(repo, monkeypatch, capsys):
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     _simulate_closure(root, dirs, ctx, slug)
 
     hooks_dir = root / ".git" / "hooks"
@@ -226,7 +227,7 @@ def test_auto_commit_closure_swallows_commit_failure(repo, monkeypatch, capsys):
     h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
     sha_after = _git(root, "rev-parse", "HEAD").stdout.strip()
 
-    assert sha_before == sha_after, "un hook pre-commit qui rejette ne doit produire aucun commit"
+    assert sha_before == sha_after, "a rejecting pre-commit hook must produce no commit"
     assert "auto-commit" in capsys.readouterr().err.lower()
 
 
@@ -253,10 +254,10 @@ def _git_mv_payload(slug, session_id="S1"):
     }
 
 
-def _write_single_task_batch(dirs, header="Batch Zone1", zone="zone1/", slugs=("ma-tache.md",)):
-    """Ecrit CLAUDE_BATCH.md avec une seule section de batch contenant
-    `slugs`, et cree le premier slug dans TODO/ (fichier source du `git mv`
-    que les tests de gate_pretooluse simulent)."""
+def _write_single_task_batch(dirs, header="Batch Zone1", zone="zone1/", slugs=("my-task.md",)):
+    """Writes CLAUDE_BATCH.md with a single batch section containing
+    `slugs`, and creates the first slug in TODO/ (source file of the `git mv`
+    that the gate_pretooluse tests simulate)."""
     refs = "\n".join(f"- `{s}`" for s in slugs)
     h.BATCH_FILE.write_text(
         f"# Batching\n\n## {header}\n\nZone : `{zone}`\n\n{refs}\n",
@@ -266,12 +267,12 @@ def _write_single_task_batch(dirs, header="Batch Zone1", zone="zone1/", slugs=("
 
 
 def _write_other_session_lock(root, tasks, session_id="OTHER"):
-    """Pre-remplit crew_lock.json avec une session concurrente detenant deja
-    `tasks`, via l'ecriture canonique du module (`save_locks`) plutot qu'un
-    JSON ecrit a la main. `since` relatif a l'heure reelle (pas une date
-    figee) : purge_stale_locks purge tout ce qui depasse LOCK_TTL (6h) par
-    rapport a `datetime.datetime.now()` au moment du test, une date figee
-    finirait par depasser ce seuil et casser le test en continu."""
+    """Pre-fills crew_lock.json with a concurrent session already holding
+    `tasks`, via the module's canonical write (`save_locks`) rather than
+    hand-written JSON. `since` relative to the real time (not a
+    frozen date): purge_stale_locks purges anything beyond LOCK_TTL (6h)
+    relative to `datetime.datetime.now()` at test time, a frozen date
+    would eventually exceed that threshold and break the test permanently."""
     since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
     h.save_locks({"sessions": {session_id: {
         "batch": "Batch Zone1",
@@ -283,14 +284,14 @@ def _write_other_session_lock(root, tasks, session_id="OTHER"):
 
 
 def test_gate_pretooluse_git_mv_registers_lock_immediately_from_worktree(repo):
-    """Coeur du bug : depuis un worktree de batch, le `git mv` TODO->CURRENT_TASKS
-    ne doit plus attendre le prochain tour Stop pour verrouiller la tache —
-    gate_pretooluse doit ecrire crew_lock.json avant meme que le mv ne s'execute."""
+    """Core of the bug: from a batch worktree, the `git mv` TODO->CURRENT_TASKS
+    must no longer wait for the next Stop turn to lock the task —
+    gate_pretooluse must write crew_lock.json before the mv even runs."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
 
-    h.gate_pretooluse(_git_mv_payload(slug))  # ne doit pas lever SystemExit
+    h.gate_pretooluse(_git_mv_payload(slug))  # must not raise SystemExit
 
     info = h.load_locks()["sessions"]["S1"]
     assert info["tasks"] == [slug]
@@ -300,10 +301,10 @@ def test_gate_pretooluse_git_mv_registers_lock_immediately_from_worktree(repo):
 
 
 def test_gate_pretooluse_git_mv_regenerates_batch_locks_md_immediately(repo):
-    """Meme scenario, mais verifie BATCH_LOCKS.md (doc humaine) reflete aussi
-    le verrou tout de suite, sans attendre un tour Stop supplementaire."""
+    """Same scenario, but checks that BATCH_LOCKS.md (human doc) also reflects
+    the lock right away, without waiting for an extra Stop turn."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
 
     h.gate_pretooluse(_git_mv_payload(slug))
@@ -314,11 +315,11 @@ def test_gate_pretooluse_git_mv_regenerates_batch_locks_md_immediately(repo):
 
 
 def test_gate_pretooluse_git_mv_blocks_when_same_slug_already_locked(repo):
-    """Une autre session detient deja EXACTEMENT ce slug (pas juste une
-    voisine de batch) -> doit bloquer, meme si check_batch_collisions (qui ne
-    regarde que les voisines) ne l'aurait pas vu tout seul."""
+    """Another session already holds EXACTLY this slug (not just a
+    batch neighbour) -> must block, even if check_batch_collisions (which only
+    looks at neighbours) would not have caught it on its own."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
     _write_other_session_lock(root, [slug])
 
@@ -327,15 +328,15 @@ def test_gate_pretooluse_git_mv_blocks_when_same_slug_already_locked(repo):
     assert exc.value.code == 2
 
     locks = h.load_locks()
-    assert "S1" not in locks["sessions"], "la session bloquee ne doit pas etre enregistree"
+    assert "S1" not in locks["sessions"], "the blocked session must not be registered"
     assert locks["sessions"]["OTHER"]["tasks"] == [slug]
 
 
 def test_gate_pretooluse_git_mv_toctou_blocks_on_fresh_reload(repo, monkeypatch):
-    """Simule la course : la premiere lecture de `locks` dans gate_pretooluse
-    (avant le mutex) est perimee (vide), mais une AUTRE session a deja pose
-    son verrou sur la voisine de batch entre-temps. La re-verification fraiche
-    sous mutex doit quand meme bloquer."""
+    """Simulates the race: the first read of `locks` in gate_pretooluse
+    (before the mutex) is stale (empty), but ANOTHER session has already set
+    its lock on the batch neighbour in the meantime. The fresh re-check
+    under mutex must still block."""
     root, dirs, ctx = repo
     slug_a, slug_b = "a.md", "b.md"
     _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
@@ -347,7 +348,7 @@ def test_gate_pretooluse_git_mv_toctou_blocks_on_fresh_reload(repo, monkeypatch)
     def stale_then_real_load_locks():
         calls["n"] += 1
         if calls["n"] == 1:
-            return {"sessions": {}}  # lecture perimee, avant l'ecriture concurrente
+            return {"sessions": {}}  # stale read, before the concurrent write
         return orig_load_locks()
 
     monkeypatch.setattr(h, "load_locks", stale_then_real_load_locks)
@@ -361,11 +362,11 @@ def test_gate_pretooluse_git_mv_toctou_blocks_on_fresh_reload(repo, monkeypatch)
 
 
 def test_gate_pretooluse_git_mv_then_stop_started_loop_is_idempotent(repo):
-    """La boucle `started` du Stop (fallback documente, cf. main()) rejoue
-    l'enregistrement pour la meme tache/session apres coup : ne doit pas
-    dupliquer l'entree ni écraser batch/worktree/branch."""
+    """The Stop `started` loop (documented fallback, see main()) replays
+    the registration for the same task/session after the fact: it must not
+    duplicate the entry nor overwrite batch/worktree/branch."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
     h.gate_pretooluse(_git_mv_payload(slug))
 
@@ -383,51 +384,51 @@ def test_gate_pretooluse_git_mv_then_stop_started_loop_is_idempotent(repo):
 
 
 def test_stop_started_fallback_does_not_steal_lock_from_other_session(repo, monkeypatch, capsys):
-    """Root cause du bug de "collisions multi-sessions" remonte par
-    l'utilisateur : `.task_state.json` (SNAP) est un fichier UNIQUE partage
-    par toutes les sessions travaillant dans le meme checkout (pas de
-    worktree dedie). Une session S2 qui tourne pour la premiere fois voit
-    donc `prev` vide, et TOUT fichier deja present dans CURRENT_TASKS/ (y
-    compris une tache demarree par une AUTRE session S1, deja proprement
-    verrouillee via gate_pretooluse) lui apparait comme "started". Le
-    fallback de main() ne doit PAS voler ce verrou : `_slug_session_map`
-    doit etre consulte avant `_register_task_lock` pour laisser la tache a
-    son proprietaire reel."""
+    """Root cause of the "multi-session collisions" bug reported by
+    the user: `.task_state.json` (SNAP) is a SINGLE file shared
+    by all the sessions working in the same checkout (no
+    dedicated worktree). A session S2 running for the first time therefore
+    sees an empty `prev`, and EVERY file already in CURRENT_TASKS/ (including
+    a task started by ANOTHER session S1, already properly
+    locked via gate_pretooluse) looks "started" to it. The
+    main() fallback must NOT steal that lock: `_slug_session_map`
+    must be consulted before `_register_task_lock` to leave the task to
+    its real owner."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
-    h.gate_pretooluse(_git_mv_payload(slug, session_id="S1"))  # S1 demarre proprement
+    h.gate_pretooluse(_git_mv_payload(slug, session_id="S1"))  # S1 starts cleanly
     (dirs["TODO"] / slug).unlink()
     (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
 
-    _run_stop(monkeypatch, capsys, session_id="S2")  # 1er tour Stop de S2 : prev partage vide
+    _run_stop(monkeypatch, capsys, session_id="S2")  # S2's 1st Stop turn: shared prev empty
 
     locks = h.load_locks()
-    assert locks["sessions"]["S1"]["tasks"] == [slug], "S1 doit rester seul proprietaire du verrou"
+    assert locks["sessions"]["S1"]["tasks"] == [slug], "S1 must remain the sole owner of the lock"
     assert slug not in locks["sessions"].get("S2", {}).get("tasks", []), (
-        "S2 ne doit pas s'approprier une tache deja verrouillee par une autre session active"
+        "S2 must not take over a task already locked by another active session"
     )
 
 
 def test_stop_started_fallback_mis_attribution_does_not_trigger_false_batch_collision(repo, monkeypatch, capsys):
-    """Meme mis-attribution que le test precedent, mais via un second
-    consommateur non filtre de `started` : `check_batch_collisions` ne
-    verifie PAS que `f` appartient a la session courante, seulement que les
-    VOISINES de batch de `f` ne sont pas verrouillees par une autre session.
-    Une session S2 dont le 1er tour Stop mis-attribue a tort `task-a.md`
-    (deja demarree par S1) se voit donc bloquee pour une "collision" avec
-    `task-b.md` (verrouillee par une 3e session) alors que S2 n'a jamais
-    rien demarre elle-meme."""
+    """Same mis-attribution as the previous test, but via a second
+    unfiltered consumer of `started`: `check_batch_collisions` does NOT
+    check that `f` belongs to the current session, only that the batch
+    NEIGHBOURS of `f` are not locked by another session.
+    A session S2 whose 1st Stop turn wrongly mis-attributes `task-a.md`
+    (already started by S1) would thus be blocked for a "collision" with
+    `task-b.md` (locked by a 3rd session) even though S2 never
+    started anything itself."""
     root, dirs, ctx = repo
     slug_a, slug_b = "task-a.md", "task-b.md"
     _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
-    h.gate_pretooluse(_git_mv_payload(slug_a, session_id="S1"))  # S1 demarre proprement task-a
+    h.gate_pretooluse(_git_mv_payload(slug_a, session_id="S1"))  # S1 starts task-a cleanly
     (dirs["TODO"] / slug_a).unlink()
     (dirs["CURRENT_TASKS"] / slug_a).write_text(f"# {slug_a}\n", encoding="utf-8")
-    # _write_other_session_lock() ECRASE tout crew_lock.json (save_locks remplace
-    # le fichier entier) : l'appeler ici effacerait le verrou de S1 pose juste
-    # au-dessus. On fusionne donc directement dans les locks existants pour
-    # ajouter la voisine de batch verrouillee par une 3e session.
+    # _write_other_session_lock() OVERWRITES the whole crew_lock.json (save_locks replaces
+    # the entire file): calling it here would erase the S1 lock set right
+    # above. So we merge directly into the existing locks to
+    # add the batch neighbour locked by a 3rd session.
     locks = h.load_locks()
     since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
     locks["sessions"]["OTHER"] = {
@@ -436,19 +437,19 @@ def test_stop_started_fallback_mis_attribution_does_not_trigger_false_batch_coll
     }
     h.save_locks(locks)
 
-    decision = _run_stop(monkeypatch, capsys, session_id="S2")  # 1er tour Stop de S2 : n'a rien demarre
+    decision = _run_stop(monkeypatch, capsys, session_id="S2")  # S2's 1st Stop turn: started nothing
 
     assert decision is None or decision.get("decision") != "block", (
-        "S2 ne doit pas etre bloquee pour une collision batch causee par une tache "
-        f"qu'elle n'a jamais demarree (mis-attribution shared SNAP) : {decision}"
+        "S2 must not be blocked for a batch collision caused by a task "
+        f"it never started (shared SNAP mis-attribution): {decision}"
     )
 
 
 def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
-    """finished non vide mais HISTORIQUE.md pas modifie (ex. suppression
-    manuelle du fichier sans passer par la cloture crew) -> pas de commit."""
+    """finished non-empty but HISTORIQUE.md not modified (e.g. manual
+    deletion of the file without going through the crew closure) -> no commit."""
     root, dirs, ctx = repo
-    slug = "ma-tache"
+    slug = "my-task"
     task_file = dirs["CURRENT_TASKS"] / f"{slug}.md"
     task_file.write_text(f"# {slug}\n", encoding="utf-8")
     _git(root, "add", "-A")
@@ -463,7 +464,7 @@ def test_auto_commit_closure_no_op_when_finished_but_historique_untouched(repo):
 
 
 def test_throttle_warnings_emits_new_warning_and_records_it(monkeypatch):
-    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # cle `batch` = cas checkout principal
+    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # `batch` key = main checkout case
     locks = {"sessions": {}}
     now = datetime.datetime(2026, 8, 29, 10, 0, 0)
     due = h._throttle_warnings("batch", ["[batch] warning A"], locks, now)
@@ -490,20 +491,20 @@ def test_throttle_warnings_re_emits_after_cooldown_elapsed():
 
 
 def test_throttle_warnings_drops_state_for_resolved_warning(monkeypatch):
-    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # cle `batch` = cas checkout principal
-    """Une condition disparue (tache categorisee, chevauchement resolu) ne
-    doit pas laisser une entree morte grossir locks['warned'] indefiniment,
-    et si elle reapparait plus tard elle doit re-avertir immediatement."""
+    monkeypatch.setattr(h, "MAIN_ROOT", h.ROOT)  # `batch` key = main checkout case
+    """A condition that has disappeared (task categorized, overlap resolved) must
+    not leave a dead entry growing locks['warned'] indefinitely,
+    and if it reappears later it must warn again immediately."""
     locks = {"sessions": {}}
     t0 = datetime.datetime(2026, 8, 29, 10, 0, 0)
     h._throttle_warnings("batch", ["[batch] warning A"], locks, t0)
     t1 = t0 + datetime.timedelta(minutes=5)
-    h._throttle_warnings("batch", [], locks, t1)  # condition resolue
+    h._throttle_warnings("batch", [], locks, t1)  # condition resolved
     assert locks["warned"]["batch"] == {}
 
     t2 = t1 + datetime.timedelta(minutes=5)
     due = h._throttle_warnings("batch", ["[batch] warning A"], locks, t2)
-    assert due == ["[batch] warning A"]  # reapparait -> pas de cooldown herite
+    assert due == ["[batch] warning A"]  # reappears -> no inherited cooldown
 
 
 def test_throttle_warnings_categories_are_independent():
@@ -515,8 +516,8 @@ def test_throttle_warnings_categories_are_independent():
 
 
 def _run_stop_capture_err(monkeypatch, capsys, session_id="S1"):
-    """Comme _run_stop, mais renvoie stderr au lieu de le laisser draine sans
-    etre lu (capsys.readouterr() vide out ET err en un seul appel)."""
+    """Like _run_stop, but returns stderr instead of leaving it drained without
+    being read (capsys.readouterr() empties out AND err in a single call)."""
     payload = {"hook_event_name": "Stop", "session_id": session_id}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     h.main()
@@ -524,28 +525,28 @@ def _run_stop_capture_err(monkeypatch, capsys, session_id="S1"):
 
 
 def test_stop_hook_does_not_renag_same_batch_warning_next_turn(repo, monkeypatch, capsys):
-    """check_batches() se declenche a chaque tour tant qu'une tache reste non
-    categorisee dans CLAUDE_BATCH.md : sans throttle, le meme avertissement
-    stderr serait re-imprime a CHAQUE tour Stop (cout contexte proportionnel
-    au nombre de tours, pas a la realite du backlog)."""
+    """check_batches() fires every turn as long as a task stays uncategorized
+    in CLAUDE_BATCH.md: without throttling, the same stderr warning
+    would be re-printed on EVERY Stop turn (context cost proportional
+    to the number of turns, not to the reality of the backlog)."""
     root, dirs, ctx = repo
-    (dirs["TODO"] / "orpheline.md").write_text("# orpheline\n", encoding="utf-8")
+    (dirs["TODO"] / "orphan.md").write_text("# orphan\n", encoding="utf-8")
 
     first_err = _run_stop_capture_err(monkeypatch, capsys)
-    assert "orpheline.md" in first_err
+    assert "orphan.md" in first_err
 
     second_err = _run_stop_capture_err(monkeypatch, capsys)
-    assert "orpheline.md" not in second_err
+    assert "orphan.md" not in second_err
 
 
 def test_check_batches_ignores_md_refs_outside_list_lines(repo):
-    """Refs `.md` en prose d'en-tete (`CLAUDE.md`) ou dans la ligne Zone ne sont
-    pas des taches : seules les lignes de liste comptent."""
+    """`.md` refs in header prose (`CLAUDE.md`) or in the Zone line are
+    not tasks: only the list lines count."""
     root, dirs, ctx = repo
-    (dirs["TODO"] / "vraie-tache.md").write_text("# t\n", encoding="utf-8")
+    (dirs["TODO"] / "real-task.md").write_text("# t\n", encoding="utf-8")
     h.BATCH_FILE.write_text(
-        "# Batching\n\nVoir § Batching dans `CLAUDE.md` racine.\n\n"
-        "## Batch A\n\nZone : `src/`, `README.md`\n\n- `vraie-tache.md`\n",
+        "# Batching\n\nSee § Batching in `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md`.\n\n"
+        "## Batch A\n\nZone : `src/`, `README.md`\n\n- `real-task.md`\n",
         encoding="utf-8",
     )
     assert h.check_batches() == []
@@ -553,37 +554,37 @@ def test_check_batches_ignores_md_refs_outside_list_lines(repo):
 
 def test_check_batches_still_flags_vanished_and_uncategorized_tasks(repo):
     root, dirs, ctx = repo
-    (dirs["TODO"] / "orpheline.md").write_text("# o\n", encoding="utf-8")
+    (dirs["TODO"] / "orphan.md").write_text("# o\n", encoding="utf-8")
     h.BATCH_FILE.write_text(
-        "## Batch A\n\nZone : `src/`\n\n- `disparue.md`\n", encoding="utf-8"
+        "## Batch A\n\nZone : `src/`\n\n- `vanished.md`\n", encoding="utf-8"
     )
     warnings = h.check_batches()
-    assert any("inexistante" in w and "disparue.md" in w for w in warnings)
-    assert any("non categorisee" in w and "orpheline.md" in w for w in warnings)
+    assert any("does not exist" in w and "vanished.md" in w for w in warnings)
+    assert any("not categorized" in w and "orphan.md" in w for w in warnings)
 
 
 def test_prune_closed_batches_removes_fully_closed_section():
     text = (
         "# Batching\n\n"
         "## A classer\n\nplaceholder\n\n"
-        "## Batch A\n\nZone : `fichiers/modules`\n\n- `<slug>.md`\n\n"
+        "## Batch A\n\nZone : `files/modules`\n\n- `<slug>.md`\n\n"
         "## Batch demo\n\nZone : `src/`\n\n"
-        "1. ~~`task-one.md`~~ - fait. Voir `HISTORIQUE.md`.\n"
-        "2. ~~`task-two.md`~~ - fait aussi.\n\n"
+        "1. ~~`task-one.md`~~ - done. See `HISTORIQUE.md`.\n"
+        "2. ~~`task-two.md`~~ - also done.\n\n"
     )
     new_text, removed = h.prune_closed_batches(text)
     assert removed == ["Batch demo"]
     assert "Batch demo" not in new_text
     assert "task-one.md" not in new_text
-    # Sections non concernées intactes
+    # Unaffected sections intact
     assert "## Batch A" in new_text
     assert "<slug>.md" in new_text
     assert "## A classer" in new_text
 
 
 def test_prune_closed_batches_keeps_placeholder_batch_untouched():
-    """Un batch jamais rempli (0 tache reelle) n'est pas 'clos' : rien a retirer."""
-    text = "## Batch A\n\nZone : `fichiers/modules`\n\n- `<slug>.md`\n\n"
+    """A batch never filled in (0 real task) is not 'closed': nothing to remove."""
+    text = "## Batch A\n\nZone : `files/modules`\n\n- `<slug>.md`\n\n"
     new_text, removed = h.prune_closed_batches(text)
     assert removed == []
     assert new_text == text
@@ -592,8 +593,8 @@ def test_prune_closed_batches_keeps_placeholder_batch_untouched():
 def test_prune_closed_batches_keeps_partially_closed_batch():
     text = (
         "## Batch open\n\nZone : `other/`\n\n"
-        "1. ~~`closed-one.md`~~ - clos.\n"
-        "2. `still-open.md` - pas fini.\n\n"
+        "1. ~~`closed-one.md`~~ - closed.\n"
+        "2. `still-open.md` - not finished.\n\n"
     )
     new_text, removed = h.prune_closed_batches(text)
     assert removed == []
@@ -601,13 +602,13 @@ def test_prune_closed_batches_keeps_partially_closed_batch():
 
 
 def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
-    """Des refs `*.md` dans la ligne Zone (ex. README.md, CHANGELOG.md) ou en
-    prose (ex. 'voir HISTORIQUE.md') ne doivent pas etre comptees comme des
-    taches ouvertes — seules les lignes de liste en tete (`- `/`N. `) comptent."""
+    """`*.md` refs in the Zone line (e.g. README.md, CHANGELOG.md) or in
+    prose (e.g. 'see HISTORIQUE.md') must not be counted as
+    open tasks — only the leading list lines (`- `/`N. `) count."""
     text = (
         "## Batch pkg\n\n"
         "Zone : `README.md`, `CHANGELOG.md`, `scripts/`\n\n"
-        "1. ~~`only-task.md`~~ - fait, voir `HISTORIQUE.md` pour details.\n\n"
+        "1. ~~`only-task.md`~~ - done, see `HISTORIQUE.md` for details.\n\n"
     )
     new_text, removed = h.prune_closed_batches(text)
     assert removed == ["Batch pkg"]
@@ -615,15 +616,15 @@ def test_prune_closed_batches_ignores_incidental_md_refs_in_zone_and_prose():
 
 
 def _write_transcript(tmp_path, usages, model=None):
-    """Ecrit un transcript JSONL minimal : un message assistant par usage
-    donne (dans l'ordre), entrelace de lignes non-assistant/vides/corrompues
-    pour verifier que seule la DERNIERE entree assistant valide est retenue."""
+    """Writes a minimal JSONL transcript: one assistant message per given
+    usage (in order), interleaved with non-assistant/empty/corrupted lines
+    to check that only the LAST valid assistant entry is kept."""
     path = tmp_path / "transcript.jsonl"
     lines = []
     for u in usages:
         lines.append('{"message": {"role": "user", "content": "hi"}}')
-        lines.append("")  # ligne vide, doit etre ignoree
-        lines.append("not json")  # ligne corrompue, doit etre ignoree
+        lines.append("")  # empty line, must be ignored
+        lines.append("not json")  # corrupted line, must be ignored
         msg = {"role": "assistant", "usage": u}
         if model:
             msg["model"] = model
@@ -655,12 +656,12 @@ def test_check_context_budget_over_threshold_warns(tmp_path):
     warnings = h.check_context_budget({"transcript_path": transcript})
     assert len(warnings) == 1
     assert "160" in warnings[0].replace(",", "").replace(" ", "")
-    assert "contexte" in warnings[0]
+    assert "context" in warnings[0]
 
 
 def test_check_context_budget_uses_last_assistant_usage_not_first(tmp_path):
-    """Contexte grandit tour apres tour : seule la derniere valeur compte,
-    meme si un tour precedent depassait deja le seuil puis /clear a eu lieu."""
+    """Context grows turn after turn: only the last value counts,
+    even if a previous turn already exceeded the threshold and then /clear happened."""
     transcript = _write_transcript(tmp_path, [
         {"input_tokens": 200_000},
         {"input_tokens": 1000},
@@ -677,40 +678,34 @@ def test_check_context_budget_200k_window_alerts_at_160k(tmp_path):
     assert len(h.check_context_budget({"transcript_path": transcript})) == 1
 
 
-def test_check_context_budget_1m_model_threshold_800k(tmp_path):
+def test_check_context_budget_same_threshold_for_1m_model(tmp_path):
+    """Single 150k threshold, including the [1m] model or total > 210k."""
     model = "claude-opus-5-5[1m]"
-    low = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
+    low = _write_transcript(tmp_path, [_ctx(140_000)], model=model)
     assert h.check_context_budget({"transcript_path": low}) == []
-    high = _write_transcript(tmp_path, [_ctx(810_000)], model=model)
+    high = _write_transcript(tmp_path, [_ctx(160_000)], model=model)
     assert len(h.check_context_budget({"transcript_path": high})) == 1
-
-
-def test_check_context_budget_infers_1m_window_above_210k(tmp_path):
-    """Total > 210k sans [1m] : impossible en fenetre 200k -> fenetre 1M inferee,
-    seuil 800k (pas d'alerte a 215k)."""
-    mid = _write_transcript(tmp_path, [_ctx(215_000)], model="claude-sonnet-5-5")
-    assert h.check_context_budget({"transcript_path": mid}) == []
-    high = _write_transcript(tmp_path, [_ctx(820_000)], model="claude-sonnet-5-5")
-    assert len(h.check_context_budget({"transcript_path": high})) == 1
+    big = _write_transcript(tmp_path, [_ctx(300_000)], model="claude-sonnet-5-5")
+    assert len(h.check_context_budget({"transcript_path": big})) == 1
 
 
 def test_check_context_budget_repeats_only_every_50k_per_session(tmp_path):
     state = {}
     payload = lambda t, sid="S1": {"transcript_path": _write_transcript(
         tmp_path, [_ctx(t)], model="claude-opus-5-5[1m]"), "session_id": sid}
-    assert len(h.check_context_budget(payload(810_000), state)) == 1
-    assert h.check_context_budget(payload(830_000), state) == []  # < +50k
-    assert len(h.check_context_budget(payload(865_000), state)) == 1  # palier +50k
-    # autre session : etat independant
-    assert len(h.check_context_budget(payload(830_000, "S2"), state)) == 1
+    assert len(h.check_context_budget(payload(160_000), state)) == 1
+    assert h.check_context_budget(payload(180_000), state) == []  # < +50k
+    assert len(h.check_context_budget(payload(215_000), state)) == 1  # +50k step
+    # another session: independent state
+    assert len(h.check_context_budget(payload(180_000, "S2"), state)) == 1
 
 
 def test_check_context_budget_state_resets_when_back_under_threshold(tmp_path):
     state = {}
     p = lambda t: {"transcript_path": _write_transcript(tmp_path, [_ctx(t)]), "session_id": "S1"}
     assert len(h.check_context_budget(p(160_000), state)) == 1
-    assert h.check_context_budget(p(20_000), state) == []  # /clear ou compaction
-    assert len(h.check_context_budget(p(160_000), state)) == 1  # re-alerte
+    assert h.check_context_budget(p(20_000), state) == []  # /clear or compaction
+    assert len(h.check_context_budget(p(160_000), state)) == 1  # alerts again
 
 
 def test_stop_context_alert_goes_to_system_message_not_stderr(repo, monkeypatch, capsys, tmp_path):
@@ -719,19 +714,19 @@ def test_stop_context_alert_goes_to_system_message_not_stderr(repo, monkeypatch,
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     h.main()
     cap = capsys.readouterr()
-    assert "[contexte]" not in cap.err
+    assert "[context]" not in cap.err
     out = json.loads(cap.out.strip())
-    assert "[contexte]" in out["systemMessage"]
+    assert "[context]" in out["systemMessage"]
     assert "decision" not in out
 
-    # 2e Stop, meme niveau : pas de re-alerte (palier 50k par session)
+    # 2nd Stop, same level: no new alert (50k step per session)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     h.main()
     assert "systemMessage" not in capsys.readouterr().out
 
 
 def test_stop_context_state_keeps_concurrent_session_entry(repo, monkeypatch, capsys, tmp_path):
-    """Un autre Stop a ecrit warned.context['S2'] entre-temps : le save de S1 ne l'ecrase pas."""
+    """Another Stop wrote warned.context['S2'] in the meantime: S1's save does not overwrite it."""
     locks = h.load_locks()
     locks.setdefault("warned", {})["context"] = {"S2": 900_000}
     h.save_locks(locks)
@@ -757,9 +752,9 @@ def test_session_end_purges_context_state_without_alert(repo, monkeypatch, capsy
 
 
 def _run_stop(monkeypatch, capsys, session_id="S1"):
-    """Invoque h.main() comme le vrai hook Stop : stdin = payload JSON,
-    stdout capture (decision JSON eventuelle si le tour est bloque).
-    Pas de transcript_path -> check_context_budget no-op."""
+    """Invokes h.main() like the real Stop hook: stdin = JSON payload,
+    stdout captured (possible decision JSON if the turn is blocked).
+    No transcript_path -> check_context_budget no-op."""
     payload = {"hook_event_name": "Stop", "session_id": session_id}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     h.main()
@@ -768,11 +763,11 @@ def _run_stop(monkeypatch, capsys, session_id="S1"):
 
 
 def test_pause_move_not_reported_finished_keeps_lock(repo, monkeypatch, capsys):
-    """CURRENT_TASKS -> PAUSED n'est pas une cloture : pas de 'terminee' au
-    changelog, pas de purge du verrou live (cf. tache
+    """CURRENT_TASKS -> PAUSED is not a closure: no 'finished' in the
+    changelog, no purge of the live lock (see task
     add-paused-lifecycle-state, code review)."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     _write_single_task_batch(dirs, slugs=(slug,))
     (dirs["TODO"] / slug).unlink()
     (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
@@ -782,25 +777,25 @@ def test_pause_move_not_reported_finished_keeps_lock(repo, monkeypatch, capsys):
     h._register_task_lock(slug, "S1", locks, datetime.datetime.now(), sections)
     h.save_locks(locks)
 
-    _run_stop(monkeypatch, capsys)  # etablit le snapshot de reference (prev vide)
+    _run_stop(monkeypatch, capsys)  # establishes the reference snapshot (empty prev)
 
-    (dirs["CURRENT_TASKS"] / slug).replace(dirs["PAUSED"] / slug)  # simule le git mv de pause
+    (dirs["CURRENT_TASKS"] / slug).replace(dirs["PAUSED"] / slug)  # simulates the pause git mv
 
     _run_stop(monkeypatch, capsys)
 
     changelog = (ctx / "CHANGELOG_TACHES.md").read_text(encoding="utf-8")
-    assert f"**mise en pause** : `{slug}`" in changelog
-    assert "terminée" not in changelog
+    assert f"**paused**: `{slug}`" in changelog
+    assert "**finished**" not in changelog
     assert slug in h.load_locks()["sessions"]["S1"]["tasks"]
 
 
 def test_resumed_task_relabeled_and_rechecked_for_batch_collision(repo, monkeypatch, capsys):
-    """PAUSED -> CURRENT_TASKS est une reprise ('reprise (post-pause)'), pas
-    un premier demarrage, ET doit repasser sous check_batch_collisions comme
-    un vrai demarrage. Avant fix (code review) : `started` etait mute pour
-    exclure les taches reprises, donc jamais revalidees -> ce test bloquerait
-    a tort sur du code non fixe (pas de collision detectee) et confirme le
-    fix (collision bien detectee)."""
+    """PAUSED -> CURRENT_TASKS is a resume ('resumed (post-pause)'), not
+    a first start, AND must go through check_batch_collisions again like
+    a real start. Before the fix (code review): `started` was mutated to
+    exclude resumed tasks, hence never revalidated -> this test would wrongly block
+    on unfixed code (no collision detected) and confirms the
+    fix (collision properly detected)."""
     root, dirs, ctx = repo
     slug_a, slug_b = "task-a.md", "task-b.md"
     _write_single_task_batch(dirs, slugs=(slug_a, slug_b))
@@ -814,15 +809,15 @@ def test_resumed_task_relabeled_and_rechecked_for_batch_collision(repo, monkeypa
     h._register_task_lock(slug_b, "OTHER", locks, datetime.datetime.now(), sections)
     h.save_locks(locks)
 
-    _run_stop(monkeypatch, capsys, session_id="S1")  # baseline : task-a en PAUSED, task-b en CURRENT_TASKS
+    _run_stop(monkeypatch, capsys, session_id="S1")  # baseline: task-a in PAUSED, task-b in CURRENT_TASKS
 
-    (dirs["PAUSED"] / slug_a).replace(dirs["CURRENT_TASKS"] / slug_a)  # reprise post-pause
+    (dirs["PAUSED"] / slug_a).replace(dirs["CURRENT_TASKS"] / slug_a)  # post-pause resume
 
     decision = _run_stop(monkeypatch, capsys, session_id="S1")
 
     changelog = (ctx / "CHANGELOG_TACHES.md").read_text(encoding="utf-8")
-    assert f"**reprise (post-pause)** : `{slug_a}`" in changelog
-    assert f"**démarrée** : `{slug_a}`" not in changelog
+    assert f"**resumed (post-pause)**: `{slug_a}`" in changelog
+    assert f"**started**: `{slug_a}`" not in changelog
 
     assert decision is not None
     assert decision["decision"] == "block"
@@ -830,11 +825,11 @@ def test_resumed_task_relabeled_and_rechecked_for_batch_collision(repo, monkeypa
 
 
 def test_dup_paused_and_current_tasks_blocks(repo, monkeypatch, capsys):
-    """Reutilise l'invariant existant (jamais deux dossiers a la fois) pour
-    PAUSED : un slug present a la fois dans PAUSED/ et CURRENT_TASKS/ doit
-    bloquer le tour."""
+    """Reuses the existing invariant (never two folders at once) for
+    PAUSED: a slug present in both PAUSED/ and CURRENT_TASKS/ must
+    block the turn."""
     root, dirs, ctx = repo
-    slug = "ma-tache.md"
+    slug = "my-task.md"
     (dirs["CURRENT_TASKS"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
     (dirs["PAUSED"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
 
@@ -848,27 +843,27 @@ def test_dup_paused_and_current_tasks_blocks(repo, monkeypatch, capsys):
 def test_rotate_historique_entries_moves_old_entries_keeps_recent():
     cutoff = datetime.date(2026, 3, 1)
     text = (
-        "# Historique des tâches terminées\n\n"
+        "# History of finished tasks\n\n"
         "Intro.\n\n"
-        "## tache-vieille — 2025-01-10\n"
-        "Quoi : ancienne.\n\n"
-        "## tache-recente — 2026-08-20\n"
-        "Quoi : recente.\n\n"
+        "## old-task — 2025-01-10\n"
+        "What: ancienne.\n\n"
+        "## recent-task — 2026-08-20\n"
+        "What: recente.\n\n"
     )
     kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
-    assert slugs == ["tache-vieille"]
-    assert "tache-vieille" not in kept
-    assert "tache-recente" in kept
-    assert "Intro." in kept  # préambule jamais archivé
-    assert "tache-vieille" in archived
-    assert "tache-recente" not in archived
+    assert slugs == ["old-task"]
+    assert "old-task" not in kept
+    assert "recent-task" in kept
+    assert "Intro." in kept  # preamble never archived
+    assert "old-task" in archived
+    assert "recent-task" not in archived
 
 
 def test_rotate_historique_entries_ignores_undated_entries():
-    """En-tete sans date parseable (entree malformee) : jamais rotee a
-    l'aveugle, faute de pouvoir la comparer au cutoff."""
+    """Header with no parseable date (malformed entry): never rotated
+    blindly, since it cannot be compared to the cutoff."""
     cutoff = datetime.date(2026, 3, 1)
-    text = "# Historique\n\n## verif-fork-throwaway\nQuoi : sans date.\n\n"
+    text = "# Historique\n\n## verif-fork-throwaway\nWhat: no date.\n\n"
     kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
     assert slugs == []
     assert kept == text
@@ -876,30 +871,30 @@ def test_rotate_historique_entries_ignores_undated_entries():
 
 
 def test_rotate_historique_entries_ignores_entries_inside_html_comment():
-    """L'exemple de format documente en commentaire HTML (cf. HISTORIQUE.md
-    reel : bloc <!-- Exemple : ## <slug> — AAAA-MM-JJ ... -->) ne doit
-    jamais etre confondu avec une vraie entree a archiver."""
+    """The format example documented in an HTML comment (see real HISTORIQUE.md:
+    block <!-- Example: ## <slug> — YYYY-MM-DD ... -->) must
+    never be mistaken for a real entry to archive."""
     cutoff = datetime.date(2026, 3, 1)
     text = (
         "# Historique\n\n"
-        "<!-- Exemple :\n"
-        "## <slug de la tâche> — AAAA-MM-JJ\n"
-        "Quoi : ...\n"
+        "<!-- Example:\n"
+        "## <task slug> — YYYY-MM-DD\n"
+        "What: ...\n"
         "-->\n\n"
-        "## tache-reelle — 2025-01-10\n"
-        "Quoi : reelle.\n\n"
+        "## real-entry — 2025-01-10\n"
+        "What: reelle.\n\n"
     )
     kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
-    assert slugs == ["tache-reelle"]
-    assert "<!-- Exemple :" in kept  # le commentaire reste dans le fichier vivant
-    assert "<slug de la tâche>" in kept
-    assert "tache-reelle" not in kept
-    assert "tache-reelle" in archived
+    assert slugs == ["real-entry"]
+    assert "<!-- Example:" in kept  # the comment stays in the live file
+    assert "<task slug>" in kept
+    assert "real-entry" not in kept
+    assert "real-entry" in archived
 
 
 def test_rotate_historique_entries_no_op_when_nothing_old():
     cutoff = datetime.date(2020, 1, 1)
-    text = "# Historique\n\n## tache-recente — 2026-08-20\nQuoi : recente.\n\n"
+    text = "# Historique\n\n## recent-task — 2026-08-20\nWhat: recente.\n\n"
     kept, archived, slugs = h.rotate_historique_entries(text, cutoff)
     assert slugs == []
     assert kept == text
@@ -910,9 +905,9 @@ def test_rotate_historique_writes_archive_and_trims_live_file(repo, monkeypatch)
     root, dirs, ctx = repo
     histo = ctx / "HISTORIQUE.md"
     histo.write_text(
-        "# Historique des tâches terminées\n\nIntro.\n\n"
-        "## tache-vieille — 2025-01-10\nQuoi : ancienne.\n\n"
-        "## tache-recente — 2026-08-20\nQuoi : recente.\n\n",
+        "# History of finished tasks\n\nIntro.\n\n"
+        "## old-task — 2025-01-10\nWhat: ancienne.\n\n"
+        "## recent-task — 2026-08-20\nWhat: recente.\n\n",
         encoding="utf-8",
     )
     archive = ctx / "HISTORIQUE_ARCHIVE.md"
@@ -921,12 +916,12 @@ def test_rotate_historique_writes_archive_and_trims_live_file(repo, monkeypatch)
 
     rotated = h.rotate_historique(datetime.datetime(2026, 8, 29))
 
-    assert rotated == ["tache-vieille"]
+    assert rotated == ["old-task"]
     live = histo.read_text(encoding="utf-8")
-    assert "tache-vieille" not in live
-    assert "tache-recente" in live
+    assert "old-task" not in live
+    assert "recent-task" in live
     assert archive.exists()
-    assert "tache-vieille" in archive.read_text(encoding="utf-8")
+    assert "old-task" in archive.read_text(encoding="utf-8")
 
 
 def _seed_session_lock(root, slug, session_id="S1"):
@@ -938,12 +933,12 @@ def _seed_session_lock(root, slug, session_id="S1"):
 
 
 def test_stop_purges_lock_of_task_closed_in_worktree(repo, monkeypatch, capsys):
-    """Tache demarree ET close dans un worktree : le checkout principal ne l'a
-    jamais vue en CURRENT_TASKS/, donc jamais dans `finished` -> le verrou
-    restait indefiniment (session fantome dans crew_lock.json). Une tache
-    absente du checkout principal ET du worktree de la session est close."""
+    """Task started AND closed in a worktree: the main checkout never
+    saw it in CURRENT_TASKS/, so never in `finished` -> the lock
+    stayed forever (ghost session in crew_lock.json). A task
+    absent from the main checkout AND the session's worktree is closed."""
     root, dirs, ctx = repo
-    slug = "close-en-worktree.md"
+    slug = "closed-in-worktree.md"
     _seed_session_lock(root, slug)
 
     _run_stop(monkeypatch, capsys, session_id="OTHER")
@@ -953,7 +948,7 @@ def test_stop_purges_lock_of_task_closed_in_worktree(repo, monkeypatch, capsys):
 
 def test_stop_keeps_lock_of_task_current_in_session_worktree(repo, monkeypatch, capsys):
     root, dirs, ctx = repo
-    slug = "en-cours-worktree.md"
+    slug = "in-progress-worktree.md"
     wt_current = root.parent / f"{root.name}-batch-zone1" / "crew" / "CURRENT_TASKS"
     wt_current.mkdir(parents=True)
     (wt_current / slug).write_text(f"# {slug}\n", encoding="utf-8")
@@ -965,10 +960,10 @@ def test_stop_keeps_lock_of_task_current_in_session_worktree(repo, monkeypatch, 
 
 
 def test_stop_keeps_lock_of_task_still_in_main_todo(repo, monkeypatch, capsys):
-    """Worktree pas encore merge : la tache est encore dans TODO/ du checkout
-    principal -> toujours vivante, verrou conserve."""
+    """Worktree not merged yet: the task is still in TODO/ of the main
+    checkout -> still alive, lock kept."""
     root, dirs, ctx = repo
-    slug = "pas-encore-merge.md"
+    slug = "not-yet-merged.md"
     (dirs["TODO"] / slug).write_text(f"# {slug}\n", encoding="utf-8")
     _seed_session_lock(root, slug)
 
@@ -978,32 +973,32 @@ def test_stop_keeps_lock_of_task_still_in_main_todo(repo, monkeypatch, capsys):
 
 
 def test_purge_closed_task_locks_skipped_outside_main_checkout(repo, monkeypatch):
-    """Depuis un worktree (`.git` = fichier), ROOT ne voit pas l'etat crew du
-    checkout principal : ne rien purger plutot que de liberer un vrai verrou."""
+    """From a worktree (`.git` = file), ROOT does not see the crew state of the
+    main checkout: purge nothing rather than release a real lock."""
     root, dirs, ctx = repo
     worktree_root = root.parent / f"{root.name}-wt"
     (worktree_root / "crew" / "TODO").mkdir(parents=True)
     (worktree_root / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
     monkeypatch.setattr(h, "ROOT", worktree_root)
-    locks = {"sessions": {"S1": {"tasks": ["inconnue.md"], "worktree": None}}}
+    locks = {"sessions": {"S1": {"tasks": ["unknown.md"], "worktree": None}}}
 
     assert h.purge_closed_task_locks(locks) == []
-    assert locks["sessions"]["S1"]["tasks"] == ["inconnue.md"]
+    assert locks["sessions"]["S1"]["tasks"] == ["unknown.md"]
 
 
 def _write_two_overlapping_batches(slug_a="task-a.md", slug_b="task-b.md"):
-    """Deux batchs dont les `Zone :` se chevauchent (`shared/` vs `shared/x.py`).
-    Ne cree aucun fichier de tache : chaque test place a et b ou il veut."""
+    """Two batches whose `Zone :` entries overlap (`shared/` vs `shared/x.py`).
+    Creates no task file: each test places a and b where it wants."""
     h.BATCH_FILE.write_text(
         "# Batching\n\n"
-        f"## Batch A · ⏳ pas démarré\n\nZone : `shared/`\n\n- `{slug_a}`\n\n"
-        f"## Batch B · ⏳ pas démarré\n\nZone : `shared/x.py`\n\n- `{slug_b}`\n",
+        f"## Batch A · ⏳ not started\n\nZone : `shared/`\n\n- `{slug_a}`\n\n"
+        f"## Batch B · ⏳ not started\n\nZone : `shared/x.py`\n\n- `{slug_b}`\n",
         encoding="utf-8",
     )
 
 
 def _lock_sessions(root, by_session):
-    """crew_lock.json avec une session live par entree {session_id: [slugs]}."""
+    """crew_lock.json with one live session per entry {session_id: [slugs]}."""
     since = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
     h.save_locks({"sessions": {
         sid: {"batch": None, "tasks": list(tasks), "worktree": f"../{root.name}-batch-{sid.lower()}",
@@ -1013,10 +1008,10 @@ def _lock_sessions(root, by_session):
 
 
 def test_zone_overlap_ignores_batches_with_only_todo_tasks(repo, monkeypatch, capsys):
-    """Faux positif constate (voyageo/time2cook) : deux batchs « pas demarre »
-    dont toutes les taches sont en TODO/ etaient traites comme actifs ->
-    avertissement `[zone]` a chaque tour. Actif = >=1 tache en
-    CURRENT_TASKS/PAUSED ou tenue par un verrou (CLAUDE.md § Batching)."""
+    """False positive observed (voyageo/time2cook): two 'not started' batches
+    whose tasks are all in TODO/ were treated as active ->
+    a `[zone]` warning every turn. Active = >=1 task in
+    CURRENT_TASKS/PAUSED or held by a lock (crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Batching)."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     for s in ("task-a.md", "task-b.md"):
@@ -1028,8 +1023,8 @@ def test_zone_overlap_ignores_batches_with_only_todo_tasks(repo, monkeypatch, ca
 
 
 def test_zone_overlap_warns_when_both_batches_in_progress(repo, monkeypatch, capsys):
-    """Garde-fou conserve : un batch en CURRENT_TASKS et l'autre en PAUSED
-    (pause = toujours actif) se chevauchant -> avertissement."""
+    """Safeguard kept: one batch in CURRENT_TASKS and the other in PAUSED
+    (pause = still active) overlapping -> warning."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     (dirs["CURRENT_TASKS"] / "task-a.md").write_text("# a\n", encoding="utf-8")
@@ -1041,16 +1036,16 @@ def test_zone_overlap_warns_when_both_batches_in_progress(repo, monkeypatch, cap
 
 
 def test_zone_overlap_counts_task_locked_from_worktree(repo, monkeypatch, capsys):
-    """Tache demarree dans un worktree de batch : encore en TODO/ dans le
-    checkout principal, mais tenue par un verrou live -> son batch est actif."""
+    """Task started in a batch worktree: still in TODO/ in the main
+    checkout, but held by a live lock -> its batch is active."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     (dirs["TODO"] / "task-a.md").write_text("# a\n", encoding="utf-8")
     (dirs["CURRENT_TASKS"] / "task-b.md").write_text("# b\n", encoding="utf-8")
     _lock_sessions(root, {"WT": ["task-a.md"]})
 
-    # S1 (session du tour) s'approprie task-b via le fallback `started` :
-    # chevauchement cross-session -> bloquant (stdout) plutot qu'avertissement.
+    # S1 (the turn's session) takes over task-b via the `started` fallback:
+    # cross-session overlap -> blocking (stdout) rather than a warning.
     decision = _run_stop(monkeypatch, capsys, session_id="S1")
 
     assert decision and decision.get("decision") == "block", decision
@@ -1058,9 +1053,9 @@ def test_zone_overlap_counts_task_locked_from_worktree(repo, monkeypatch, capsys
 
 
 def test_zone_overlap_does_not_block_uninvolved_third_session(repo, monkeypatch, capsys):
-    """Deux batchs en collision verrouilles par S1 et S2 : une 3e session S3,
-    etrangere aux deux, ne doit pas etre bloquee (elle ne peut rien y faire ;
-    la bloquer boucle Stop->reinvoke). Avertissement seulement."""
+    """Two colliding batches locked by S1 and S2: a 3rd session S3,
+    foreign to both, must not be blocked (it can do nothing about it;
+    blocking it loops Stop->reinvoke). Warning only."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     for s in ("task-a.md", "task-b.md"):
@@ -1073,7 +1068,7 @@ def test_zone_overlap_does_not_block_uninvolved_third_session(repo, monkeypatch,
 
 
 def test_zone_overlap_blocks_involved_session(repo, monkeypatch, capsys):
-    """Meme collision, vue par S1 (impliquee) : blocage conserve."""
+    """Same collision, seen by S1 (involved): blocking kept."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     for s in ("task-a.md", "task-b.md"):
@@ -1086,22 +1081,22 @@ def test_zone_overlap_blocks_involved_session(repo, monkeypatch, capsys):
 
 
 def test_in_progress_task_slugs_ignores_expired_session_lock(repo):
-    """Une session morte (since > LOCK_TTL, pas encore purgee : dashboard ou
-    lecture hors Stop) ne doit pas rendre son batch actif."""
+    """A dead session (since > LOCK_TTL, not purged yet: dashboard or
+    non-Stop read) must not make its batch active."""
     root, dirs, ctx = repo
     old = (datetime.datetime.now() - h.LOCK_TTL - datetime.timedelta(minutes=1)).isoformat()
     fresh = (datetime.datetime.now() - datetime.timedelta(minutes=5)).isoformat()
     locks = {"sessions": {
-        "DEAD": {"tasks": ["morte.md"], "since": old},
-        "LIVE": {"tasks": ["vivante.md"], "since": fresh},
+        "DEAD": {"tasks": ["dead.md"], "since": old},
+        "LIVE": {"tasks": ["alive.md"], "since": fresh},
     }}
 
-    assert h.in_progress_task_slugs(locks) == {"vivante.md"}
+    assert h.in_progress_task_slugs(locks) == {"alive.md"}
 
 
 def test_check_zone_overlaps_observer_view_blocks_cross_session(repo):
-    """observer=True (dashboard) : vue observateur, tout conflit
-    cross-session reste signale comme bloquant."""
+    """observer=True (dashboard): observer view, any
+    cross-session conflict is still reported as blocking."""
     root, dirs, ctx = repo
     _write_two_overlapping_batches()
     _lock_sessions(root, {"S1": ["task-a.md"], "S2": ["task-b.md"]})
@@ -1113,7 +1108,7 @@ def test_check_zone_overlaps_observer_view_blocks_cross_session(repo):
     assert blocking and not warnings
 
 
-# --- Verrou partage entre checkout principal et worktrees (tache verrou-partage-worktrees) ---
+# --- Lock shared between the main checkout and worktrees (task verrou-partage-worktrees) ---
 
 def _fake_main(tmp_path, with_crew=True):
     main = tmp_path / "main"
@@ -1178,8 +1173,8 @@ def test_main_root_fallback_unreadable_git_file(tmp_path):
 
 
 def _as_checkout(monkeypatch, root, main):
-    """Fait pointer le module sur `root` (checkout principal ou worktree) comme
-    si le hook y tournait : ROOT/CTX/BATCH_FILE locaux, verrou partage."""
+    """Points the module at `root` (main checkout or worktree) as
+    if the hook were running there: local ROOT/CTX/BATCH_FILE, shared lock."""
     monkeypatch.setattr(h, "ROOT", root)
     monkeypatch.setattr(h, "MAIN_ROOT", main)
     monkeypatch.setattr(h, "CTX", root / "crew" / "CLAUDE_CONTEXT")
@@ -1283,13 +1278,13 @@ def test_legacy_worktree_lock_merged_then_removed(tmp_path, monkeypatch):
 
     sessions = h.load_locks()["sessions"]
     assert sessions["A"]["tasks"] == ["a.md"]
-    assert sessions["B"]["tasks"] == ["new-b.md"]  # since le plus recent gagne
+    assert sessions["B"]["tasks"] == ["new-b.md"]  # the most recent since wins
     assert sessions["C"]["tasks"] == ["c.md"]
     assert not legacy.exists()
 
 
 def test_task_state_snapshot_stays_local():
-    """SNAP (diff d'etat par checkout) reste sous ROOT ; seul le verrou migre."""
+    """SNAP (per-checkout state diff) stays under ROOT; only the lock migrates."""
     assert h.SNAP == h.ROOT / "crew" / "CLAUDE_CONTEXT" / ".task_state.json"
     assert h.LOCKS_FILE == h.MAIN_ROOT / "crew" / "CLAUDE_CONTEXT" / "crew_lock.json"
 
@@ -1301,7 +1296,7 @@ def test_main_root_fallback_main_without_claude_context(tmp_path):
     assert h._resolve_main_root(wt) == wt
 
 
-# --- identite de batch independante du statut (header tronque au premier " · ") ---
+# --- batch identity independent of the status (header truncated at the first " · ") ---
 
 def _status_sections(status):
     header = f"Batch Yuna · {status}" if status else "Batch Yuna"
@@ -1309,45 +1304,45 @@ def _status_sections(status):
 
 
 def test_batch_key_strips_status_suffix():
-    assert h._batch_key("Batch Yuna déterminisme · 🔄 en cours (prochaine : 04)") == "Batch Yuna déterminisme"
+    assert h._batch_key("Batch Yuna determinism · 🔄 in progress (next: 04)") == "Batch Yuna determinism"
     assert h._batch_key("Batch A — Audit ECC : tokens") == "Batch A — Audit ECC : tokens"
-    assert h._batch_key("  Batch X  ·  pas démarré ") == "Batch X"
+    assert h._batch_key("  Batch X  ·  not started ") == "Batch X"
 
 
 def test_header_status_change_no_incoherence(capsys):
     now = datetime.datetime(2026, 10, 3, 10, 0, 0)
     locks = {"sessions": {}}
-    h._register_task_lock("a.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 04)"))
-    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 05)"))
-    assert "incoherence" not in capsys.readouterr().err
+    h._register_task_lock("a.md", "S1", locks, now, _status_sections("🔄 in progress (next: 04)"))
+    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 in progress (next: 05)"))
+    assert "inconsistency" not in capsys.readouterr().err
     assert locks["sessions"]["S1"]["batch"] == "Batch Yuna"
 
 
 def test_worktree_slug_stable_across_status_change():
-    assert h._worktree_paths_for("Batch Yuna · pas démarré") == h._worktree_paths_for(
-        "Batch Yuna · 🔄 en cours (prochaine : 04)")
-    assert h._batch_slug("Batch Yuna · pas démarré") == "yuna"
+    assert h._worktree_paths_for("Batch Yuna · not started") == h._worktree_paths_for(
+        "Batch Yuna · 🔄 in progress (next: 04)")
+    assert h._batch_slug("Batch Yuna · not started") == "yuna"
 
 
 def test_legacy_long_batch_key_matches_normalized(capsys):
     now = datetime.datetime(2026, 10, 3, 10, 0, 0)
-    legacy = "Batch Yuna · 🔄 en cours (prochaine : 04)"
+    legacy = "Batch Yuna · 🔄 in progress (next: 04)"
     locks = {"sessions": {"S1": {"batch": legacy, "tasks": ["a.md"], "worktree": None,
                                   "branch": None, "since": now.isoformat()}}}
-    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 en cours (prochaine : 05)"))
-    assert "incoherence" not in capsys.readouterr().err
+    h._register_task_lock("b.md", "S1", locks, now, _status_sections("🔄 in progress (next: 05)"))
+    assert "inconsistency" not in capsys.readouterr().err
 
 
 def test_different_batch_still_triggers_incoherence(capsys):
     now = datetime.datetime(2026, 10, 3, 10, 0, 0)
-    locks = {"sessions": {"S1": {"batch": "Batch Other · pas démarré", "tasks": ["x.md"],
+    locks = {"sessions": {"S1": {"batch": "Batch Other · not started", "tasks": ["x.md"],
                                   "worktree": None, "branch": None, "since": now.isoformat()}}}
-    h._register_task_lock("a.md", "S1", locks, now, _status_sections("pas démarré"))
-    assert "incoherence" in capsys.readouterr().err
-    assert locks["sessions"]["S1"]["batch"] == "Batch Other · pas démarré"
+    h._register_task_lock("a.md", "S1", locks, now, _status_sections("not started"))
+    assert "inconsistency" in capsys.readouterr().err
+    assert locks["sessions"]["S1"]["batch"] == "Batch Other · not started"
 
 
-# --- marqueur .gate_armed (pre-filtre shell du hook PreToolUse) -------------
+# --- .gate_armed marker (shell pre-filter of the PreToolUse hook) -------------
 
 def _sess(worktree=None):
     return {"batch": None, "tasks": [], "worktree": worktree, "branch": None,
@@ -1375,18 +1370,18 @@ def test_gate_marker_idempotent_and_tolerates_errors(repo, monkeypatch):
     root, dirs, ctx = repo
     two = {"sessions": {"A": _sess(), "B": _sess()}}
     h.save_locks(two)
-    h.save_locks(two)  # re-armer ne leve rien
+    h.save_locks(two)  # re-arming raises nothing
     assert (ctx / ".gate_armed").exists()
-    # Marqueur illisible/impossible a ecrire : best-effort, jamais d'exception.
+    # Unreadable/unwritable marker: best-effort, never an exception.
     (ctx / ".gate_armed").unlink()
-    (ctx / ".gate_armed").mkdir()  # un dossier a la place du fichier -> unlink/write echouent
+    (ctx / ".gate_armed").mkdir()  # a folder in place of the file -> unlink/write fail
     h.save_locks({"sessions": {"A": _sess()}})
-    h.save_locks(two)  # ne leve pas non plus
+    h.save_locks(two)  # does not raise either
 
 
 def test_gate_marker_armed_in_main_and_each_registered_worktree(repo):
-    """Le pre-filtre shell teste $CLAUDE_PROJECT_DIR/... (= worktree courant) alors
-    que le verrou vit dans le principal : le marqueur doit etre pose aux deux."""
+    """The shell pre-filter tests $CLAUDE_PROJECT_DIR/... (= current worktree) while
+    the lock lives in the main checkout: the marker must be set in both."""
     root, dirs, ctx = repo
     wt_a = root.parent / f"{root.name}-batch-a"
     wt_b = root.parent / f"{root.name}-batch-b"
@@ -1398,15 +1393,15 @@ def test_gate_marker_armed_in_main_and_each_registered_worktree(repo):
     for wt in (wt_a, wt_b):
         assert (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
     assert (ctx / ".gate_armed").exists()
-    # Retour a 1 session : marqueurs retires partout, y compris le worktree
-    # de la session qui vient de disparaitre du lock.
+    # Back to 1 session: markers removed everywhere, including the worktree
+    # of the session that just disappeared from the lock.
     h.save_locks({"sessions": {"A": _sess(f"../{root.name}-batch-a")}})
     for wt in (wt_a, wt_b):
         assert not (wt / "crew" / "CLAUDE_CONTEXT" / ".gate_armed").exists()
     assert not (ctx / ".gate_armed").exists()
 
 
-# --- escape hatch CREW_HOOK_PROFILE=minimal --------------------------------
+# --- CREW_HOOK_PROFILE=minimal escape hatch -------------------------------
 
 def _run_main_pretooluse(monkeypatch):
     calls = []
@@ -1429,7 +1424,7 @@ def test_profile_default_runs_pretooluse_gate(repo, monkeypatch):
 
 
 def test_profile_minimal_keeps_stop_sync(repo, monkeypatch):
-    """Stop/SessionEnd continuent sous `minimal` (index, verrous) : seul PreToolUse saute."""
+    """Stop/SessionEnd keep running under `minimal` (index, locks): only PreToolUse is skipped."""
     monkeypatch.setenv("CREW_HOOK_PROFILE", "minimal")
     called = []
     monkeypatch.setattr(h, "regen_index", lambda name, d: called.append(name) or [])
@@ -1441,7 +1436,7 @@ def test_profile_minimal_keeps_stop_sync(repo, monkeypatch):
     assert called
 
 
-# --- SessionStart : digest crew (tache continuite-session-sessionstart-precompact) ---
+# --- SessionStart: crew digest (task continuite-session-sessionstart-precompact) ---
 
 def _digest_kwargs(**over):
     base = dict(current=[], paused=[], batches=[], other_locks=[], warnings=[], history=[])
@@ -1451,16 +1446,16 @@ def _digest_kwargs(**over):
 
 def test_digest_content_and_order():
     d = h.build_session_digest(**_digest_kwargs(
-        current=[("a.md", "Tache A", 1, 4)],
-        paused=[("p.md", "Tache P", 0, 2)],
+        current=[("a.md", "Task A", 1, 4)],
+        paused=[("p.md", "Task P", 0, 2)],
         batches=[("Batch X", "`src/`")],
         other_locks=["S2: b.md"],
-        warnings=["[batch] Tache non categorisee : `z.md`"],
-        history=["2026-10-01 — fait Y"],
+        warnings=["[batch] Task not categorized : `z.md`"],
+        history=["2026-10-01 — done Y"],
     ))
-    for needle in ("a.md", "Tache A", "1/4", "p.md", "Batch X", "`src/`", "S2: b.md", "z.md", "fait Y"):
+    for needle in ("a.md", "Task A", "1/4", "p.md", "Batch X", "`src/`", "S2: b.md", "z.md", "done Y"):
         assert needle in d
-    pos = [d.index(n) for n in ("a.md", "p.md", "Batch X", "S2: b.md", "z.md", "fait Y")]
+    pos = [d.index(n) for n in ("a.md", "p.md", "Batch X", "S2: b.md", "z.md", "done Y")]
     assert pos == sorted(pos)
 
 
@@ -1480,7 +1475,7 @@ def test_digest_empty_crew_is_one_line():
 
 def test_session_digest_reads_files_readonly(repo, monkeypatch):
     root, dirs, ctx = repo
-    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n\n- [x] one\n- [ ] two\n", encoding="utf-8")
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Task A\n\n- [x] one\n- [ ] two\n", encoding="utf-8")
     h.BATCH_FILE.write_text("# Batching\n\n## Batch A — X\n\nZone : `src/`\n\n1. `a.md` — t\n", encoding="utf-8")
     (ctx / "HISTORIQUE.md").write_text("# Historique\n\n## H4 newest\n\n## H3\n\n## H2\n\n## H1 oldest\n", encoding="utf-8")
     before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
@@ -1506,6 +1501,55 @@ def test_main_sessionstart_off_switch_is_silent(repo, monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
+def _run_sessionstart(monkeypatch, capsys, **extra):
+    monkeypatch.delenv("CREW_SESSION_DIGEST", raising=False)
+    payload = {"hook_event_name": "SessionStart", "session_id": "S1", "source": "startup", **extra}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    h.main()
+    return json.loads(capsys.readouterr().out)["hookSpecificOutput"]
+
+
+def test_sessionstart_title_from_single_unlocked_current_task(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "a1"
+
+
+def test_sessionstart_title_prefers_own_lock_over_others(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "CURRENT_TASKS", "b1.md")
+    now = datetime.datetime.now().isoformat()
+    h.save_locks({"sessions": {
+        "S1": {"batch": None, "tasks": ["b1.md"], "worktree": None, "branch": None, "since": now},
+        "S2": {"batch": None, "tasks": ["a1.md"], "worktree": None, "branch": None, "since": now},
+    }})
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "b1"
+
+
+def test_sessionstart_color_title_when_ambiguous_or_after_clear(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "CURRENT_TASKS", "b1.md")
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] in h.SESSION_COLORS
+    assert _run_sessionstart(monkeypatch, capsys, source="clear")["sessionTitle"] in h.SESSION_COLORS
+    # a single task takes priority over the color
+    (dirs["CURRENT_TASKS"] / "b1.md").unlink()
+    assert _run_sessionstart(monkeypatch, capsys)["sessionTitle"] == "a1"
+
+
+def test_sessionstart_no_title_when_user_named_or_compact(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, session_title="my name")
+    assert "sessionTitle" not in _run_sessionstart(monkeypatch, capsys, source="compact")
+
+
+def test_session_color_is_stable_per_session_id():
+    assert h.session_color("S1") == h.session_color("S1")
+    assert len({h.session_color(f"S{i}") for i in range(40)}) > 1
+
+
 def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
     monkeypatch.setattr(h, "CREW", tmp_path / "absent")
     assert h.session_digest("S1") is None
@@ -1513,7 +1557,7 @@ def test_session_digest_none_without_crew_dir(repo, monkeypatch, tmp_path):
 
 def test_session_digest_survives_unreadable_batch_file(repo):
     root, dirs, ctx = repo
-    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Tache A\n- [ ] x\n", encoding="utf-8")
+    (dirs["CURRENT_TASKS"] / "a.md").write_text("# Task A\n- [ ] x\n", encoding="utf-8")
     h.BATCH_FILE.write_bytes(bytes([0xff, 0xfe, 0, 0x62]))
     assert "a.md" in h.session_digest("S1")
 
@@ -1521,3 +1565,447 @@ def test_session_digest_survives_unreadable_batch_file(repo):
 def test_digest_tiny_cap_never_exceeds():
     d = h.build_session_digest(**_digest_kwargs(current=[("a.md", "T", 0, 1)]), cap=10)
     assert len(d) <= 10
+
+
+# --- next-task: deterministic task choice for /crew-start -----------
+
+def _batch_md(*sections):
+    return "# Batching\n\n" + "\n".join(sections)
+
+
+def _sec(name, zone, *slugs):
+    refs = "\n".join(f"{i}. `{s}` — t" for i, s in enumerate(slugs, 1))
+    return f"## Batch {name}\n\nZone : `{zone}`\n\n{refs}\n"
+
+
+def _put(dirs, folder, slug, body="# T\n- [ ] x\n"):
+    (dirs[folder] / slug).write_text(body, encoding="utf-8")
+
+
+def _lock(ctx, sid, tasks):
+    data = {"sessions": {sid: {"batch": None, "tasks": tasks, "worktree": None, "branch": None,
+                               "since": datetime.datetime.now().isoformat()}}}
+    (ctx / "crew_lock.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_next_task_nothing_when_all_empty(repo):
+    assert h.next_task("S1")["action"] == "none"
+
+
+def test_next_task_starts_first_todo_of_first_inactive_batch(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    for s in ("a2.md", "a1.md", "b1.md"):
+        _put(dirs, "TODO", s)
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "a1.md")  # batch order, not alphabetical/reversed
+    assert r["batch"].startswith("Batch A")
+    assert r["worktree"].endswith("-batch-a") and r["branch"] == "crew/batch-a"
+
+
+def test_next_task_resumes_current_task_not_locked(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("resume", "a1.md")
+
+
+def test_next_task_resume_prefers_most_advanced(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n- [ ] z\n")
+    _put(dirs, "CURRENT_TASKS", "a2.md", "# T\n- [x] x\n- [x] y\n- [ ] z\n")
+    assert h.next_task("S1")["task"] == "a2.md"
+
+
+def test_next_task_locked_current_falls_back_to_independent_todo(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "TODO", "b1.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "b1.md")
+    assert any(s["slug"] == "a1.md" and "lock" in s["reason"] for s in r["skipped"])
+
+
+def test_next_task_own_lock_is_not_a_conflict(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _lock(ctx, "S1", ["a1.md"])
+    assert h.next_task("S1")["action"] == "resume"
+
+
+def test_next_task_skips_batch_active_in_other_session_even_for_todo_sibling(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "TODO", "a2.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {s["slug"] for s in r["skipped"]} >= {"a1.md", "a2.md"}
+
+
+def test_next_task_skips_batch_with_paused_task(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "PAUSED", "a1.md")
+    _put(dirs, "TODO", "a2.md")
+    _put(dirs, "TODO", "b1.md")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "b1.md")
+    assert r["paused"] == ["a1.md"]
+
+
+def test_next_task_skips_candidate_whose_zone_overlaps_active_batch(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "src/b/", "b1.md"), _sec("C", "docs/", "c1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _lock(ctx, "OTHER", ["a1.md"])
+    _put(dirs, "TODO", "b1.md")
+    _put(dirs, "TODO", "c1.md")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "c1.md")
+    assert any(s["slug"] == "b1.md" and "overlaps" in s["reason"] for s in r["skipped"])
+
+
+def test_next_task_unclassified_todo_asks_classification(repo):
+    root, dirs, ctx = repo
+    # "À classer" is the literal French section header the engine parses
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/")) + "\n## À classer\n\n- `orphan.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "orphan.md")
+    _put(dirs, "TODO", "other-orphan.md")
+    r = h.next_task("S1")
+    assert r["action"] == "classify"
+    assert r["unclassified"] == ["orphan.md", "other-orphan.md"]
+
+
+def test_next_task_ignores_index_readme_and_icebox(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "ICEBOX", "a1.md")
+    assert h.next_task("S1")["action"] == "none"
+
+
+def test_next_task_is_readonly(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    h.next_task("S1")
+    assert before == {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+
+
+def test_main_next_task_cli_prints_json(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    monkeypatch.setattr(sys, "argv", ["crew_hook.py", "next-task"])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "S1")
+    h.main()
+    assert json.loads(capsys.readouterr().out)["task"] == "a1.md"
+
+
+# --- count / status: deterministic reports (crew-count / crew-status skills) ---
+
+def test_count_launchable_active_and_overlap(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/a/", "a1.md"),
+        _sec("B", "src/", "b1.md"),          # overlaps A (active) -> excluded
+        _sec("C", "docs/", "c1.md"),
+        _sec("D", "docs/guide/", "d1.md"),   # overlaps C (launchable) -> excluded
+        _sec("E", "x/", "e1.md") .replace("`e1.md`", "~~`e1.md`~~"),  # all struck through -> ignored
+    ), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    for s in ("b1.md", "c1.md", "d1.md"):
+        _put(dirs, "TODO", s)
+    r = h.count_batches()
+    assert r["launchable_count"] == 1
+    assert [b["name"] for b in r["launchable"]] == ["Batch C"]
+    assert [b["name"] for b in r["active"]] == ["Batch A"]
+    ex = {b["name"]: b["reason"] for b in r["excluded"]}
+    assert "overlaps" in ex["Batch B"] and "overlaps" in ex["Batch D"]
+    assert "Batch E" not in ex and r["launchable"][0]["remaining"] == 1
+
+
+def test_count_ignores_template_placeholders_and_reports_them(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("<A>", "<files/modules>", "<slug>.md")), encoding="utf-8")
+    r = h.count_batches()
+    assert r["launchable_count"] == 0 and r["placeholders"] == ["Batch <A>"]
+
+
+def test_status_reports_current_paused_orphans_and_overlaps(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n- [x] x\n- [ ] y\n")
+    _put(dirs, "PAUSED", "b1.md")
+    _put(dirs, "TODO", "orphan.md")
+    (dirs["TESTS/IA"] / "feat.md").write_text("- [x] ok\n- [ ] todo\n", encoding="utf-8")
+    (dirs["TESTS/IA"] / "done.md").write_text("- [x] ok\n", encoding="utf-8")
+    r = h.crew_status()
+    assert r["current"] == [{"slug": "a1.md", "done": 1, "total": 2}]
+    assert r["paused"] == ["b1.md"]
+    assert r["todo_orphans"] == ["orphan.md"]
+    assert r["tests_ia_unchecked"] == [{"file": "feat.md", "unchecked": 1}]
+    assert [b["name"] for b in r["active_batches"]] == ["Batch A", "Batch B"]
+    assert len(r["zone_overlaps"]) == 1
+
+
+def test_status_is_readonly(repo):
+    root, dirs, ctx = repo
+    before = {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+    h.crew_status(); h.count_batches()
+    assert before == {p: p.read_bytes() for p in (root / "crew").rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("cmd", ["count", "status"])
+def test_main_report_cli_prints_json(repo, monkeypatch, capsys, cmd):
+    monkeypatch.setattr(sys, "argv", ["crew_hook.py", cmd])
+    h.main()
+    assert isinstance(json.loads(capsys.readouterr().out), dict)
+
+
+def test_count_report_gives_exact_count_and_session_titles(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"),
+                                      _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    r = h.count_batches()
+    assert [b["task"] for b in r["launchable"]] == ["a1", "b1"]
+    assert r["report"].startswith("**2 terminals in parallel**")
+    assert "| `a1` | Batch A | src/a/ |" in r["report"]
+
+
+# --- Local ignore list: another dev's tasks that /crew-start must not start ---
+
+@pytest.fixture
+def ign(repo, monkeypatch):
+    root, dirs, ctx = repo
+    monkeypatch.setattr(h, "IGNORED_FILE", ctx / "crew_ignored.json", raising=False)
+    return dirs
+
+
+def test_ignore_snapshot_makes_next_task_skip_existing_todo(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    _put(ign, "TODO", "a2.md")
+    assert h.ignore_cli(["snapshot", "--owner", "Bob"])["ok"] is True
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in r["skipped"]
+
+
+def test_ignore_snapshot_leaves_later_todo_startable(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "mine.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    _put(ign, "TODO", "mine.md")  # added after the snapshot
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "mine.md")
+
+
+def test_ignored_todo_is_not_reported_unclassified(ign):
+    _put(ign, "TODO", "orphan.md")  # in no batch
+    assert h.next_task("S1")["unclassified"] == ["orphan.md"]
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    r = h.next_task("S1")
+    assert r["unclassified"] == [] and r["action"] == "none"
+
+
+def test_ignore_remove_makes_task_startable_again(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["remove", "a1.md"])["ignored"] == []
+    assert h.next_task("S1")["task"] == "a1.md"
+
+
+def test_ignore_add_list_and_idempotent_snapshot(ign):
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["add", "x.md"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["list"])["ignored"] == ["a1.md", "x.md"]
+
+
+def test_ignore_cli_rejects_unknown_subcommand_and_missing_slug(ign):
+    assert h.ignore_cli(["nope"])["ok"] is False
+    assert h.ignore_cli(["add"])["ok"] is False
+    assert h.ignore_cli([])["ok"] is False
+
+
+def test_ignore_corrupt_file_degrades_to_empty(ign):
+    h.IGNORED_FILE.write_text("{not json", encoding="utf-8")
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    assert h.next_task("S1")["task"] == "a1.md"
+
+
+# --- Collab mode: dev name + remote claims, switched on by /crew-collab only ---
+
+def _cfg(ctx):
+    return (ctx / "CREW_CONFIG.md").read_text(encoding="utf-8")
+
+
+def test_collab_on_enables_claims_and_sets_owner_name(ign):
+    assert h.claims_enabled() is False
+    r = h.collab_cli(["on", "--name", "Dana"])
+    assert r["ok"] is True and r["name"] == "Dana"
+    assert h.claims_enabled() is True
+    assert h._claims_identity() == "Dana"
+
+
+def test_collab_on_keeps_other_config_lines_and_is_idempotent(ign):
+    cfg = h.CTX / "CREW_CONFIG.md"
+    cfg.write_text("# My config\n\nremote_claims : false\nclaims_remote : upstream\n", encoding="utf-8")
+    h.collab_cli(["on", "--name", "A"])
+    h.collab_cli(["on", "--name", "B"])
+    txt = _cfg(h.CTX)
+    assert txt.count("remote_claims") == 1 and txt.count("collab_name") == 1
+    assert "# My config" in txt and "claims_remote : upstream" in txt
+    assert h._claims_identity() == "B"
+
+
+@pytest.mark.parametrize("argv", [["on"], ["on", "--name", "   "], ["on", "--name", "a\nremote_claims : false"], ["on", "--name", "x" * 200]])
+def test_collab_on_rejects_missing_or_unsafe_name(ign, argv):
+    assert h.collab_cli(argv)["ok"] is False
+    assert not (h.CTX / "CREW_CONFIG.md").exists() or h.claims_enabled() is False
+
+
+def test_collab_off_resets_to_base_form(ign):
+    _put(ign, "TODO", "a1.md")
+    h.collab_cli(["on", "--name", "Dana"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.collab_cli(["off"])["ok"] is True
+    assert h.claims_enabled() is False
+    assert "collab_name" not in _cfg(h.CTX)
+    assert not h.IGNORED_FILE.exists()
+    assert h._claims_identity() != "Dana"
+
+
+def test_collab_status_reports_mode_name_and_ignored_count(ign):
+    off = h.collab_cli(["status"])
+    assert (off["ok"], off["collab"]) == (True, False)
+    _put(ign, "TODO", "a1.md")
+    h.collab_cli(["on", "--name", "Dana"])
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    on = h.collab_cli(["status"])
+    assert (on["collab"], on["name"], on["ignored"]) == (True, "Dana", 1)
+    assert on["people"] == [{"name": "Bob", "tasks": 1, "me": False}]
+
+
+def test_ignore_snapshot_owner_is_named_in_skip_reason_and_list(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    assert h.ignore_cli(["snapshot", "--owner", "Bob"])["ok"] is True
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in h.next_task("S1")["skipped"]
+    h.ignore_cli(["snapshot"])  # without --owner: keeps the known owner
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+
+
+def test_ignore_off_deletes_the_file(ign):
+    _put(ign, "TODO", "a1.md")
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.IGNORED_FILE.exists()
+    assert h.ignore_cli(["off"])["ignored"] == []
+    assert not h.IGNORED_FILE.exists()
+    assert h.ignore_cli(["off"])["ok"] is True  # idempotent
+
+
+# --- Per-task owner: mention in the TODO, remote claim, else --owner ---
+
+def test_snapshot_uses_owner_mention_written_in_the_todo(ign):
+    _put(ign, "TODO", "a1.md", body="# T\n- **Owner** : Alice\n- [ ] x\n")
+    # "Assigné à" is a French owner alias still accepted by the engine
+    _put(ign, "TODO", "a2.md", body="# T\nAssigné à : Bob\n- [ ] x\n")
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == []
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "Bob": 1}
+
+
+def test_snapshot_skips_tasks_marked_with_my_own_name(ign):
+    h.collab_cli(["on", "--name", "Dana"])
+    _put(ign, "TODO", "mine.md", body="# T\nOwner : dana\n- [ ] x\n")
+    _put(ign, "TODO", "theirs.md", body="# T\nOwner : Alice\n- [ ] x\n")
+    h.ignore_cli(["snapshot"])
+    assert h.ignore_cli(["list"])["ignored"] == ["theirs.md"]
+
+
+def test_snapshot_ignores_unmarked_by_default_as_unassigned_and_owner_option_names_them(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "plain.md")), encoding="utf-8")
+    _put(ign, "TODO", "marked.md", body="# T\nOwner : Alice\n- [ ] x\n")
+    _put(ign, "TODO", "plain.md")
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == ["plain.md"]
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "(unassigned)": 1}
+    assert h.next_task("S1")["action"] == "none"  # never started, without answering anything
+    h.ignore_cli(["snapshot", "--owner", "Bob"])
+    assert h.ignore_cli(["list"])["by_owner"] == {"Alice": 1, "Bob": 1}  # Alice keeps her mention
+    assert h.ignore_cli(["snapshot"])["unmarked"] == []
+
+
+
+def test_snapshot_uses_remote_claim_owner_without_asking(ign, monkeypatch):
+    h.collab_cli(["on", "--name", "Dana"])
+    _put(ign, "TODO", "c1.md")
+    _put(ign, "TODO", "c2.md")
+    claims = {"c1.md": {"status": "current", "owner": "carol"}, "c2.md": {"status": "current", "owner": "Dana"}}
+    monkeypatch.setattr(h, "_claims_local", lambda: ("tip", claims))
+    r = h.ignore_cli(["snapshot"])
+    assert r["unmarked"] == []
+    assert h.ignore_cli(["list"])["by_owner"] == {"carol": 1}  # c2 is mine: never ignored
+
+
+def test_collab_status_lists_people_with_counts_and_me(ign):
+    h.collab_cli(["on", "--name", "Dana"])
+    for slug, who in (("a.md", "Bob"), ("b.md", "Bob"), ("c.md", "Alice")):
+        _put(ign, "TODO", slug, body=f"# T\nOwner : {who}\n- [ ] x\n")
+    _put(ign, "CURRENT_TASKS", "my-own.md")
+    h.ignore_cli(["snapshot"])
+    people = h.collab_cli(["status"])["people"]
+    assert people == [{"name": "Bob", "tasks": 2, "me": False}, {"name": "Alice", "tasks": 1, "me": False},
+                      {"name": "Dana", "tasks": 1, "me": True}]
+
+
+def test_legacy_ignored_file_with_single_owner_still_works(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.IGNORED_FILE.write_text('{"owner": "Bob", "ignored": ["a1.md"]}', encoding="utf-8")
+    assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in h.next_task("S1")["skipped"]
+    assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+
+
+# --- stdin isolation -------------------------------------------------------
+# On Windows a hook can be started with an invalid inherited stdin handle; any
+# child process that inherits it dies with `[WinError 6] invalid handle`, which
+# made the closure auto-commit fail silently. Every subprocess the engine
+# spawns must therefore pin stdin AND stdout/stderr explicitly (no inheritance;
+# pytest's fd capture leaves the OS-level std handles stale for the same reason).
+
+def _unpinned_subprocess_calls(path):
+    import ast
+    tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+    bad = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("run", "Popen", "check_output", "call")
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess"):
+            kw = {k.arg for k in node.keywords}
+            pinned_in = bool(kw & {"stdin", "input"})
+            pinned_out = "capture_output" in kw or {"stdout", "stderr"} <= kw
+            if not (pinned_in and pinned_out):
+                bad.append(f"{path}:{node.lineno}")
+    return bad
+
+
+def test_engine_subprocess_calls_pin_stdin():
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    files = [repo / "crew" / "crew_hook.py", repo / "scripts" / "crew_hook.py",
+             repo / "scripts" / "dashboard" / "server.py"]
+    bad = [b for f in files if f.exists() for b in _unpinned_subprocess_calls(f)]
+    assert not bad, "subprocess call(s) inherit stdin: " + ", ".join(bad)

@@ -1,18 +1,18 @@
 # CONTRIBUTING.md — <NOM_PROJET>
 
-À remplir si plusieurs contributeurs/agents travaillent sur ce repo, ou si tu
-veux des conventions stables entre sessions. À supprimer si solo sans
-convention particulière (le suivi de tâches vit dans `crew/` de toute façon).
+Fill in if several contributors/agents work on this repo, or if you want
+stable conventions across sessions. Delete if solo with no particular
+convention (task tracking lives in `crew/` anyway).
 
 ## Branches
 
-<Convention de nommage : ex. `feat/<slug>`, `fix/<slug>`.>
+<Naming convention: e.g. `feat/<slug>`, `fix/<slug>`.>
 
 ## Commits
 
-<Convention (ex. Conventional Commits) — sinon dire explicitement "pas de
-convention imposée, message clair suffit".>
+<Convention (e.g. Conventional Commits) — otherwise say explicitly "no
+convention imposed, a clear message is enough".>
 
 ## Pull requests
 
-<Process : revue requise ou non, checks CI attendus avant merge.>
+<Process: review required or not, CI checks expected before merge.>

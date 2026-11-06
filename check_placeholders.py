@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Garde-fou bootstrap : liste les placeholders `<...>` non résolus dans les
-fichiers du scaffold (CLAUDE.md, AGENTS.md, PRODUCT.md, CONTRIBUTING.md,
-SECURITY.md, crew/**). À lancer juste après avoir rempli le scaffold, avant
-de committer — un bootstrap n'est "fini" que quand cette commande n'affiche
-rien.
+"""Bootstrap guard: lists unresolved `<...>` placeholders in the scaffold
+files (CLAUDE.md, AGENTS.md, PRODUCT.md, CONTRIBUTING.md, SECURITY.md,
+crew/**). Run it right after filling in the scaffold, before committing — a
+bootstrap is only "done" when this command prints nothing.
 
-Usage : python check_placeholders.py
-Exit code 1 si des placeholders restent (utilisable en pre-commit/CI).
+Usage: python check_placeholders.py
+Exit code 1 if placeholders remain (usable in pre-commit/CI).
 """
 import pathlib
 import re
@@ -18,7 +17,7 @@ if hasattr(sys.stdout, "reconfigure"):
 ROOT = pathlib.Path(__file__).resolve().parent
 TARGETS = ["CLAUDE.md", "AGENTS.md", "PRODUCT.md", "CONTRIBUTING.md", "SECURITY.md", "crew"]
 PLACEHOLDER = re.compile(r"<[A-Z][A-Z0-9_ /.]*>")
-# Faux positifs légitimes : exemples de syntaxe montrés dans les squelettes
+# Legitimate false positives: syntax examples shown in the skeletons
 ALLOWLIST = {"<A>", "<B>", "<...>"}
 
 
@@ -39,11 +38,11 @@ def main():
                     hits.append(f"{f.relative_to(ROOT)}:{i}: {m.group(0)}")
 
     if hits:
-        print("Placeholders non résolus :")
+        print("Unresolved placeholders:")
         for h in hits:
             print(f"  {h}")
         sys.exit(1)
-    print("OK — aucun placeholder restant.")
+    print("OK — no placeholder left.")
 
 
 if __name__ == "__main__":

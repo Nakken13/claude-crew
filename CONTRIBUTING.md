@@ -1,7 +1,6 @@
-# Contributing to claude-crew
+# Contributing to crew-mates
 
-Solo-maintained project — no rigid convention imposed. That said, if you're
-opening a PR:
+Community-maintained project, light on process. If you're opening a PR:
 
 ## Branches
 
@@ -15,8 +14,28 @@ but not required — a clear message explaining the *why* is enough.
 ## Pull requests
 
 Open against `main`. Keep the diff scoped to one change; explain what
-problem it solves and how you tested it. No CI gate yet — review happens
-on the PR itself.
+problem it solves and how you tested it. CI (`.github/workflows/ci.yml`) runs the
+Python tests on Linux and Windows, the package verifier, the mirror check and the
+mod tests; it must be green.
+
+## Local setup
+
+```bash
+python -m pip install pytest -r scripts/dashboard/requirements.txt -r scripts/dashboard/requirements-dev.txt
+python -m pytest crew scripts -q
+python scripts/dev/verify_plugin_package.py
+```
+
+The mod tests (`hooks/mods.test.ts`) import `claude-code/testing`, which only
+exists inside Claude Code; to run them with bun, copy `hooks/` somewhere and
+replace that import with `bun:test` (see the `mods` job in the CI workflow).
+
+## Packaged mirrors are generated
+
+Some files exist twice: the copy this repo dogfoods (`crew/`, `.claude/`) and the
+copy the plugin ships (`scripts/`, `skills/`, `agents/`). **Edit the dogfood copy
+only**, then run `python scripts/dev/sync_engine.py`. `--check` exits 1 on drift,
+and `python scripts/dev/verify_plugin_package.py` fails on it too.
 
 ## Versioning the scaffold
 

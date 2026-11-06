@@ -1,108 +1,47 @@
 ## graphify
 
-Graphe de connaissance dans `graphify-out/` (créé par `graphify init`).
+If `graphify-out/graph.json` exists: `graphify query "<question>"` before any raw read (`path "<A>" "<B>"`, `explain "<concept>"`); `graphify-out/wiki/index.md` for the big picture; **never** read `graph.json`/`GRAPH_REPORT.md` in full; `graphify update .` after code changes (AST, no API cost). Otherwise, ignore this section.
 
-- Questions sur le code : `graphify query "<question>"` d'abord dès que `graphify-out/graph.json` existe ; `graphify path "<A>" "<B>"` pour les relations, `graphify explain "<concept>"` pour un concept.
-- `graphify-out/wiki/index.md` (s'il existe) pour la navigation large.
-- **Ne jamais lire `graph.json` / `GRAPH_REPORT.md` en entier.**
-- Après modification de code : `graphify update .` (AST only, sans coût API).
+## Skill routing
 
-## Routage des skills
+Adapt/remove lines that do not fit the stack.
 
-Adapter/retirer les lignes hors stack.
+- Architecture/exploration before raw reading → `graphify`.
+- UI (adapt to the stack): new component/redesign → `designer` if flows/specs are undecided, then `design-taste-frontend` (anti-slop), `frontend-design`, `ui-ux-pro-max`; audit/touch-up of a screen → `impeccable`; chart → `dataviz` before the code; RN animation → `motion-design-rn` + `accessibility-motion` (reduced-motion mandatory), `haptics` if touch, no sound by default.
+- Bug/failing test → `systematic-debugging` before any fix.
+- Feature or fix → `test-driven-development` (test before code). Ambiguous feature → `brainstorming` first.
+- 2+ independent tasks → `dispatching-parallel-agents`; workspace isolation → `using-git-worktrees`; in-session plan with independent tasks → `subagent-driven-development`.
+- Auth/tokens/encryption/secrets → `security-review` before merge (`security-guidance` as a complement).
+- Frontend created or touched: tested responsive (mobile/tablet/desktop) and visually validated (`run` then `playwright` or `claude-in-chrome`) before declaring done — a passing build is not enough. This validation follows `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`.
+- Scriptable browser test with `playwright` → `crew/TESTS/IA`, not `DEV`.
+- End of task: `requesting-code-review` then `simplify` before committing **if the diff exceeds ~50 lines or touches an engine/auth/hook file** (docs only, rename, typo: `verification-before-completion` is enough); review feedback received → `receiving-code-review`; branch ready → `finishing-a-development-branch`.
+- Before claiming "done/tested/works" → `verification-before-completion` (actually run the tests). LSP diagnostics do not replace the test suite/build.
+- After a lasting change to `CLAUDE.md`/`AGENTS.md`/crew rules → `claude-md-management`.
+- LLM/agent: check the real provider (`grep`) before `claude-api`.
+- Multi-step tracking: **`crew/TODO` → `CURRENT_TASKS` → `HISTORIQUE`/`TESTS` is the single source of truth**; do not duplicate it with `writing-plans`/`executing-plans`/`TaskCreate` (reserved for sessions outside the crew scope).
 
-- Architecture/exploration avant lecture brute → `graphify`.
-- Nouveau composant/page ou refonte visuelle → `designer` si parcours/specs non tranchés, puis `design-taste-frontend` (obligatoire, anti-slop), `frontend-design`, `ui-ux-pro-max`.
-- Audit/retouche d'un écran existant → `impeccable`.
-- Animation React Native → `motion-design-rn` + `accessibility-motion` (toujours les deux, reduced-motion obligatoire à chaque animation) ; `haptics` si retour tactile ; `sound-design-ui` seulement si un son est envisagé (défaut : pas de son).
-- Chart/graphique → `dataviz` avant le code.
-- Bug/test qui échoue → `systematic-debugging` avant tout fix.
-- Feature ou fix → `test-driven-development` (test avant code). Feature ambiguë → `brainstorming` d'abord.
-- 2+ tâches indépendantes → `dispatching-parallel-agents` ; isolation du workspace → `using-git-worktrees` ; plan avec tâches indépendantes en session → `subagent-driven-development`.
-- Auth/tokens/chiffrement/secrets → `security-review` avant merge (`security-guidance` en complément).
-- Frontend créé ou retouché : testé responsive (mobile/tablette/desktop) et validé visuellement (`run` puis `playwright` ou `claude-in-chrome`) avant de déclarer fini — un build qui passe ne suffit pas.
-- Test navigateur scriptable avec `playwright` → `crew/TESTS/IA`, pas `DEV`.
-- Fin de tâche : `requesting-code-review` puis `simplify` avant de committer ; retour de review reçu → `receiving-code-review` ; branche prête → `finishing-a-development-branch`.
-- Avant d'affirmer « fait/testé/ça marche » → `verification-before-completion` (lancer réellement les tests). Les diagnostics LSP ne remplacent pas la suite de tests/le build.
-- Après modif durable de `CLAUDE.md`/`AGENTS.md`/règles crew → `claude-md-management`.
-- LLM/agent : vérifier le provider réel (`grep`) avant `claude-api`.
-- Suivi multi-étapes : **`crew/TODO` → `CURRENT_TASKS` → `HISTORIQUE`/`TESTS` est la source unique de vérité** ; ne pas dupliquer avec `writing-plans`/`executing-plans`/`TaskCreate` (réservés aux sessions hors périmètre crew).
+## Personas (`Agent({subagent_type: "<name>"})`) — mandatory routing
 
-## Personas (subagents `.claude/agents/`) — routage obligatoire
+Roles, not procedures; dispatch when the decision has ≥2 real options in the domain (or on request), never for an obvious answer. `legal`/`architect`: strict (real doubt included); the others at your judgment. Personas never implement.
 
-Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. **S'il y a ne serait-ce que 1 % de chance qu'une persona s'applique, la dispatcher — non négociable.**
+`ceo` prioritization/scope · `manager` task breakdown/batches (writes under `crew/`) · `architect` structuring technical choice · `designer` UX/UI decision · `legal` new legal exposure (before coding) · `comms` copy/brand tone · `social` social-network distribution · `seo` search/store visibility (if public web surface). Starting an existing task → `/crew-start`, not `manager`. Detailed criteria: `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Personas.
 
-- Arbitrage business/priorisation/scope, « ça vaut le coup ? » → `ceo` (lecture seule).
-- Découpage en tâches, batches, séquencement → `manager` (écrit sous `crew/`).
-- **Démarrage d'une tâche existante** (`TODO/` → `CURRENT_TASKS/`) → `manager` aussi, pour l'anti-collision de fichiers (cf. § Batching, cas trivial inclus) — jamais de déplacement de fichier nu.
-- Copy marketing/landing/email/ton de marque → `comms` (vérifier `AGENTS.md` pour le ton d'un agent produit).
-- Choix technique structurant (2+ approches, refactor maintenant ou plus tard) → `architect` (lecture seule).
-- Décision UX/UI (parcours, hiérarchie, rétention, specs chiffrées, conventions plateforme) → `designer` (lecture seule ; retouche d'un écran → `impeccable`).
-- Exposition juridique nouvelle (données perso, SDK tiers, paiement, mineurs, IA, contenu utilisateur, scraping, licence, secteur réglementé, nouveau pays) → `legal` (lecture seule) avant de coder.
+## Dedicated crew commands (`/crew-*`)
 
-Rationalisations à rejeter (« c'est rapide », « question simple », « juste un écran », « sûrement aucun enjeu juridique ») → dispatcher quand même. Pas d'implémentation par les personas ; doute entre deux → la plus proche du cœur de la demande.
+Tooled execution of the lifecycle and batching (procedures in each skill):
 
-## Commandes dédiées crew (`/crew-*`)
+- `/crew-init` — scaffold bootstrap (once only); `/crew-update` — updates engine files without touching data.
+- `/crew-new-task` — creates a task (`TODO/` or `CURRENT_TASKS/`) with batching.
+- `/crew-start` — resumes or starts a task (anti-collision, worktree per batch) through to closure.
+- `/crew-close-task` — closure (review, `simplify`, history, tests).
+- `/crew-status` — read-only report; `/crew-count` — batches that can run in parallel; `/crew-dashboard` — local web dashboard; `/crew-collab` — team mode (name + remote claims, solo by default); `/crew-version` — crew-mates version.
 
-Exécution outillée du cycle de vie et du batching (procédures dans chaque skill) :
+## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` before creating/moving a task or editing `CLAUDE_BATCH.md`
 
-- `/crew-init` — bootstrap du scaffold (une seule fois) ; `/crew-update` — met à jour les fichiers moteur sans toucher aux données.
-- `/crew-new-task` — crée une tâche (`TODO/` ou `CURRENT_TASKS/`) avec batching.
-- `/crew-start` — reprend ou démarre une tâche (anti-collision, worktree par batch) jusqu'à la clôture.
-- `/crew-close-task` — clôture (revue, `simplify`, historique, tests).
-- `/crew-status` — rapport lecture seule ; `/crew-count` — batchs lançables en parallèle ; `/crew-dashboard` — dashboard web local.
-
-## Gestion des tâches — cycle de vie unique (modèle par dossiers)
-
-Une tâche = un fichier `.md` qui **se déplace** (`git mv`) ; jamais dans deux dossiers.
-
-```
-Problème brut → crew/PROBLEMS/   Pas commencée → crew/TODO/   Parkée → crew/ICEBOX/
-Commencée → crew/CURRENT_TASKS/  Bloquée (dev) → crew/PAUSED/
-Code fini → crew/CLAUDE_CONTEXT/HISTORIQUE.md + crew/TESTS/{IA,DEV}/<chantier>.md (fichier de tâche supprimé)
-Validée → cases cochées ; un test IA entièrement coché → crew/CLAUDE_CONTEXT/TESTS_DONE/
-```
-
-Source unique = dossiers `crew/` (un `TODO.md`/`PROBLEMS.md` racine n'est qu'un pointeur).
-
-### 0. `PROBLEMS/` — inbox
-Un fichier par bug/friction (`🔴`/`🟡`/`✅`) ; devient une tâche `TODO/` quand planifié.
-
-### 1. `TODO/` — backlog
-Uniquement des tâches jamais commencées, actions en `- [ ]`. À l'ajout : catégoriser dans `crew/CLAUDE_BATCH.md`.
-
-### 2. Démarrer → déplacer vers `CURRENT_TASKS/`
-Anti-collision obligatoire avant tout déplacement (`manager`, cf. § Batching). Tenir les cases à jour. `ICEBOX/` : jamais démarrée directement, repasser par `TODO/`.
-
-### 2bis. `PAUSED/` — bloquée en attente de validation dev
-Tâche déjà démarrée dont la suite dépend d'une action humaine (rendu visuel, device réel, réponse externe) : `git mv` vers `PAUSED/`, retour dans `CURRENT_TASKS/` une fois validée. Compte comme active pour l'anti-collision. Jamais reprise automatiquement par l'IA.
-
-### 3. Code terminé
-Supprimer le fichier de `CURRENT_TASKS/`, historiser dans `HISTORIQUE.md`, sortir les tests (`/crew-close-task`). **Ne pas cocher** les tests à ce stade.
-
-### 4. `TESTS/` — checklists IA / DEV
-`IA/` : l'IA déroule seule (pytest, `playwright`, curl, DB, logs) ; `DEV/` : action humaine réelle (mobile réel, jugement visuel). Même chantier = un fichier de chaque côté ; chemin principal + cas limites.
-
-**Règle d'or :** pas commencée → `TODO/` ; commencée → `CURRENT_TASKS/` ; bloquée sur validation dev → `PAUSED/` ; finie → `HISTORIQUE.md` + `TESTS/`.
-
-## Batching — parallélisation (`crew/CLAUDE_BATCH.md`)
-
-**Un batch = un Claude** ; plusieurs batchs tournent en parallèle. Toute nouvelle tâche s'ajoute aussi à `CLAUDE_BATCH.md` : zone d'impact connue → batch existant si chevauchement/dépendance, sinon nouveau batch (ligne `Zone :`) ; zone inconnue → « À classer ». Tâche finie → barrer sa ligne (`~~`slug.md`~~`), jamais la supprimer ; un batch entièrement barré est retiré automatiquement par le hook.
-
-**Invariant : les zones de deux batchs actifs (≥1 tâche en `CURRENT_TASKS/` ou `PAUSED/`) sont disjointes** ; fichiers partagés → même batch.
-
-### Vérification anti-collision avant de démarrer une tâche
-Si `CURRENT_TASKS/` et `PAUSED/` sont vides, aucun batch actif : le vérifier par listing et démarrer sans `manager`. Sinon `manager` : (1) zone de la tâche ; (2) batchs actifs et leur `Zone :` ; (3) chevauchement avec un autre batch → ne pas démarrer, signaler au user ; (4) sinon démarrer. Le hook Stop avertit (non bloquant) des chevauchements manqués ; `/crew-status` pour une vue à la demande.
-
-## Efficience de contexte
-
-### Lectures de fichiers
-**Ne jamais lire en entier un fichier de plus de 100 lignes** sans avoir délimité la zone avec grep (surtout `HISTORIQUE.md`, `graph.json`, lockfiles, migrations). Jamais la sortie complète d'une commande longue : seulement erreurs/warnings.
-
-### Reset de session
-- Seuil ~**150k tokens** (session principale) : au-delà, **recommander `/clear` ou une nouvelle session**. Le hook Stop avertit (`systemMessage` ; 150k en fenêtre 200k, 800k en 1M, répétition tous les 50k) mais la règle vaut dès que la conversation semble volumineuse.
-- Session proche de la limite, tâche non finie : committer, noter l'état dans `HISTORIQUE`/`CURRENT_TASKS`, suggérer de relancer.
-- **Subagents** : ~100k pour l'implémentation (sans descendre sous ~80k) ; ~150k pour les personas lecture seule. Consigne textuelle auto-imposée : au-delà, s'arrêter, produire un **recap** (travail fait, état, fichiers, blocages) et relancer un agent avec ce recap.
-
-### Guides AGENTS.md segmentés
-Guide global `crew/CLAUDE_CONTEXT/AGENTS.md` ; un `AGENTS.md` par subtree significatif (le lire seul en session mono-subtree). **`crew/` reste unique à la racine du repo** même si le cwd est un sous-dossier : résoudre la racine (`git rev-parse --show-toplevel`) avant toute écriture `crew/...`, sinon un `crew/` fantôme est créé.
+Always-on rules (details in that doc):
+- A task = one `.md` that moves (`PROBLEMS/`→`TODO/`→`CURRENT_TASKS/`→`PAUSED/`→`HISTORIQUE.md`+`TESTS/`), never in two folders; never a bare move, go through `/crew-start`. Single source of truth = `crew/`.
+- One batch = one Claude; the zones (`Zone :` lines) of active batches are disjoint. Every new task is added to `crew/CLAUDE_BATCH.md`.
+- Never read a file > 100 lines in full without bounding it with grep; never the full output of a long command.
+- Large conversation (~150k tokens): recommend `/clear` or a new session.
+- `crew/` is unique at the repo root: resolve `git rev-parse --show-toplevel` before any `crew/...` write.
+- Global guide `crew/CLAUDE_CONTEXT/AGENTS.md`; one `AGENTS.md` per significant subtree.

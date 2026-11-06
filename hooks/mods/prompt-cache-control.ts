@@ -1,0 +1,225 @@
+/**
+ * Mod 1 — prompt-cache-control.ts
+ *
+ * Shows above the prompt a cache TTL timer (1h by default, 5 min only if CLAUDE_CACHE_TTL=5m) and the
+ * `cache_read_input_tokens` / `cache_creation_input_tokens` counters.
+ * Immediate visual alert if the cache is about to expire (< 60s).
+ *
+ * 100% local / 0-token.
+ */
+
+import {
+  crewRuntimeState,
+  PANE_META,
+  resolvePaneRequestId,
+  extractTurnUsage,
+  formatCompactTokens,
+  formatCountdownClock,
+  type ModRegistrar,
+} from './shared.ts';
+
+export interface PromptCacheControlState {
+  ttlSeconds: number;
+  /** true as soon as a 1h write has been observed: no more downgrade to 5 min afterwards. */
+  saw1h: boolean;
+  lastRefreshAtMs: number | null;
+  lastCacheReadTokens: number;
+  lastCacheCreationTokens: number;
+  sessionCacheReadTokens: number;
+  sessionCacheCreationTokens: number;
+  alertedExpiringForRefreshMs: number | null;
+}
+
+export const promptCacheState: PromptCacheControlState = {
+  // Default 1h: the turn.complete event does not expose the ephemeral_1h/5m detail, so 5 min can never be deduced.
+  ttlSeconds: 3600,
+  saw1h: false,
+  lastRefreshAtMs: null,
+  lastCacheReadTokens: 0,
+  lastCacheCreationTokens: 0,
+  sessionCacheReadTokens: 0,
+  sessionCacheCreationTokens: 0,
+  alertedExpiringForRefreshMs: null,
+};
+
+export interface FormattedCacheStatus {
+  visible: boolean;
+  ttlLabel: '5 min' | '1h';
+  remainingSeconds: number;
+  isWarm: boolean;
+  isExpiringSoon: boolean;
+  isExpired: boolean;
+  hitRatePercent: number;
+  color: string;
+  bold: boolean;
+  line: string;
+}
+
+export function computePromptCacheStatus(nowMs = Date.now()): FormattedCacheStatus {
+  const ttlLabel: '5 min' | '1h' = promptCacheState.ttlSeconds >= 3600 ? '1h' : '5 min';
+
+  if (promptCacheState.lastRefreshAtMs === null) {
+    return {
+      visible: true,
+      ttlLabel,
+      remainingSeconds: 0,
+      isWarm: false,
+      isExpiringSoon: false,
+      isExpired: false,
+      hitRatePercent: 0,
+      color: 'gray',
+      bold: false,
+      line: `🧊 Cache (${ttlLabel}) --:-- | cache_read: 0 · cache_creation: 0`,
+    };
+  }
+
+  const elapsedSec = Math.max(0, Math.floor((nowMs - promptCacheState.lastRefreshAtMs) / 1000));
+  const remainingSeconds = Math.max(0, promptCacheState.ttlSeconds - elapsedSec);
+  const isExpired = remainingSeconds === 0;
+  const isExpiringSoon = remainingSeconds > 0 && remainingSeconds < 60;
+  const isWarm = remainingSeconds >= 60;
+
+  const totalCache =
+    promptCacheState.sessionCacheReadTokens + promptCacheState.sessionCacheCreationTokens;
+  const hitRatePercent =
+    totalCache > 0
+      ? Math.floor((promptCacheState.sessionCacheReadTokens / totalCache) * 100)
+      : 0;
+
+  const clock = formatCountdownClock(remainingSeconds);
+  const readFmt = formatCompactTokens(promptCacheState.lastCacheReadTokens);
+  const writeFmt = formatCompactTokens(promptCacheState.lastCacheCreationTokens);
+
+  let prefix = `🔥 Cache (${ttlLabel}) ${clock}`;
+  let color = 'green';
+  let bold = false;
+
+  if (isExpiringSoon) {
+    prefix = `⚠️ CACHE EXPIRE <60s (${ttlLabel}) ${clock}`;
+    color = remainingSeconds <= 20 ? 'red' : 'yellow';
+    bold = true;
+  } else if (isExpired) {
+    prefix = `❄️ Cache expired (${ttlLabel}) 00:00`;
+    color = 'gray';
+    bold = false;
+  }
+
+  const line = `${prefix} | cache_read: ${readFmt} · cache_creation: ${writeFmt} (hit ${hitRatePercent}%)`;
+
+  return {
+    visible: true,
+    ttlLabel,
+    remainingSeconds,
+    isWarm,
+    isExpiringSoon,
+    isExpired,
+    hitRatePercent,
+    color,
+    bold,
+    line,
+  };
+}
+
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+function stopCountdownTimer(): void {
+  if (countdownInterval !== null) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+}
+
+export function registerPromptCacheControl(on: ModRegistrar): void {
+  on('session.start', async ($, e, next) => {
+    const envTtl = $.env.get('CLAUDE_CACHE_TTL');
+    promptCacheState.ttlSeconds = 3600;
+    promptCacheState.saw1h = false;
+    if (envTtl && ['5m', '5min', '300'].includes(envTtl.toLowerCase())) {
+      promptCacheState.ttlSeconds = 300;
+    }
+
+    stopCountdownTimer();
+    countdownInterval = setInterval(() => {
+      if (promptCacheState.lastRefreshAtMs === null) return;
+      const status = computePromptCacheStatus(Date.now());
+      if (
+        status.isExpiringSoon &&
+        promptCacheState.alertedExpiringForRefreshMs !== promptCacheState.lastRefreshAtMs
+      ) {
+        promptCacheState.alertedExpiringForRefreshMs = promptCacheState.lastRefreshAtMs;
+        $.ui.toast(
+          `⚠️ Prompt cache expires in ${status.remainingSeconds}s (< 60s) — run your turn or /compact!`,
+        );
+      }
+      if (status.remainingSeconds > 0 || Date.now() - promptCacheState.lastRefreshAtMs < (promptCacheState.ttlSeconds + 2) * 1000) {
+        $.ui.invalidate('ui.render');
+      }
+    }, 1000);
+    (countdownInterval as unknown as { unref?: () => void })?.unref?.();
+
+    return next(e);
+  });
+
+  on('turn.complete', async ($, e, next) => {
+    const envTtl = $.env.get('CLAUDE_CACHE_TTL');
+    const usage = extractTurnUsage(e as Record<string, unknown>, envTtl);
+
+    // A lone 5m write proves nothing: Claude Code writes small 5m blocks even when the prefix is on 1h.
+    // So we never downgrade on observation; 5 min only via CLAUDE_CACHE_TTL=5m (session.start).
+    if (usage.ttlDetected && usage.ttlSeconds >= 3600) {
+      promptCacheState.saw1h = true;
+      if (!envTtl || !['5m', '5min', '300'].includes(envTtl.toLowerCase())) {
+        promptCacheState.ttlSeconds = 3600;
+      }
+    }
+    promptCacheState.lastCacheReadTokens = usage.cacheReadInputTokens;
+    promptCacheState.lastCacheCreationTokens = usage.cacheCreationInputTokens;
+    promptCacheState.sessionCacheReadTokens += usage.cacheReadInputTokens;
+    promptCacheState.sessionCacheCreationTokens += usage.cacheCreationInputTokens;
+
+    crewRuntimeState.totalCacheReadTokens = promptCacheState.sessionCacheReadTokens;
+    crewRuntimeState.totalCacheCreationTokens = promptCacheState.sessionCacheCreationTokens;
+
+    if (
+      usage.cacheReadInputTokens > 0 ||
+      usage.cacheCreationInputTokens > 0 ||
+      usage.inputTokens > 0
+    ) {
+      promptCacheState.lastRefreshAtMs = Date.now();
+      promptCacheState.alertedExpiringForRefreshMs = null;
+    }
+
+    $.ui.invalidate('ui.render');
+    return next(e);
+  });
+
+  on('session.end', async (_$, e, next) => {
+    stopCountdownTimer();
+    return next(e);
+  });
+
+  on('ui.render', { component: 'Pane' }, async ($, e, next) => {
+    if (resolvePaneRequestId(e as Record<string, unknown>) !== PANE_META['crew-cache'].id) {
+      return next(e);
+    }
+
+    const status = computePromptCacheStatus(Date.now());
+    const { Box, Text } = $.ui.resolve(e);
+    return Box({
+      flexDirection: 'column',
+      padding: 1,
+      gap: 1,
+      children: [
+        Text({ bold: true, color: 'cyan', children: [PANE_META['crew-cache'].title] }),
+        Text({
+          color: status.color,
+          bold: status.bold,
+          dimColor: status.remainingSeconds === 0 && promptCacheState.lastRefreshAtMs === null,
+          children: [status.line],
+        }),
+      ],
+    });
+  });
+}
+
+export const register = registerPromptCacheControl;

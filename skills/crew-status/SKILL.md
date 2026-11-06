@@ -1,45 +1,45 @@
 ---
 name: crew-status
-description: Rapport lecture seule de l'état crew — batchs actifs et zones, tâches en cours, tests IA non cochés, TODO non classées. Trigger — "/crew-status", "où en est le projet", "état des batchs".
+description: Read-only report of the crew state — active batches and zones, tasks in progress, unticked AI tests, unclassified TODO. Also triggers on — "/crew-status", "où en est le projet", "état des batchs", "project status", "batch status".
 ---
 
-Skill lecture seule — ne modifie aucun fichier. Complète le hook `Stop`
-(`crew/crew_hook.py`, sortie discrète en stderr) par une vue à la demande,
-en session.
+Read-only — modifies no file. The computation is done by a deterministic script;
+this skill presents its result. Complements the `Stop` hook (discreet stderr
+output) with an on-demand view.
 
-## Ce qu'il rapporte
+1. Run (plugin: the plugin's `scripts/crew_hook.py`; manual clone:
+   `crew/crew_hook.py`):
 
-1. **Batchs actifs** (`crew/CLAUDE_BATCH.md`) : liste des batchs ayant ≥1
-   tâche en `crew/CURRENT_TASKS/`, leur `Zone :` déclarée, et tout
-   chevauchement de zone détecté entre deux batchs actifs différents —
-   invariant violé, à signaler explicitement, pas juste à lister en
-   passant.
-2. **Tâches en cours** (`crew/CURRENT_TASKS/*.md`) : pour chacune, ratio
-   actions cochées / total.
-2bis. **Tâches en pause** (`crew/PAUSED/*.md`) : lister nommément, chacune
-   en attente d'une validation visuelle/dev par l'utilisateur — à signaler
-   explicitement, ne pas les compter comme du travail en cours normal.
-3. **Tests IA non cochés** (`crew/TESTS/IA/*.md`) : fichiers avec au moins
-   une case non cochée — ce qui reste à valider.
-4. **Tâches TODO orphelines** : présentes dans `crew/TODO/` mais absentes de
-   `crew/CLAUDE_BATCH.md` (ni batch, ni section « À classer »).
-5. **Bootstrap** : si `check_placeholders.py` existe encore à la racine, le
-   lancer et inclure son résultat — des placeholders `<...>` restants
-   signifient que le scaffold n'est pas encore totalement initialisé
-   (renvoyer vers `/crew-init`).
-6. **Worktrees de batch orphelins** (`git worktree list`, filtrer les
-   entrées `../<nom-repo>-batch-*`) : pour chacun, vérifier qu'une session
-   dans `crew/CLAUDE_CONTEXT/crew_lock.json` porte bien ce chemin comme
-   `worktree`. Un worktree présent sur disque sans entrée session
-   correspondante = crash ou `/crew-close-task` jamais lancé pour ce batch —
-   le signaler nommément pour nettoyage manuel (`git worktree remove` /
-   `git branch -d` par l'utilisateur), ne jamais le supprimer soi-même
-   (pourrait contenir du travail non commité).
+   ```bash
+ROOT="$(git rev-parse --show-toplevel)"; HOOK="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"; HOOK="${HOOK:-$ROOT/crew}/crew_hook.py"
+CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" status
+```
 
-## Ce que ce skill ne fait pas
+2. Report, from the JSON:
+   - `active_batches` + `zone`; any `zone_overlaps` = **violated invariant**, to
+     flag explicitly (batches + paths), not just list;
+   - `current`: `done/total` ratio per task;
+   - `paused`: tasks waiting for visual/dev validation — flag by name, not
+     counted as normal work in progress;
+   - `tests_ia_unchecked`: files with unticked boxes (what remains to validate);
+   - `todo_orphans`: in `TODO/` but absent from `CLAUDE_BATCH.md` (neither batch
+     nor `À classer`, the to-be-sorted section) → suggest `/crew-new-task` /
+     `manager`;
+   - `bootstrap_pending` true: run `python check_placeholders.py` and include its
+     result (`<...>` placeholders = scaffold not initialized → `/crew-init`);
+   - **Never-ticked checklists guard** (suggestion only): read the `Niveau :`
+     line of `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (`grep`, without reading the
+     file). Only if the level is `full`, or the file is missing or unreadable
+     (historical `full` behavior): if the `- [ ]` in `crew/TESTS/{IA,DEV}`
+     (excluding `TESTS_DONE`) clearly dominate the `- [x]` (totals via
+     `grep -rhF … | wc -l`), suggest "N boxes never ticked: switch to `light` in
+     `TESTS_POLICY.md`?". Never at `light`/`none`, never modify the file.
+   - `orphan_worktrees`: a `*-batch-*` worktree on disk with no session carrying
+     it (crash, or `/crew-close-task` never run) — flag it for manual cleanup
+     (`git worktree remove` / `git branch -d` by the user), **never** delete it
+     yourself (possible uncommitted work).
 
-- N'écrit, ne déplace, ne coche aucun fichier — pur reporting.
-- Ne remplace pas `/crew-new-task` ou `/crew-close-task` pour agir sur une
-  tâche — sert seulement à avoir une vue avant de décider quoi faire.
-- Ne supprime jamais automatiquement un worktree orphelin — signale
-  seulement, le nettoyage reste une décision manuelle de l'utilisateur.
+## What this skill does not do
+
+- Writes, moves, ticks nothing — pure reporting.
+- Does not replace `/crew-new-task` / `/crew-close-task` to act.

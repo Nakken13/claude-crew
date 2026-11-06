@@ -1,4 +1,4 @@
-Tests exécutables par l'IA seule (🤖 auto + 🔍 config/requête directe). Le
-pendant 🖱️ (action humaine) est dans `../DEV/`. Quand un fichier est
-entièrement coché, le hook `crew/crew_hook.py` le déplace automatiquement
-vers `crew/CLAUDE_CONTEXT/TESTS_DONE/`.
+Tests the AI can run alone (🤖 auto + 🔍 direct config/query). The
+🖱️ counterpart (human action) is in `../DEV/`. When a file is fully
+checked, the `crew/crew_hook.py` hook moves it automatically to
+`crew/CLAUDE_CONTEXT/TESTS_DONE/`.

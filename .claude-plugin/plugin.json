@@ -1,11 +1,21 @@
 {
-  "name": "claude-crew",
-  "version": "0.2.2",
-  "description": "File-based task lifecycle + multi-agent collision prevention for Claude Code.",
+  "name": "crew-mates",
+  "version": "1.2.0",
+  "description": "File-based task lifecycle, multi-agent collision prevention, and 10 Zero-Token UI/batch supervision mods for Claude Code.",
   "author": {
     "name": "Nakken13",
     "url": "https://github.com/Nakken13"
   },
   "license": "MIT",
-  "homepage": "https://github.com/Nakken13/claude-crew"
+  "homepage": "https://github.com/fiaaaansoo/crewmates-fork",
+  "icon": "media/Claude-crew-logo.png",
+  "keywords": [
+    "claude-code",
+    "task-management",
+    "multi-agent",
+    "git-worktree",
+    "workflow",
+    "productivity"
+  ],
+  "repository": "https://github.com/fiaaaansoo/crewmates-fork"
 }

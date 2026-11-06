@@ -1,76 +1,84 @@
 ---
 name: crew-new-task
-description: Crée une tâche crew (TODO ou CURRENT_TASKS) avec fichier, INDEX.md et batching via le persona manager. Trigger — "/crew-new-task", "crée une tâche", "ajoute au backlog", "découpe ça en tâches".
+description: Creates a crew task (TODO or CURRENT_TASKS) with its file, INDEX.md and batching through the manager persona. Also triggers on — "/crew-new-task", "crée une tâche", "ajoute au backlog", "découpe ça en tâches", "create a task", "add to the backlog", "break this into tasks".
 ---
 
-Ce skill encode le protocole de création de tâche déjà défini dans
-`CLAUDE.md` (§ Gestion des tâches, § Batching) — il ne remplace pas ce
-document, il évite de ré-écrire à la main un prompt long à chaque fois.
-Source unique de vérité = `CLAUDE.md`, ce fichier ne fait que standardiser
-l'appel.
+This skill encodes the task-creation protocol already defined in
+`crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (§ Task management, § Batching) — it
+does not replace that document, it saves rewriting a long prompt by hand each
+time. Single source of truth = `CLAUDE.md`; this file only standardizes the call.
 
-**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
-résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `CLAUDE.md` § Guides AGENTS.md segmentés), le cwd
-peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
-créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
-la racine une seule fois en début d'exécution (`git rev-parse
---show-toplevel` ou équivalent) si elle n'est pas déjà connue — pas besoin
-de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
+**Repo-root anchoring is mandatory**: every `crew/...` path in this skill is
+resolved **from the repo root**, never from the current cwd. In a single-subtree
+session (see `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Segmented AGENTS.md guides), the cwd
+may be a subfolder — a relative `crew/...` path written as-is would create a
+duplicate phantom `crew/` there instead of touching the root. Resolve the root
+once at the start (`git rev-parse --show-toplevel` or equivalent) if it is not
+already known — no need to re-check on every following `Read`/`Write`/`Edit`/`Bash`.
 
-## Ce que fait ce skill
+## What this skill does
 
-1. Rassembler le contexte disponible sur la demande : quoi, pourquoi,
-   contexte technique connu (fichiers/écrans/modules concernés si
-   identifiables, dépendances cross-repo si ce projet en a — autre
-   repo backend/frontend séparé, service partagé), et si la tâche démarre
-   tout de suite (`CURRENT_TASKS/`) ou va au backlog (`TODO/`).
-2. Si la persona `manager` est disponible (fournie par le plugin via
-   `agents/manager.md`, ou en local via `.claude/agents/manager.md`) :
-   dispatcher **un seul** `Agent({subagent_type: "manager"})` avec un
-   prompt qui couvre explicitement, dans l'ordre :
-   - description de la feature/tâche + contexte (pourquoi, dépendances
-     connues) ;
-   - découpage en actions cochables `- [ ]` concrètes (pas vagues) ;
-   - où le fichier naît (`crew/TODO/<slug>.md` ou
-     `crew/CURRENT_TASKS/<slug>.md`) ;
-   - mise à jour de l'`INDEX.md` du dossier concerné ;
-   - catégorisation dans `crew/CLAUDE_BATCH.md` : zone d'impact,
-     rattachement à un batch existant si chevauchement, sinon nouveau batch
-     ou section « À classer » ; vérifier l'invariant de disjonction entre
-     batchs actifs ;
-   - consigne explicite : ne toucher à aucun fichier hors `crew/`.
-   Si la persona `manager` n'existe pas dans ce projet (scaffold partiel),
-   exécuter directement les mêmes étapes en suivant `CLAUDE.md`.
-3. Rapporter à l'utilisateur : chemin du fichier créé, résumé des actions
-   cochables, batch/section d'atterrissage, et toute dépendance externe
-   (cross-repo, séquencement) signalée.
+1. Gather the available context on the request: what, why, known technical
+   context (files/screens/modules concerned if identifiable, cross-repo
+   dependencies if this project has any — separate backend/frontend repo, shared
+   service), and whether the task starts right away (`CURRENT_TASKS/`) or goes to
+   the backlog (`TODO/`).
+2. If the `manager` persona is available (provided by the plugin via
+   `agents/manager.md`, or locally via `.claude/agents/manager.md`): dispatch
+   **a single** `Agent({subagent_type: "manager"})` with a prompt that
+   explicitly covers, in order:
+   - description of the feature/task + context (why, known dependencies);
+   - breakdown into concrete (not vague) tickable `- [ ]` actions;
+   - where the file is born (`crew/TODO/<slug>.md` or
+     `crew/CURRENT_TASKS/<slug>.md`);
+   - update of the `INDEX.md` of the relevant folder;
+   - categorization in `crew/CLAUDE_BATCH.md`: impact zone, attachment to an
+     existing batch if overlapping, otherwise a new batch or the `À classer`
+     (to be sorted) section; check the disjointness invariant between active
+     batches;
+   - explicit instruction: touch no file outside `crew/`.
+   If the `manager` persona does not exist in this project (partial scaffold),
+   run the same steps directly following `CLAUDE.md`.
+2bis. **Remote claims** (opt-in: only if `crew/CLAUDE_CONTEXT/CREW_CONFIG.md`
+   contains `remote_claims : true`, otherwise skip):
+   - **before** dispatching `manager`: `python "$HOOK" claims check-dup --title "<title>" --zone "<zones>"`
+     (`$HOOK`: see `/crew-start` step 1). If `duplicates` is not empty, show them
+     to the user (title, holder, reason) and ask whether it is a duplicate
+     before creating; Claude judges the semantic duplicate;
+   - **after** the file is created: publish the entry so other devs see it
+     without a push: `python "$HOOK" claims publish <slug>.md --title "<title>" --zone "<batch zones>" --body-file crew/TODO/<slug>.md`;
+   - `offline` or failure → **non-blocking**: the task stays created locally, flag
+     it (it will only be visible to others after a push or republication).
 
-## Gabarit de prompt pour l'agent manager
+3. Report to the user: path of the created file, summary of the tickable
+   actions, landing batch/section, and any external dependency (cross-repo,
+   sequencing) flagged.
+
+## Prompt template for the manager agent
 
 ```
-Nouvelle tâche à ajouter au backlog crew.
+New task to add to the crew backlog.
 
-<description de la feature/du problème, contexte, pourquoi>
+<description of the feature/problem, context, why>
 
-Contexte technique connu :
-<fichiers/modules concernés si connus, dépendances cross-repo si ce projet
-en a, tâches crew existantes à regarder pour convention/infra proche>
+Known technical context:
+<files/modules concerned if known, cross-repo dependencies if this project
+has any, existing crew tasks to look at for a similar convention/infra>
 
-Applique le cycle de vie standard (déjà dans ton rôle) : fichier
-crew/TODO/ ou crew/CURRENT_TASKS/, actions cochables `- [ ]` concrètes,
-INDEX.md à jour, catégorisation CLAUDE_BATCH.md (zone d'impact, batch
-existant ou nouveau, invariant de disjonction), rien hors crew/.
+Apply the standard lifecycle (already in your role): file in
+crew/TODO/ or crew/CURRENT_TASKS/, concrete tickable `- [ ]` actions,
+INDEX.md up to date, CLAUDE_BATCH.md categorization (impact zone, existing
+or new batch, disjointness invariant), nothing outside crew/.
 
-Rapporte : chemin du fichier créé, résumé des actions cochables choisies,
-et batch/section d'atterrissage dans CLAUDE_BATCH.md.
+Report: path of the created file, summary of the tickable actions chosen,
+and landing batch/section in CLAUDE_BATCH.md.
 ```
 
-## Ce que ce skill ne fait pas
+## What this skill does not do
 
-- Ne décide pas de priorité/scope business à la place de la persona `ceo`
-  (si elle existe dans ce projet) — si la demande est une décision produit
-  ambiguë plutôt qu'un pur découpage, router vers `ceo` d'abord.
-- N'écrit jamais de code — uniquement des fichiers `crew/`.
-- Ne duplique pas une tâche existante : vérifier d'abord
-  `crew/TODO/INDEX.md` et `crew/CURRENT_TASKS/INDEX.md`.
+- Does not decide business priority/scope in place of the `ceo` persona (if it
+  exists in this project) — if the request is an ambiguous product decision
+  rather than a pure breakdown, route to `ceo` first.
+- Never writes code — only `crew/` files.
+- Does not duplicate an existing task: check `crew/TODO/INDEX.md` and
+  `crew/CURRENT_TASKS/INDEX.md` first.
