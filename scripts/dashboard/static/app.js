@@ -97,6 +97,48 @@ function renderSessions(sessions) {
   }
 }
 
+const TEAM_POLL_MS = 30000;
+const TEAM_COLUMNS = [["todo", "À faire"], ["current", "En cours"]];
+
+function formatAge(min) {
+  if (min === null || min === undefined) return "";
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}`;
+}
+
+function renderTeam(board) {
+  const panel = document.getElementById("team-panel");
+  panel.hidden = !board.enabled;
+  if (!board.enabled) return;
+  document.getElementById("team-status").textContent = board.offline ? "(hors ligne : vue locale)" : "";
+  const root = document.getElementById("team");
+  root.innerHTML = "";
+  for (const [key, label] of TEAM_COLUMNS) {
+    const cards = board.columns[key] || [];
+    const col = el("div", "task-col");
+    col.appendChild(el("h3", null, `${label} (${cards.length})`));
+    for (const c of cards) {
+      const card = el("div", "card" + (c.mine ? " mine" : "") + (c.expired ? " expired" : ""));
+      card.appendChild(el("div", "title", c.title));
+      card.appendChild(el("div", "muted", `${c.mine ? "moi" : c.owner || "libre"}${c.batch ? " · " + c.batch : ""}`));
+      if (c.zone.length) card.appendChild(el("div", "muted", c.zone.join(", ")));
+      if (c.age_minutes !== null) {
+        card.appendChild(el("div", "muted", c.expired ? `expiré (${formatAge(c.age_minutes)})` : `depuis ${formatAge(c.age_minutes)}`));
+      }
+      col.appendChild(card);
+    }
+    root.appendChild(col);
+  }
+}
+
+async function loadTeam() {
+  if (document.hidden) return; // onglet caché : pas de fetch réseau toutes les 30 s pour rien
+  try {
+    renderTeam(await api("/api/claims?refresh=1"));
+  } catch (e) {
+    document.getElementById("team-status").textContent = `erreur : ${e.message}`;
+  }
+}
+
 async function load() {
   const statusEl = document.getElementById("status");
   try {
@@ -112,3 +154,6 @@ async function load() {
 
 load();
 setInterval(load, POLL_MS);
+loadTeam();
+setInterval(loadTeam, TEAM_POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) loadTeam(); });

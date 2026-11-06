@@ -42,6 +42,17 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
    - consigne explicite : ne toucher à aucun fichier hors `crew/`.
    Si la persona `manager` n'existe pas dans ce projet (scaffold partiel),
    exécuter directement les mêmes étapes en suivant `CLAUDE.md`.
+2bis. **Claims distants** (opt-in : seulement si `crew/CLAUDE_CONTEXT/CREW_CONFIG.md`
+   contient `remote_claims : true`, sinon sauter) :
+   - **avant** de dispatcher `manager` : `python "$HOOK" claims check-dup --title "<titre>" --zone "<zones>"`
+     (`$HOOK` : voir `/crew-start` étape 1). Si `duplicates` n'est pas vide, les
+     montrer à l'utilisateur (titre, détenteur, raison) et demander s'il s'agit
+     d'un doublon avant de créer ; Claude juge le doublon sémantique ;
+   - **après** la création du fichier : publier l'entrée pour que les autres devs
+     la voient sans push : `python "$HOOK" claims publish <slug>.md --title "<titre>" --zone "<zones du batch>" --body-file crew/TODO/<slug>.md` ;
+   - `offline` ou échec → **non bloquant** : la tâche reste créée en local, le
+     signaler (elle ne sera visible des autres qu'après push ou republication).
+
 3. Rapporter à l'utilisateur : chemin du fichier créé, résumé des actions
    cochables, batch/section d'atterrissage, et toute dépendance externe
    (cross-repo, séquencement) signalée.

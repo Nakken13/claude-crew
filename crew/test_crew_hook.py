@@ -20,7 +20,7 @@ import crew_hook as h
 
 
 def _git(root, *args):
-    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 def _last_commit_message(root):

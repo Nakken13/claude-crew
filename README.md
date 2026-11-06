@@ -292,7 +292,7 @@ Claude Code build predates hook `modules`; update it.
 | 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading >100-line files whole, 150k session reset budget) wired into Claude Code from day one |
 
 Everything is plain markdown + JSON state + native zero-dependency TypeScript mods —
-readable, greppable, diffable in a normal PR review. No hosted board, no account, nothing to sync.
+readable, greppable, diffable in a normal PR review. No hosted board, no account, nothing to sync (unless you opt in to remote claims, below).
 
 <br>
 
@@ -377,6 +377,23 @@ dashboard requirements; later runs reuse it. Needs Python 3 on the `PATH`
 Then open the URL printed in the terminal — default `http://127.0.0.1:8943`;
 if that port is taken, a free one is picked and printed instead. `Ctrl+C` in
 the terminal stops the server.
+
+<br>
+
+## 👥 Optional: several devs on one repo
+
+By default nothing is shared beyond git: two devs can start (or re-create) the same
+task before either pushes. Set `remote_claims : true` in
+`crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (off by default; each dev opts in) and
+`/crew-start`, `/crew-new-task` and `/crew-close-task` share «who is on what» plus
+the `TODO` tasks through a dedicated git ref, `refs/crew/claims`, pushed on its own
+(never on `main`). The claim is an atomic compare-and-swap, so two devs cannot take
+the same task or two overlapping zones; the dashboard shows a read-only team Kanban.
+Zero tokens: the script does the work, not Claude. Limits: only devs who opted in are
+protected, semantic duplicates (different title and zone) rely on Claude reading the
+title list, a crashed session's claim expires after 8 h, push rights on the remote
+are required, and it does not prevent code merge conflicts. Details in
+`crew/CLAUDE_CONTEXT/AGENTS.md`.
 
 <br>
 
