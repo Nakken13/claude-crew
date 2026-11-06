@@ -1,26 +1,43 @@
-# SECURITY.md — <NOM_PROJET>
+# Security Policy
 
-À remplir dès que le projet a de l'auth, des secrets, ou des données
-utilisateur sensibles ; à supprimer sinon.
+## Reporting a vulnerability
 
-## Secrets
+Please **do not open a public issue** for a security problem. Use GitHub's
+private reporting instead: *Security → Report a vulnerability* on this
+repository. Include the plugin version (`/crew-version`), your OS, and the
+smallest reproduction you can.
 
-<Où ils vivent (env vars, vault manager...), jamais commit `.env`, jamais
-loggés, jamais renvoyés au client.>
+You can expect an acknowledgement within a few days. This is a small
+community-maintained project: fixes are best-effort, and we credit reporters
+who want it.
 
-## Auth boundaries
+## Supported versions
 
-<Modèle d'auth (tokens, sessions, RLS...), où vit le token côté client (ex.
-en mémoire seulement, jamais localStorage si XSS est une préoccupation),
-comment le refresh est géré.>
+Only the latest release on `main` receives fixes.
 
-## Données sensibles / PII
+## What crew-mates does on your machine
 
-<Quelles données sont sensibles dans ce projet, règles de masquage/logging,
-rétention.>
+Knowing this helps you judge a report (and the plugin itself):
 
-## Pré-production checklist
+- **Hooks run locally** (`PreToolUse`, `Stop`, `SessionStart`, `SessionEnd`,
+  `PostToolUse`) as Python scripts from the plugin directory. They read and
+  write files under your project's `crew/` folder and run `git` commands
+  (`git mv`, `git worktree`, the closure auto-commit). They never send data
+  anywhere.
+- **No network access by default.** The only network traffic is the optional
+  team mode (`/crew-collab on` / `remote_claims : true`), which pushes a
+  dedicated ref, `refs/crew/claims`, to your own git remote with your own
+  credentials. It never pushes `main` or your code.
+- **No telemetry, no accounts, no hosted service.**
+- **The optional dashboard** (`/crew-dashboard`) is a local web server bound to
+  `127.0.0.1`; it has no authentication, so do not expose its port.
+- **TypeScript mods** run in Claude Code's sandboxed mod runtime and only use
+  the declared `$` API (file reads/writes, env reads, UI). They make zero LLM
+  calls.
 
-<Ce qui doit être vérifié avant un premier déploiement public : `/docs`
-désactivé, checkpointer/dev fallback qui ne doit jamais tourner en prod,
-CORS, rate limiting...>
+## Hardening tips
+
+- Review `hooks/hooks.json` and `scripts/*.py` before installing any plugin,
+  this one included.
+- Names entered in `/crew-collab on` are validated (`[\w .@-]{1,60}`) because
+  they end up in a config line, a claim, and a shell argument.

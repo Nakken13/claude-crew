@@ -7,7 +7,8 @@
 **File-based task lifecycle, multi-agent collision prevention & 10 Zero-Token UI mods for Claude Code.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
-[![Version: 0.6.0](https://img.shields.io/badge/version-0.6.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffiaaaansoo/crewmates-fork%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
+[![CI](https://github.com/fiaaaansoo/crewmates-fork/actions/workflows/ci.yml/badge.svg)](https://github.com/fiaaaansoo/crewmates-fork/actions/workflows/ci.yml)
 [![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#-whats-in-the-box)
 [![Zero-Token Mods: 10](https://img.shields.io/badge/zero--token%20mods-10-00C4B4.svg)](#-10-zero-token-mods-in-process-ui)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
@@ -32,6 +33,12 @@
 >
 > **Install in one command, working in five minutes, nothing to host.**
 
+> [!NOTE]
+> This repository is a community fork of [`Nakken13/claude-crew`](https://github.com/Nakken13/claude-crew) (MIT, original
+> author Nakken13). It tracks upstream and adds the opt-in team mode (`/crew-collab`), the adaptive
+> test policy, English-only docs/skills, CI and robustness fixes. Upstream-compatible: nothing here
+> changes the on-disk task format.
+
 <br>
 
 ## 🧩 The problem
@@ -43,7 +50,7 @@
 | 🕶️ **Flying blind on cache, context & batches** | You don't see your prompt cache about to expire (`5 min` / `1h` TTL), your context approaching forced compaction, which subagent is running, or your batch ETA — unless you burn tokens asking Claude. |
 
 > [!TIP]
-> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
+> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/fiaaaansoo/crewmates-fork) helps other people hitting the same wall find it.
 
 <br>
 
@@ -141,8 +148,8 @@ above your prompt and interactive side panes — **without spending a single LLM
 
 ```text
 ┌─ AbovePrompt (live 0-token status bands) ─────────────────────────────────────────────┐
-│ 🟢 2 Sessions en ligne | ⚡ 2 Current Tasks | 📋 3 Todo                                │
-│ Task : [████░░] 4/6 (66%)  │  Batch : [██████░░] 3/4 tasks (75%)  │  ⏱️ Fin estimée : ~8 min (~45k tokens restants) │
+│ 🟢 2 Sessions online | ⚡ 2 Current Tasks | 📋 3 Todo                                │
+│ Task : [████░░] 4/6 (66%)  │  Batch : [██████░░] 3/4 tasks (75%)  │  ⏱️ ETA: ~8 min (~45k tokens left) │
 │ 🎭 Agent Flow (1 actif / 2 total)                                                     │
 │   ├── ✅ architect [Read, Glob, Grep] · 8s                                            │
 │   └── 🔄 manager [Read, Glob, Grep, Write, Edit] · 12s                                │
@@ -156,7 +163,7 @@ If another session holds a lock on a file or batch zone you try to edit, or your
 prompt cache drops below `60s`, an immediate visual alert appears above the prompt:
 
 ```text
-🚨 COLLISION ZONE : `backend/payments/stripe.ts` (Edit) tombe sous la Zone `backend/payments/` verrouillée par @9f5944ac (Batch B) !
+🚨 ZONE COLLISION: `backend/payments/stripe.ts` (Edit) falls under the Zone `backend/payments/` locked by @9f5944ac (Batch B)!
 ⚠️ CACHE EXPIRE <60s (5 min) 00:42 | cache_read: 140k · cache_creation: 8k (hit 94%)
 ```
 
@@ -182,11 +189,11 @@ prompt cache drops below `60s`, an immediate visual alert appears above the prom
 
 | # | Mod (`hooks/mods/`) | UI Surface | What it does (100% local) |
 |---|---|---|---|
-| **6** | `crew-radar.ts` | `AbovePrompt` | Global status bar: `🟢 X Sessions en ligne \| ⚡ Y Current Tasks \| 📋 Z Todo` (plus `⏸️ Paused`). Maintains `.claude/crew-sessions.lock` on `session.start`/`session.end` and merges worktree-aware `crew_lock.json` sessions. |
+| **6** | `crew-radar.ts` | `AbovePrompt` | Global status bar: `🟢 X Sessions online \| ⚡ Y Current Tasks \| 📋 Z Todo` (plus `⏸️ Paused`). Maintains `.claude/crew-sessions.lock` on `session.start`/`session.end` and merges worktree-aware `crew_lock.json` sessions. |
 | **7** | `batch-progress.ts` | `AbovePrompt` | Parses active task checkboxes (`- [x]` vs `- [s]`/`- [ ]`) → `Task : [████░░] 4/6 (66%)` (updates mid-turn on `Write`/`Edit`) and `crew/CLAUDE_BATCH.md` → `Batch : [██████░░] 3/4 tasks (75%)`. |
 | **8** | `batch-dependency-graph.ts` | `Pane` (`/crew-board`) | Kanban & dependency board (`Todo \| In Progress \| Done \| Blocked`) for the active batch. Links tasks to `@sess:<id>` locks and flags `PAUSED/` tasks, sequential prerequisites, and cross-session `Zone:` blocks. |
 | **9** | `file-lock-monitor.ts` | `AbovePrompt` + Toast | Monitors `tool.call` (`Edit`, `Write`, `MultiEdit`). Fires an instant red UI banner & toast if the target path is actively edited in `.claude/crew-sessions.lock` or falls inside a batch `Zone:` locked in `crew_lock.json` by another session. |
-| **10** | `batch-eta-cost.ts` | `AbovePrompt` | Tracks completed task duration & token velocity per batch in `.claude/crew-batch-metrics.json` to display a live estimate: `⏱️ Fin estimée : ~8 min (~45k tokens restants)`. |
+| **10** | `batch-eta-cost.ts` | `AbovePrompt` | Tracks completed task duration & token velocity per batch in `.claude/crew-batch-metrics.json` to display a live estimate: `⏱️ ETA: ~8 min (~45k tokens left)`. |
 
 ### Architecture under `hooks/`
 
@@ -288,12 +295,23 @@ Claude Code build predates hook `modules`; update it.
 | ⚡ `/crew-ui` `/crew-board` `/crew-turns` `/crew-stack` `/crew-agents` | Instant local UI commands (0 LLM tokens) to toggle interactive panes and status bands |
 | 🪝 `crew_hook.py` | Two hooks in one file: `PreToolUse` blocks (`exit 2`) any `Edit`/`Write`/`MultiEdit`/mutating `Bash` into a zone locked by another session, and registers that lock preventively on `git mv`; `Stop` regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks overlaps as a fallback |
 | 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes — keeps specs and tasks in sync |
-| ⚡ `/crew-init` `/crew-new-task` `/crew-start` `/crew-close-task` `/crew-status` `/crew-count` `/crew-update` `/crew-version` | Out-of-the-box skills driving the full task & batch lifecycle deterministically |
+| ⚡ `/crew-init` `/crew-new-task` `/crew-start` `/crew-close-task` `/crew-status` `/crew-count` `/crew-update` `/crew-collab` `/crew-dashboard` `/crew-version` | Out-of-the-box skills driving the full task & batch lifecycle deterministically |
 | 🎭 `agents/` (`ceo`, `manager`, `comms`, `architect`, `designer`, `legal`, `social`, `seo`) | Specialized subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, structural tech choices, UX/retention specs, legal exposure, organic social distribution, and search/store/AI-answer discoverability |
 | 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading >100-line files whole, 150k session reset budget) wired into Claude Code from day one |
 
 Everything is plain markdown + JSON state + native zero-dependency TypeScript mods —
 readable, greppable, diffable in a normal PR review. No hosted board, no account, nothing to sync (unless you opt in to remote claims, below).
+
+<br>
+
+## 📋 Requirements
+
+| | |
+|---|---|
+| **Claude Code** | A build that supports plugins and `hooks/hooks.json` `modules` (the Zero-Token mods). Check with `claude plugin validate .` — it must print `hooks/hooks.json names a hooks module`. Without mod support the skills, agents and Python hooks still work; only the in-UI bands/panes are missing. |
+| **Python** | 3.11+ (CI runs 3.11 and 3.13). Standard library only for the hooks; the optional dashboard needs `scripts/dashboard/requirements.txt`. |
+| **git** | Required (worktrees, claims). |
+| **OS** | Linux and Windows are covered by CI; macOS is expected to work but is not tested. |
 
 <br>
 
@@ -305,7 +323,7 @@ your project.
 ### 🔌 Option A — Install via marketplace (recommended)
 
 ```text
-/plugin marketplace add Nakken13/claude-crew
+/plugin marketplace add fiaaaansoo/crewmates-fork
 /plugin install crew-mates@crew-mates
 /crew-init
 ```
@@ -323,7 +341,7 @@ restart Claude Code after install if the `/crew-*` commands don't appear.
 Paste this into Claude Code, in the project you want to set up:
 
 ```text
-Install the crew-mates plugin (marketplace add Nakken13/claude-crew, then
+Install the crew-mates plugin (marketplace add fiaaaansoo/crewmates-fork, then
 install crew-mates@crew-mates), then run /crew-init here.
 ```
 
@@ -333,8 +351,8 @@ project the same way as Option A.
 ### 📋 Option C — Manual clone (no plugin system)
 
 ```bash
-git clone https://github.com/Nakken13/claude-crew.git
-cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+git clone https://github.com/fiaaaansoo/crewmates-fork.git
+cp -r crewmates-fork/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
 ```
 
 Open `your-project` in Claude Code and run `/crew-init`. Use this if you
@@ -383,8 +401,13 @@ the terminal stops the server.
 
 ## 👥 Optional: several devs on one repo
 
-By default nothing is shared beyond git: two devs can start (or re-create) the same
-task before either pushes. Set `remote_claims : true` in
+By default a project is **solo**: nothing is shared beyond git, so two devs can start (or
+re-create) the same task before either pushes. Run **`/crew-collab on`**: it asks for your
+name (the owner of all your claims), turns team mode on, and sets aside the `TODO` tasks that
+belong to somebody else (an `Owner:` line in the task file or a published claim; tasks with no
+mention are kept as "unassigned" and never started by `/crew-start`). `/crew-collab status`
+shows who has how many tasks, `/crew-collab off` goes back to solo, and the status bar shows
+`👤N` only while team mode is on. Under the hood it sets `remote_claims : true` in
 `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (off by default; each dev opts in) and
 `/crew-start`, `/crew-new-task` and `/crew-close-task` share «who is on what» plus
 the `TODO` tasks through a dedicated git ref, `refs/crew/claims`, pushed on its own
@@ -432,7 +455,7 @@ and every `/crew-*` command are unchanged. Once per machine:
 ```text
 /plugin uninstall claude-crew
 /plugin marketplace remove claude-crew
-/plugin marketplace add Nakken13/claude-crew
+/plugin marketplace add fiaaaansoo/crewmates-fork
 /plugin install crew-mates@crew-mates
 ```
 
@@ -504,6 +527,9 @@ pytest -q
 
 # Verify plugin manifests, hooks/hooks.json, mod inventory, and script sync
 python scripts/dev/verify_plugin_package.py
+
+# Regenerate the packaged copies (scripts/, skills/, agents/) after editing their sources
+python scripts/dev/sync_engine.py        # --check to only report drift
 ```
 
 <br>
@@ -523,7 +549,7 @@ python scripts/dev/verify_plugin_package.py
 Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
 `crew-mates` saves you a merge conflict, a ⭐ helps other people find it.
 
-[![GitHub stars](https://img.shields.io/github/stars/Nakken13/claude-crew?style=social)](https://github.com/Nakken13/claude-crew)
+[![GitHub stars](https://img.shields.io/github/stars/fiaaaansoo/crewmates-fork?style=social)](https://github.com/fiaaaansoo/crewmates-fork)
 
 ## 📄 License
 

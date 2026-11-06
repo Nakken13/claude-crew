@@ -1,46 +1,52 @@
-# AGENTS.md — <NOM_PROJET>
+# AGENTS.md — crew-mates
 
-Guide invariants + repo map pour tout agent (Claude Code ou autre) travaillant
-sur ce projet. À remplir/vérifier avant le premier vrai chantier — ne pas
-laisser de placeholder `<...>` non résolu.
+Guide for any agent (Claude Code or other) working on this repository.
 
 ## Stack
 
-<Lister la stack réellement vérifiée depuis les fichiers de manifeste
-(package.json, requirements.txt, go.mod, Cargo.toml...), pas de suppositions.>
+- Python 3.11+ standard library for the engine (`crew/crew_hook.py`, `crew/crew_update.py`, `crew/spec_to_task_hook.py`); FastAPI/uvicorn only for the optional dashboard (`scripts/dashboard/`).
+- TypeScript Zero-Token mods for Claude Code (`hooks/register.ts`, `hooks/mods/*.ts`), no build step.
+- Markdown skills (`skills/`, `.claude/skills/`) and personas (`agents/`, `.claude/agents/`).
 
 ## Repository map
 
 ```text
-<arborescence des dossiers significatifs, avec un rôle en une ligne chacun>
+.claude-plugin/     plugin.json + marketplace.json (version lives in plugin.json only)
+crew/               dogfood engine + tests (SOURCE OF TRUTH for the engine)
+scripts/            packaged engine copy (GENERATED), dashboard, dev tools
+.claude/skills|agents/  dogfood skills/personas (SOURCE OF TRUTH)
+skills/ agents/     packaged copies (GENERATED, except skills/crew-init which is plugin-native)
+hooks/              hooks.json + TypeScript mods and their tests
+template/           files copied into a user's project by /crew-init
+docs/               design notes
 ```
 
-## Commandes vérifiées
+## Verified commands
 
 ```bash
-<install>
-<dev/run local>
-<tests>
-<build>
+python -m pip install pytest -r scripts/dashboard/requirements.txt -r scripts/dashboard/requirements-dev.txt
+python -m pytest crew scripts -q
+python scripts/dev/verify_plugin_package.py
+python scripts/dev/sync_engine.py          # regenerate packaged copies; --check to only report drift
+claude plugin validate .
 ```
 
-Toute commande listée ici doit avoir été exécutée avec succès au moins une
-fois — ne pas documenter une commande non testée.
+Mod tests need bun and an import swap (`claude-code/testing` → `bun:test`); see `CONTRIBUTING.md`.
 
-## Règles de code
+## Code rules
 
-<Conventions spécifiques au projet : structure des routes/handlers, schémas
-de validation, style de logging, ce qui ne doit jamais être fait (ex. pas de
-print debug, pas de secret loggé, pas de migration destructive sans accord).>
+- **Never edit a generated mirror** (`scripts/crew_hook.py`, `scripts/crew_update.py`, `skills/*` except `crew-init`, `agents/*`): edit the source, then run `sync_engine.py`.
+- Every `subprocess` call in the engine pins stdin/stdout/stderr (a test enforces it).
+- Do not rename or translate on-disk/parsed tokens (`Zone :`, `À classer`, `HISTORIQUE.md`, `Niveau :`, ...): existing projects depend on them.
+- Test first; user-visible change → entry under `## [Unreleased]` in `CHANGELOG.md`.
 
 ## Secrets and boundaries
 
-<Où vivent les secrets (env vars, vault...), ce qui ne doit jamais atteindre
-le client/logs, référence vers SECURITY.md si présent.>
+No secrets in this repo. Hooks run locally and make no network calls; see `SECURITY.md`.
 
 ## Documentation routing
 
-- Vision produit / scope : `PRODUCT.md` (si présent).
-- Conventions de contribution : `CONTRIBUTING.md` (si présent).
-- Limites sécurité : `SECURITY.md` (si présent).
-- Guide global de contexte : `crew/CLAUDE_CONTEXT/AGENTS.md`.
+- Product vision / scope: `PRODUCT.md`.
+- Contribution conventions: `CONTRIBUTING.md`.
+- Security: `SECURITY.md`.
+- Task lifecycle, batching and context rules: `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md`; team mode and claims: `crew/CLAUDE_CONTEXT/AGENTS.md`.

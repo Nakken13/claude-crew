@@ -125,6 +125,9 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
     (".claude/skills/crew-collab/SKILL.md", "skills/crew-collab/SKILL.md"),
+    (".claude/skills/crew-count/SKILL.md", "skills/crew-count/SKILL.md"),
+    (".claude/skills/crew-dashboard/SKILL.md", "skills/crew-dashboard/SKILL.md"),
+    (".claude/skills/crew-version/SKILL.md", "skills/crew-version/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
     # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in
@@ -199,6 +202,23 @@ def check_plugin_hook_mirror(repo_root: Path) -> list[str]:
     import sync_engine
     drift = [d for d in sync_engine.sync(repo_root, check=True) if d == "scripts/crew_hook.py"]
     return [f"{d} drifted from crew/crew_hook.py (run: python scripts/dev/sync_engine.py)" for d in drift]
+
+
+def check_public_surface(repo_root: Path) -> list[str]:
+    """What an outside user sees right after `/plugin install` must be finished:
+    no unresolved project placeholder in the shipped personas/skills, and the
+    README version badge must not be a hard-coded (stale) number."""
+    problems = []
+    for folder in ("agents", "skills"):
+        for f in sorted((repo_root / folder).rglob("*.md")):
+            text = f.read_text(encoding="utf-8")
+            # crew-init legitimately names the placeholder it resolves.
+            if "<NOM_PROJET>" in text and f.parent.name != "crew-init":
+                problems.append(f"{f.relative_to(repo_root)} ships an unresolved <NOM_PROJET> placeholder")
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    if "img.shields.io/badge/version-" in readme:
+        problems.append("README.md has a hard-coded version badge; use the dynamic one fed by plugin.json")
+    return problems
 
 
 EVENT_EXPECTED_SCRIPT = {
@@ -287,8 +307,11 @@ def check_readme_has_marketplace_install(repo_root: Path) -> list[str]:
     problems = []
     readme = repo_root / "README.md"
     text = readme.read_text(encoding="utf-8")
-    if "/plugin marketplace add Nakken13/claude-crew" not in text:
-        problems.append(f"{readme} missing the /plugin marketplace add command")
+    # The slug comes from plugin.json so a rename/transfer is a one-place change.
+    plugin = json.loads((repo_root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    slug = "/".join(plugin.get("repository", "").rstrip("/").split("/")[-2:])
+    if not slug or f"/plugin marketplace add {slug}" not in text:
+        problems.append(f"{readme} missing the /plugin marketplace add {slug or '<owner/repo>'} command")
     if "/plugin install crew-mates@crew-mates" not in text:
         problems.append(f"{readme} missing the /plugin install command")
     return problems
@@ -344,6 +367,7 @@ CHECKS = [
     check_engine_files_copied,
     check_crew_scripts_copied,
     check_plugin_hook_mirror,
+    check_public_surface,
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,

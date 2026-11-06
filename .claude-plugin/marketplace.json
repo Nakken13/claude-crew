@@ -10,5 +10,6 @@
       "source": ".",
       "description": "File-based task lifecycle, multi-agent collision prevention, and 10 Zero-Token UI/batch supervision mods for Claude Code."
     }
-  ]
+  ],
+  "description": "crew-mates: file-based task lifecycle, collision-free parallel Claude Code sessions, and Zero-Token UI mods."
 }

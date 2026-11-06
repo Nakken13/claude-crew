@@ -1,0 +1,27 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: crew-mates version
+      description: Output of `/crew-version`
+    validations: { required: true }
+  - type: input
+    id: env
+    attributes:
+      label: Claude Code version and OS
+      placeholder: "claude --version, Windows 11 / macOS / Linux"
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Commands run, and the relevant output of `python crew/crew_hook.py status` if it helps.
+    validations: { required: true }

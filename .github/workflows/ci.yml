@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Git identity for tests that create temporary repositories
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "CI"
+          git config --global init.defaultBranch main
+      - name: Install test dependencies
+        run: python -m pip install pytest -r scripts/dashboard/requirements.txt -r scripts/dashboard/requirements-dev.txt
+      - name: Unit tests
+        run: python -m pytest crew scripts -q
+      - name: Package integrity
+        run: python scripts/dev/verify_plugin_package.py
+      - name: Packaged mirrors are in sync
+        run: python scripts/dev/sync_engine.py --check
+
+  mods:
+    name: Mod tests (bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Run mod tests outside the Claude Code runtime
+        run: |
+          # `claude-code/testing` only exists inside Claude Code; bun:test is API-compatible.
+          cp -r hooks "$RUNNER_TEMP/hooks"
+          cd "$RUNNER_TEMP/hooks"
+          sed -i "s#'claude-code/testing'#'bun:test'#" mods.test.ts
+          bun test mods.test.ts
