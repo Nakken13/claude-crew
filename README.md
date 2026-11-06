@@ -68,7 +68,7 @@ flowchart LR
     in progress"]
     C <--> P["⏸️ PAUSED/&lt;slug&gt;.md
     awaiting human/dev check"]
-    C --> D["📖 HISTORIQUE.md
+    C --> D["📖 HISTORY.md
     done — long-term memory"]
     C --> E["✅ TESTS/IA/ + /DEV/
     validation checklist"]
@@ -112,7 +112,7 @@ of ~270 ms per `Edit`/`Write`. Set `CREW_HOOK_PROFILE=minimal` to disable the
 
 A `SessionStart` hook (`startup|resume|clear|compact`) injects a read-only crew digest (≤ 2000 chars:
 active/paused tasks with `n/m` checkboxes, active batches, other sessions' locks, last 3
-`HISTORIQUE.md` entries) so a resume or compaction doesn't re-read `crew/` by hand. Set
+`HISTORY.md` entries) so a resume or compaction doesn't re-read `crew/` by hand. Set
 `CREW_SESSION_DIGEST=off` to disable it.
 
 A `Stop` hook still regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks
@@ -266,7 +266,7 @@ Claude Code build predates hook `modules`; update it.
 | `/crew-init` | Bootstrap the `crew/` scaffold & project docs (`CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `SECURITY.md`, `CONTRIBUTING.md`) and verify zero `<placeholder>` remains |
 | `/crew-new-task` | Create a task (`crew/TODO/` or `crew/CURRENT_TASKS/`) with concrete `- [ ]` actions and categorize its `Zone:` in `crew/CLAUDE_BATCH.md` |
 | `/crew-start` | Deterministically pick & start the next collision-free task (`crew_hook.py next-task`), isolating the batch in its own `git worktree` |
-| `/crew-close-task` | Close a completed task: code review / simplify check, append to `HISTORIQUE.md`, generate `crew/TESTS/{IA,DEV}/` checklists, local `crew/` git commit |
+| `/crew-close-task` | Close a completed task: code review / simplify check, append to `HISTORY.md`, generate `crew/TESTS/{IA,DEV}/` checklists, local `crew/` git commit |
 | `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees |
 | `/crew-count` | Count how many batches can be launched in parallel right now + ready terminal titles |
 | `/crew-dashboard` | Launch the optional local read/write web dashboard (`http://127.0.0.1:8943`) |
@@ -435,7 +435,7 @@ new rules, new skills) without ever touching your `crew/` task data.
   `.claude/agents/*` copies.
 
 It never touches `crew/TODO/`, `crew/CURRENT_TASKS/`, `crew/PAUSED/`, `crew/PROBLEMS/`,
-`crew/ICEBOX/`, `crew/TESTS/`, or `crew/CLAUDE_CONTEXT/HISTORIQUE.md`, and it
+`crew/ICEBOX/`, `crew/TESTS/`, or `crew/CLAUDE_CONTEXT/HISTORY.md`, and it
 never silently overwrites a file you've personalized. Each engine file gets
 one of four statuses before anything is written:
 
@@ -444,6 +444,31 @@ one of four statuses before anything is written:
 - `apply` — unchanged locally since the last update → safe to refresh.
 - `conflict` — you've edited it since → shown as a diff, never overwritten
   without you saying so.
+
+### English file names (older projects)
+
+Early versions used French names. They are all still **read**, so nothing breaks, but new projects get
+`HISTORY.md`, `HISTORY_ARCHIVE.md`, `TASK_CHANGELOG.md`, `LIFECYCLE.md`, a `## Unsorted` section in
+`CLAUDE_BATCH.md`, and `Level:` / `Risky zones:` in `TESTS_POLICY.md`. To move an existing project over
+(optional, per project):
+
+```bash
+# plugin install: use ${CLAUDE_PLUGIN_ROOT}/scripts/crew_update.py instead of crew/crew_update.py
+# plugin install: use ${CLAUDE_PLUGIN_ROOT}/scripts/crew_update.py instead of crew/crew_update.py
+python crew/crew_update.py --project . --migrate-names           # dry-run: lists renames/rewrites/conflicts
+python crew/crew_update.py --project . --migrate-names --apply   # uses `git mv`; never overwrites
+```
+
+| Former (French) | Now |
+|---|---|
+| `HISTORIQUE.md`, `HISTORIQUE_ARCHIVE.md` | `HISTORY.md`, `HISTORY_ARCHIVE.md` |
+| `CHANGELOG_TACHES.md` | `TASK_CHANGELOG.md` |
+| `CYCLE_DE_VIE.md` | `LIFECYCLE.md` |
+| `## À classer` | `## Unsorted` |
+| `Niveau :` / `Zones risquées :` | `Level:` / `Risky zones:` |
+
+Do it only once **every collaborator** has updated the plugin: an older version does not know the English
+names and would recreate the French files next to yours.
 
 <br>
 
@@ -463,7 +488,7 @@ Then run `/crew-update` in each project. **Your project files are safe:**
 
 - The `/plugin` commands never touch a project, only the plugin cache.
 - `/crew-update` never writes your data: `crew/TODO`, `CURRENT_TASKS`, `PROBLEMS`, `ICEBOX`,
-  `PAUSED`, `TESTS`, `HISTORIQUE.md`, `TESTS_DONE`, `CLAUDE_BATCH.md`.
+  `PAUSED`, `TESTS`, `HISTORY.md`, `TESTS_DONE`, `CLAUDE_BATCH.md`.
 - Engine files you customized (`PRODUCT.md`, `CLAUDE.md`, `AGENTS.md`...) are reported as
   `conflict` and never overwritten without your confirmation.
 - **Recommended:** read the dry-run plan before confirming, keep your version for every

@@ -25,7 +25,7 @@ reason in testable hypotheses, not promises.
   analytics). Without data: deliver anyway, on a stated hypothesis, and list
   at the end of the answer the exports to provide (the main session can run
   them). Never invent a search volume, a keyword difficulty or a score.
-- `crew/CLAUDE_CONTEXT/HISTORIQUE.md`: targeted grep so as not to redo a test
+- `crew/CLAUDE_CONTEXT/HISTORY.md`: targeted grep so as not to redo a test
   already run.
 - **Dated watch**: your knowledge has a cutoff, and the rules of engines,
   stores and AI assistants shift within months. The 2-3 points that carry

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { register } from './register.ts';
-import { crewRuntimeState, crewUiState, type HookHandler, type ModApi } from './mods/shared.ts';
+import { crewRuntimeState, crewUiState, parseClaudeBatch, type HookHandler, type ModApi } from './mods/shared.ts';
 import { computePromptCacheStatus, promptCacheState } from './mods/prompt-cache-control.ts';
 import { computeTokenWeather } from './mods/token-weather.ts';
 import { formatTurnRow, turnInspectorState } from './mods/turn-inspector.ts';
@@ -840,4 +840,24 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     }
     await h.emit('session.end', { sessionId: 'sess-focus-1' });
   });
+});
+
+describe('CLAUDE_BATCH.md unsorted section: English header, French legacy header', () => {
+  const md = (header: string) =>
+    `## Batch A
+- \`a.md\`
+Zone : \`src/a/\`
+
+${header}
+- \`loose.md\`
+`;
+
+  for (const header of ['## Unsorted', '## À classer', '### A classer']) {
+    test(`'${header}' bounds the last batch and lists the loose task`, () => {
+      const parsed = parseClaudeBatch(md(header));
+      expect(parsed.sections.length).toBe(1);
+      expect(parsed.sections[0].tasks.map((t) => t.slug)).toEqual(['a.md']);
+      expect(parsed.unclassified).toContain('loose.md');
+    });
+  }
 });

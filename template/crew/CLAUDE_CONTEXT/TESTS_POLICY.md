@@ -4,11 +4,11 @@ File owned by the project: `/crew-update` never modifies it. Single source
 of the test rules, read by `/crew-close-task` and `/crew-status`.
 Edit freely.
 
-(The two keys below stay in French because skills match on them: `Niveau :` = level, `Zones risquées :` = risky zones.)
+(`Level:` and `Risky zones:` are read by the skills. Projects created earlier may still have the French keys `Niveau :` / `Zones risquées :`: they are accepted too.)
 
-Niveau : light
+Level: light
 
-Zones risquées : (none filled in)
+Risky zones: (none filled in)
 
 ## Levels
 
@@ -24,7 +24,7 @@ The level only drives checklists and visual/emulator verification.
 
 What would be costly if it broke without anyone noticing (payment,
 accounts/2FA, real time, permissions, data migrations...).
-`/crew-init` or `/crew-update` replace the `Zones risquées :` line with the
+`/crew-init` or `/crew-update` replace the `Risky zones:` line with the
 list inferred from the project, in its own words. Touching a zone = "serious".
 
 ## Grid (`light` level)
@@ -39,19 +39,19 @@ At closure, three questions:
 - Invisible **AND** serious **AND** not covered → `TESTS/IA` or
   `TESTS/DEV` checklist, **5 boxes maximum**, only what the AI cannot run
   itself.
-- Otherwise → no file; one line in `HISTORIQUE.md`:
+- Otherwise → no file; one line in `HISTORY.md`:
   `Tests: none — <reason>, covered by <test>`.
 
 ## Hesitation (`light` level)
 
 Only if the defect would be invisible **and** the severity or coverage is
 genuinely uncertain: ask **one** short question, before writing the
-`HISTORIQUE` entry or the checklist — "Shall I check, will you check, or do we skip?".
+`HISTORY` entry or the checklist — "Shall I check, will you check, or do we skip?".
 
 - "I check" → the AI runs it (emulator included if needed) and notes the
-  result in `HISTORIQUE`.
+  result in `HISTORY`.
 - "You check" → checklist ≤ 5 boxes, or nothing written if it is by eye.
-- "Skip" → `HISTORIQUE` line, nothing else.
+- "Skip" → `HISTORY` line, nothing else.
 
 With no one to ask (subagent, closure chained by `/crew-start`):
 checklist ≤ 5 boxes, never a blocking question. The emulator or any heavy

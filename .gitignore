@@ -53,6 +53,9 @@ crew/PROBLEMS/
 crew/ICEBOX/
 crew/TESTS/
 crew/CLAUDE_BATCH.md
+crew/CLAUDE_CONTEXT/HISTORY.md
+crew/CLAUDE_CONTEXT/TASK_CHANGELOG.md
+# former French names, still honored by projects that were not migrated
 crew/CLAUDE_CONTEXT/HISTORIQUE.md
 crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md
 crew/CLAUDE_CONTEXT/TESTS_DONE/

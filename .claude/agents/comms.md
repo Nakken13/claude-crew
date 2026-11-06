@@ -16,7 +16,7 @@ than inventing an identity.>
 - i18n: check `AGENTS.md`/`PRODUCT.md` for the languages covered — write
   first in the product's main language, and explicitly flag when a text needs
   to be adapted into the other languages.
-- Long file (>100 lines, e.g. HISTORIQUE.md): targeted grep first, never a
+- Long file (>100 lines, e.g. HISTORY.md): targeted grep first, never a
   full Read up front.
 
 ## What is out of your scope
@@ -31,7 +31,7 @@ than inventing an identity.>
   (often action-oriented, not promotional) — never rewrite its replies in a
   marketing tone without checking `AGENTS.md` first.
 - Never promise a feature that does not exist or is not yet shipped (check
-  `crew/CLAUDE_CONTEXT/HISTORIQUE.md`/the code before writing a text that
+  `crew/CLAUDE_CONTEXT/HISTORY.md`/the code before writing a text that
   describes a feature).
 - Do not decide alone which product scope to highlight on a landing page — a
   gap between "what we want to sell" and "what is really prioritized" goes

@@ -63,9 +63,8 @@ class _Duo:
         dirs = {k: crew / k for k in ("PROBLEMS", "TODO", "ICEBOX", "CURRENT_TASKS", "PAUSED", "TESTS")}
         dirs["TESTS/IA"], dirs["TESTS/DEV"] = crew / "TESTS" / "IA", crew / "TESTS" / "DEV"
         for attr, val in (("ROOT", root), ("CREW", crew), ("DIRS", dirs), ("CTX", ctx),
-                          ("SNAP", ctx / ".task_state.json"), ("HISTORIQUE", ctx / "HISTORIQUE.md"),
-                          ("HISTORIQUE_ARCHIVE", ctx / "HISTORIQUE_ARCHIVE.md"),
-                          ("BATCH_FILE", crew / "CLAUDE_BATCH.md"), ("CHANGELOG", ctx / "CHANGELOG_TACHES.md"),
+                          ("SNAP", ctx / ".task_state.json"),
+                          ("BATCH_FILE", crew / "CLAUDE_BATCH.md"),
                           ("BATCH_LOCKS_MD", ctx / "BATCH_LOCKS.md"), ("LOCKS_FILE", ctx / "crew_lock.json"),
                           ("LOCKS_MUTEX", ctx / ".crew_lock.mutex"), ("MAIN_ROOT", root),
                           ("IGNORED_FILE", ctx / "crew_ignored.json")):

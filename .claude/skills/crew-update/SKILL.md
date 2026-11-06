@@ -71,7 +71,7 @@ never replaces a file without explicit confirmation.
 ### Special case: slimmed `CLAUDE.md` (opt-in)
 
 Since the template slimming, an older-generation `CLAUDE.md` remains **valid**:
-the skills point to `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (`§ Batching`, `§ Task management`,
+the skills point to `crew/CLAUDE_CONTEXT/LIFECYCLE.md` (`§ Batching`, `§ Task management`,
 `§ Segmented AGENTS.md guides`, `§ 2bis`), an engine file added by `/crew-update`; the old
 long `CLAUDE.md` stays valid (those sections are in it too).
 
@@ -132,7 +132,7 @@ long `CLAUDE.md` stays valid (those sections are in it too).
    step 5 confirmation. Content: the template
    `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (manual
    clone: `<source>/template/...`), with level and risky zones inferred from
-   `CLAUDE.md`, `README`, the manifests and targeted `grep`s in `HISTORIQUE.md`
+   `CLAUDE.md`, `README`, the manifests and targeted `grep`s in `HISTORY.md`
    (never read in full). The file is **not** in `ENGINE_FILES_*`: once created
    it belongs to the user. Declined → nothing is created; the skills keep the
    historical behavior (`full`).
@@ -146,6 +146,20 @@ long `CLAUDE.md` stays valid (those sections are in it too).
    `true`. No question asked (the default is inert). An existing file is
    **never** modified; it is not in `ENGINE_FILES_*`.
 
+## Migrate to the English names (optional)
+
+Projects created before the English names existed keep working: the engine reads both. To move one over
+(`HISTORIQUE.md` → `HISTORY.md`, `HISTORIQUE_ARCHIVE.md` → `HISTORY_ARCHIVE.md`, `CHANGELOG_TACHES.md` →
+`TASK_CHANGELOG.md`, `CYCLE_DE_VIE.md` → `LIFECYCLE.md`, `## À classer` → `## Unsorted`, `Niveau :` →
+`Level:`, `Zones risquées :` → `Risky zones:`, plus the references in `CLAUDE.md`, `AGENTS.md` and `.gitignore`),
+only when the user asks:
+
+1. Dry-run: `python <crew_update.py> --project "$ROOT" --migrate-names` and show the list (renames, rewrites,
+   conflicts). A conflict means both names exist: never merge them automatically.
+2. Warn: every collaborator must update crew-mates first (an older version does not know the English names and
+   would recreate the French files). Ask for confirmation via `AskUserQuestion`.
+3. Apply with `--apply` (uses `git mv` for tracked files), then tell the user to commit the renames.
+
 ## Report
 
 9. Final summary: files created, files updated, files left in conflict or
@@ -156,7 +170,7 @@ long `CLAUDE.md` stays valid (those sections are in it too).
 ## What this skill does not do
 
 - Never writes into `crew/TODO/`, `crew/CURRENT_TASKS/`, `crew/PROBLEMS/`,
-  `crew/ICEBOX/`, `crew/TESTS/`, `crew/CLAUDE_CONTEXT/HISTORIQUE.md`,
+  `crew/ICEBOX/`, `crew/TESTS/`, `crew/CLAUDE_CONTEXT/HISTORY.md`,
   `crew/CLAUDE_CONTEXT/TESTS_DONE/`, nor `crew/CLAUDE_BATCH.md` (becomes live
   data from the first real batch, never in the whitelist even if shipped as a
   skeleton at the start).

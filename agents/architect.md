@@ -18,10 +18,10 @@ explore endlessly or write the code — you have no editing tools.
 - Read `AGENTS.md` (stack, conventions already set) and the relevant
   existing code before deciding — unlike `ceo`, technical depth is part of
   the job.
-- Check `crew/CLAUDE_CONTEXT/HISTORIQUE.md` for the history of choices
+- Check `crew/CLAUDE_CONTEXT/HISTORY.md` for the history of choices
   already made on this topic — do not re-decide an already arbitrated choice
   without flagging it explicitly.
-- Long file (>100 lines, e.g. HISTORIQUE.md, CLAUDE_BATCH.md, graph.json):
+- Long file (>100 lines, e.g. HISTORY.md, CLAUDE_BATCH.md, graph.json):
   targeted grep first, never a full Read up front.
 
 ## How to decide

@@ -507,4 +507,131 @@ def test_tests_policy_template_ships_with_light_default():
         pathlib.Path(__file__).resolve().parent.parent
         / "template" / "crew" / "CLAUDE_CONTEXT" / "TESTS_POLICY.md"
     )
-    assert "Niveau : light" in template.read_text(encoding="utf-8")
+    assert "Level: light" in template.read_text(encoding="utf-8")
+
+
+# --- English names: lifecycle doc alias + --migrate-names --------------------
+
+LIFECYCLE = "crew/CLAUDE_CONTEXT/LIFECYCLE.md"
+CYCLE = "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md"
+
+
+def _mini(tmp_path, files):
+    root = tmp_path / "proj"
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    return root
+
+
+def _src(tmp_path, files):
+    root = tmp_path / "src"
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    return root
+
+
+def test_engine_whitelist_ships_the_english_lifecycle_doc():
+    assert LIFECYCLE in u.ENGINE_FILES_COMMON and CYCLE not in u.ENGINE_FILES_COMMON
+
+
+def test_update_keeps_refreshing_a_legacy_named_lifecycle_doc(tmp_path):
+    proj = _mini(tmp_path, {CYCLE: "old\n"})
+    src = _src(tmp_path, {LIFECYCLE: "new\n"})
+    u.save_scaffold_version(proj, {"version": "1", "files": {CYCLE: u.hash_file(proj / CYCLE)}})
+    decisions = u.plan(proj, src, [LIFECYCLE])
+    assert decisions[0]["status"] == "apply" and decisions[0]["dest"] == CYCLE
+    assert u.apply(proj, src, decisions) == [CYCLE]
+    assert (proj / CYCLE).read_text(encoding="utf-8") == "new\n"
+    assert not (proj / LIFECYCLE).exists()           # never a duplicate under the English name
+    u.record_version(proj, "2", decisions)
+    assert CYCLE in u.load_scaffold_version(proj)["files"]
+
+
+def test_update_creates_the_english_lifecycle_doc_on_a_fresh_project(tmp_path):
+    proj = _mini(tmp_path, {"CLAUDE.md": "x\n"})
+    src = _src(tmp_path, {LIFECYCLE: "new\n"})
+    decisions = u.plan(proj, src, [LIFECYCLE])
+    assert decisions[0]["status"] == "new" and decisions[0]["dest"] == LIFECYCLE
+    assert u.apply(proj, src, decisions) == [LIFECYCLE]
+
+
+LEGACY_PROJECT = {
+    "crew/CLAUDE_CONTEXT/HISTORIQUE.md": "# h\n",
+    "crew/CLAUDE_CONTEXT/HISTORIQUE_ARCHIVE.md": "# a\n",
+    "crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md": "# c\n",
+    CYCLE: "# lifecycle\n",
+    "crew/CLAUDE_BATCH.md": "# Batches\n\n## Batch A\n- `a.md`\n\n## À classer\n- `b.md`\n",
+    "crew/CLAUDE_CONTEXT/TESTS_POLICY.md": "Niveau : light\n\nZones risquées : `src/`\n",
+    "CLAUDE.md": "See crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md and HISTORIQUE.md.\n",
+    ".gitignore": "crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md\n",
+}
+
+
+def test_migrate_dry_run_reports_everything_and_writes_nothing(tmp_path):
+    proj = _mini(tmp_path, LEGACY_PROJECT)
+    report = u.migrate_names(proj)                      # apply defaults to False
+    kinds = {(a["kind"], a["from"]) for a in report["actions"]}
+    assert ("rename", "crew/CLAUDE_CONTEXT/HISTORIQUE.md") in kinds
+    assert ("rename", CYCLE) in kinds
+    assert ("rewrite", "crew/CLAUDE_BATCH.md") in kinds
+    assert report["applied"] is False
+    for rel in LEGACY_PROJECT:
+        assert (proj / rel).read_text(encoding="utf-8") == LEGACY_PROJECT[rel]
+
+
+def test_migrate_apply_renames_rewrites_and_is_idempotent(tmp_path):
+    proj = _mini(tmp_path, LEGACY_PROJECT)
+    u.save_scaffold_version(proj, {"version": "1", "files": {CYCLE: u.hash_file(proj / CYCLE)}})
+    report = u.migrate_names(proj, apply=True)
+    ctx = proj / "crew" / "CLAUDE_CONTEXT"
+    for old, new in (("HISTORIQUE.md", "HISTORY.md"), ("HISTORIQUE_ARCHIVE.md", "HISTORY_ARCHIVE.md"),
+                     ("CHANGELOG_TACHES.md", "TASK_CHANGELOG.md"), ("CYCLE_DE_VIE.md", "LIFECYCLE.md")):
+        assert not (ctx / old).exists() and (ctx / new).exists(), old
+    assert (ctx / "HISTORY.md").read_text(encoding="utf-8") == "# h\n"          # content untouched
+    batch = (proj / "crew" / "CLAUDE_BATCH.md").read_text(encoding="utf-8")
+    assert "## Unsorted" in batch and "classer" not in batch
+    policy = (ctx / "TESTS_POLICY.md").read_text(encoding="utf-8")
+    assert policy.startswith("Level: light") and "Risky zones:" in policy
+    assert "LIFECYCLE.md" in (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "HISTORY.md" in (proj / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "TASK_CHANGELOG.md" in (proj / ".gitignore").read_text(encoding="utf-8")
+    recorded = u.load_scaffold_version(proj)["files"]
+    assert LIFECYCLE in recorded and CYCLE not in recorded                      # /crew-update stays quiet
+    assert report["applied"] is True and report["conflicts"] == []
+    again = u.migrate_names(proj, apply=True)
+    assert again["actions"] == []                                               # idempotent
+
+
+def test_migrate_never_overwrites_when_both_names_exist(tmp_path):
+    files = dict(LEGACY_PROJECT)
+    files["crew/CLAUDE_CONTEXT/HISTORY.md"] = "# already english\n"
+    proj = _mini(tmp_path, files)
+    report = u.migrate_names(proj, apply=True)
+    assert ("crew/CLAUDE_CONTEXT/HISTORIQUE.md", "crew/CLAUDE_CONTEXT/HISTORY.md") in [
+        (c["from"], c["to"]) for c in report["conflicts"]]
+    assert (proj / "crew/CLAUDE_CONTEXT/HISTORIQUE.md").read_text(encoding="utf-8") == "# h\n"
+    assert (proj / "crew/CLAUDE_CONTEXT/HISTORY.md").read_text(encoding="utf-8") == "# already english\n"
+
+
+def test_migrate_uses_git_mv_for_tracked_files(tmp_path):
+    import subprocess
+    proj = _mini(tmp_path, LEGACY_PROJECT)
+    run = lambda *a: subprocess.run(["git", *a], cwd=str(proj), capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    run("init", "-q"); run("config", "user.email", "t@t"); run("config", "user.name", "t")
+    run("add", "-A"); run("commit", "-qm", "init")
+    u.migrate_names(proj, apply=True)
+    status = run("status", "--porcelain").stdout
+    assert "R  crew/CLAUDE_CONTEXT/HISTORIQUE.md -> crew/CLAUDE_CONTEXT/HISTORY.md" in status.replace("\r", "")
+
+
+def test_migrate_cli_is_dry_run_without_apply(tmp_path, capsys):
+    proj = _mini(tmp_path, LEGACY_PROJECT)
+    sys.argv = ["crew_update.py", "--project", str(proj), "--migrate-names"]
+    u._main()
+    out = capsys.readouterr().out
+    assert "HISTORIQUE.md" in out and "Dry-run" in out
+    assert (proj / "crew/CLAUDE_CONTEXT/HISTORIQUE.md").exists()

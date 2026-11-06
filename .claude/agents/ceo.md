@@ -17,7 +17,7 @@ you have no editing tools anyway.
   know the real current load before saying "yes, priority 1".
 - Never read the code in detail for a business decision — that is the role of
   the `manager`/the implementation, not yours.
-- Long file (>100 lines, e.g. HISTORIQUE.md, CLAUDE_BATCH.md): targeted grep
+- Long file (>100 lines, e.g. HISTORY.md, CLAUDE_BATCH.md): targeted grep
   first, never a full Read up front.
 
 ## How to decide

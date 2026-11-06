@@ -15,14 +15,14 @@ At the end of every turn (Stop):
      regenerated every turn),
   6. LOCAL-ONLY git commit (never a push, see `auto_commit_closure`)
      scoped to `crew/` when a task has actually been closed in this
-     same turn (file gone from `CURRENT_TASKS/` + `HISTORIQUE.md`
+     same turn (file gone from `CURRENT_TASKS/` + `HISTORY.md`
      actually modified) — systematic git trace of every closure without
      pushing anything automatically, the push stays a human decision.
   7. removes from crew/CLAUDE_BATCH.md every `## Batch`/`### Batch` section
      whose listed tasks are ALL struck through (~~`slug.md`~~) — fully
      closed batch (see `prune_closed_batches`) — to keep the
      file from growing indefinitely; the full history stays in
-     HISTORIQUE.md, already written when each task is closed. Empty/
+     HISTORY.md, already written when each task is closed. Empty/
      placeholder sections (0 referenced tasks) are never touched.
 On PreToolUse (matcher Bash|Edit|Write|MultiEdit, see gate_pretooluse):
   - `Edit`/`Write`/`MultiEdit`: blocks before writing if `file_path` falls
@@ -101,23 +101,60 @@ DIRS = {
 }
 CTX = CREW / "CLAUDE_CONTEXT"
 SNAP = CTX / ".task_state.json"
-CHANGELOG = CTX / "CHANGELOG_TACHES.md"
 BATCH_FILE = CREW / "CLAUDE_BATCH.md"
 # LOCKS_FILE/LOCKS_MUTEX: lock shared in the main checkout (see
 # _shared_lock_paths above), schema session->{batch,tasks,worktree,branch,since}.
 BATCH_LOCKS_MD = CTX / "BATCH_LOCKS.md"
-HISTORIQUE = CTX / "HISTORIQUE.md"
-HISTORIQUE_ARCHIVE = CTX / "HISTORIQUE_ARCHIVE.md"
 HISTORIQUE_ROTATE_MONTHS = 6  # beyond this, an entry leaves the live file (see rotate_historique)
+
+# On-disk names. English is canonical (new projects); the former French names stay
+# readable so projects created earlier keep working untouched. A legacy file is used only
+# while its English twin does not exist (English wins if both are present). Migrate with
+# `python crew_update.py <project> --migrate-names` (see the /crew-update skill).
+LEGACY_NAMES = {
+    "HISTORY.md": "HISTORIQUE.md",
+    "HISTORY_ARCHIVE.md": "HISTORIQUE_ARCHIVE.md",
+    "TASK_CHANGELOG.md": "CHANGELOG_TACHES.md",
+    "LIFECYCLE.md": "CYCLE_DE_VIE.md",
+}
+
+
+def _ctx_file(canonical):
+    """Path of a CLAUDE_CONTEXT file, resolved at call time (CTX may be re-pointed)."""
+    new, old = CTX / canonical, CTX / LEGACY_NAMES[canonical]
+    return old if (old.exists() and not new.exists()) else new
+
+
+def history_file():
+    return _ctx_file("HISTORY.md")
+
+
+def history_archive_file():
+    """The archive follows the naming of the history file it comes from: a legacy-named
+    project (HISTORY.md) keeps getting HISTORY_ARCHIVE.md, never a mixed pair."""
+    found = _ctx_file("HISTORY_ARCHIVE.md")
+    if not found.exists() and history_file().name == LEGACY_NAMES["HISTORY.md"]:
+        return CTX / LEGACY_NAMES["HISTORY_ARCHIVE.md"]
+    return found
+
+
+def changelog_file():
+    return _ctx_file("TASK_CHANGELOG.md")
+
+
+def lifecycle_doc_rel():
+    """POSIX path (relative to the repo root) of the lifecycle doc, for messages."""
+    return f"crew/CLAUDE_CONTEXT/{_ctx_file('LIFECYCLE.md').name}"
+
 LOCK_TTL = datetime.timedelta(hours=6)
 MUTEX_TTL_SEC = 30  # mutex held longer -> session crashed mid-write, we clear it
 MUTEX_WAIT_SEC = 2.0  # max wait before continuing without the mutex (best-effort, never blocks the turn)
 
 INTRO = {
-    "PROBLEMS": "Problems. Resolved → move the context to `HISTORIQUE.md`.\n\n",
+    "PROBLEMS": "Problems. Resolved → move the context to `{history}`.\n\n",
     "TODO": "Tasks not started yet. Start = move the file to `crew/CURRENT_TASKS/` (see `CLAUDE.md`).\n\n",
     "ICEBOX": "Ideas/tasks deliberately parked (distinct from TODO). To resume: move to `crew/TODO/` first.\n\n",
-    "CURRENT_TASKS": "Tasks in progress. Done → delete + `crew/CLAUDE_CONTEXT/HISTORIQUE.md` entry + `crew/TESTS/<chantier>.md`.\n\n",
+    "CURRENT_TASKS": "Tasks in progress. Done → delete + `crew/CLAUDE_CONTEXT/{history}` entry + `crew/TESTS/<chantier>.md`.\n\n",
     "PAUSED": "Tasks started but blocked on a visual/dev validation the AI cannot do alone. To resume: move to `crew/CURRENT_TASKS/` once the validation is done.\n\n",
     "TESTS": ("Validation checklists for finished features (see `README.md`). "
               "Sorted by who runs them:\n"
@@ -150,7 +187,7 @@ def task_files(d):
 
 def regen_index(name, d):
     files = task_files(d)
-    lines = [f"# Index {name}\n\n", INTRO.get(name, "")]
+    lines = [f"# Index {name}\n\n", INTRO.get(name, "").replace("{history}", history_file().name)]
     for fn, t in files.items():
         lines.append(f"- [{t}]({fn})\n")
     if d.exists():
@@ -210,7 +247,7 @@ def _task_line_counts(body):
     """Counts, over the list lines of a batch section (`- `/`N. ` followed
     by a `slug.md` ref), how many reference a task and how many are
     struck through (~~...~~). Anchored at line start to ignore incidental .md refs
-    in prose (e.g. 'see `HISTORIQUE.md`') or in the Zone line."""
+    in prose (e.g. 'see `HISTORY.md`') or in the Zone line."""
     total = closed = 0
     for m in TASK_LINE_RE.finditer(body):
         total += 1
@@ -223,7 +260,7 @@ def prune_closed_batches(text):
     """Removes from CLAUDE_BATCH.md the '## Batch'/'### Batch' sections whose
     listed tasks are ALL struck through (fully closed batch) — avoids
     the file growing indefinitely with finished batches (their
-    full history stays in HISTORIQUE.md, already written when each
+    full history stays in HISTORY.md, already written when each
     task is closed). Sections with no referenced task (empty batch/
     placeholder, e.g. 'Batch A' with `<slug>.md`) are left intact.
     Returns (new_text, removed_headers)."""
@@ -265,18 +302,18 @@ _HISTORIQUE_DATE_RE = re.compile(r"^(?P<title>.+?) — (?P<date>\d{4}-\d{2}-\d{2
 
 
 def rotate_historique_entries(text, cutoff):
-    """Splits HISTORIQUE.md into (text to keep, text to archive, archived
+    """Splits HISTORY.md into (text to keep, text to archive, archived
     slugs): an entry `## <slug> — YYYY-MM-DD` whose date is
     earlier than `cutoff` (date) goes into the second. Without rotation the
     file grows endlessly — every future full read (agent,
     skill) gets more expensive in tokens even when following the rule
-    'read by slices' (crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Context efficiency), since
+    'read by slices' (the lifecycle doc § Context efficiency), since
     finding the right slice already assumes knowing where to look. A header
     with no parseable date (malformed entry, e.g. `## verif-fork-throwaway`)
     is NEVER rotated blindly — unable to compare it to the cutoff,
     it stays in the live file. A header inside an HTML
     comment block `<!-- ... -->` (e.g. the format example documented in
-    HISTORIQUE.md) is ignored: it is not a real entry."""
+    HISTORY.md) is ignored: it is not a real entry."""
     comment_spans = [m.span() for m in _HISTORIQUE_COMMENT_RE.finditer(text)]
 
     def _in_comment(pos):
@@ -308,26 +345,28 @@ def rotate_historique_entries(text, cutoff):
 
 
 def rotate_historique(now_dt, months=HISTORIQUE_ROTATE_MONTHS):
-    """Applies rotate_historique_entries to HISTORIQUE.md on disk: archived
+    """Applies rotate_historique_entries to HISTORY.md on disk: archived
     entries are removed from the live file and appended
-    to HISTORIQUE_ARCHIVE.md, never lost. Returns the archived slugs
+    to HISTORY_ARCHIVE.md, never lost. Returns the archived slugs
     (empty list = nothing to do, the normal case most turns)."""
-    if not HISTORIQUE.exists():
+    histo = history_file()
+    if not histo.exists():
         return []
-    text = HISTORIQUE.read_text(encoding="utf-8")
+    text = histo.read_text(encoding="utf-8")
     cutoff = now_dt.date() - datetime.timedelta(days=30 * months)
     kept, archived, slugs = rotate_historique_entries(text, cutoff)
     if not slugs:
         return []
-    HISTORIQUE.write_text(kept, encoding="utf-8")
+    histo.write_text(kept, encoding="utf-8")
+    archive = history_archive_file()
     head = ""
-    if not HISTORIQUE_ARCHIVE.exists():
+    if not archive.exists():
         head = ("# Archived history\n\n"
                 f"> Entries older than {months} months, moved automatically "
-                "from `HISTORIQUE.md` by the Stop hook (`rotate_historique`). "
+                f"from `{histo.name}` by the Stop hook (`rotate_historique`). "
                 "Same content, just outside the default reading path — grep here "
                 "if an old entry seems to be missing.\n\n")
-    with HISTORIQUE_ARCHIVE.open("a", encoding="utf-8") as fh:
+    with archive.open("a", encoding="utf-8") as fh:
         fh.write(head + archived)
     return slugs
 
@@ -616,6 +655,10 @@ def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
     return info
 
 
+# `## Unsorted` is canonical; `## À classer` / `## A classer` are the legacy French headers.
+UNSORTED_HEADER_RE = re.compile(r"^#{2,3}\s*(?:Unsorted|[AÀ] classer)\b", re.MULTILINE | re.IGNORECASE)
+
+
 def slugs_by_batch_section(text):
     """Parses CLAUDE_BATCH.md: splits on the '## Batch'/'### Batch' headers,
     extracts for each section the `xxx.md` slugs referenced in backticks
@@ -624,9 +667,9 @@ def slugs_by_batch_section(text):
     detection, see check_zone_overlaps)."""
     sections = []
     headers = list(re.finditer(r"^#{2,3}\s*Batch\b.*$", text, re.MULTILINE))
-    # The "À classer" section (unknown zone) is not a batch: it bounds the
+    # The "Unsorted" (legacy: "À classer") section (unknown zone) is not a batch: it bounds the
     # last section instead of being swallowed into it.
-    unclassified = re.search(r"^#{2,3}\s*[AÀ] classer\b", text, re.MULTILINE | re.IGNORECASE)
+    unclassified = UNSORTED_HEADER_RE.search(text)
     for i, m in enumerate(headers):
         start = m.end()
         end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
@@ -1001,7 +1044,7 @@ def gate_pretooluse(payload):
         if section is None:
             sys.stderr.write(
                 f"[batch] `{slug}` is not categorized in any batch of CLAUDE_BATCH.md. "
-                "Add it to a batch (with its Zone :) before starting it — see crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Batching, "
+                "Add it to a batch (with its Zone :) before starting it — see " + lifecycle_doc_rel() + " § Batching, "
                 "or dispatch the manager persona (/crew-start), which does it for you.\n"
             )
             sys.exit(2)
@@ -1174,7 +1217,7 @@ def _iter_lines_reverse(path, chunk_size=65536):
 def check_context_budget(payload, state=None):
     """Warns (non-blocking) when the main session's context
     exceeds ~150k tokens, whatever the window size (see
-    crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md § Context efficiency / Reset de session). No dedicated token-counting API
+    the lifecycle doc § Context efficiency / Session reset). No dedicated token-counting API
     is exposed to Claude Code hooks: approximated via the last
     assistant message of the transcript (`transcript_path` of the Stop payload) —
     usage.input_tokens + cache_read_input_tokens + cache_creation_input_tokens,
@@ -1284,7 +1327,7 @@ def _git_ignored(rel):
 def _closure_commit_scope(slug):
     """crew/ paths (relative to ROOT, POSIX) to include in the automatic
     closure commit for `slug` (without the `.md` extension): the CURRENT_TASKS file
-    that disappeared, HISTORIQUE.md, the extracted tests (IA/DEV, if they exist), and
+    that disappeared, HISTORY.md, the extracted tests (IA/DEV, if they exist), and
     all INDEX.md + CLAUDE_BATCH.md + BATCH_LOCKS.md + CHANGELOG_TACHES.md
     regenerated by the hook in the same pass. Only returns paths that
     `git add` will actually accept:
@@ -1298,12 +1341,12 @@ def _closure_commit_scope(slug):
       refused by git) -> excluded."""
     candidates = [
         DIRS["CURRENT_TASKS"] / f"{slug}.md",
-        CTX / "HISTORIQUE.md",
-        HISTORIQUE_ARCHIVE,
+        history_file(),
+        history_archive_file(),
         DIRS["TESTS/IA"] / f"{slug}.md",
         DIRS["TESTS/DEV"] / f"{slug}.md",
         BATCH_FILE,
-        CHANGELOG,
+        changelog_file(),
         BATCH_LOCKS_MD,
     ]
     for d in DIRS.values():
@@ -1326,7 +1369,7 @@ def auto_commit_closure(finished, now_dt):
     """LOCAL-ONLY git commit (never a push) scoped to crew/, triggered
     per slug actually closed: a slug of `finished` (gone from
     CURRENT_TASKS/ this turn) is only kept if it has a matching entry
-    in the (uncommitted) diff of HISTORIQUE.md — not just "the file
+    in the (uncommitted) diff of HISTORY.md — not just "the file
     changed somewhere" (covers the case where 2 tasks finish the same turn
     but only one has a real entry, and the case where `finished` is non-empty
     without any real history entry, e.g. manual deletion of the file).
@@ -1344,7 +1387,7 @@ def auto_commit_closure(finished, now_dt):
         return
     paths = []
     try:
-        histo_rel = str((CTX / "HISTORIQUE.md").relative_to(ROOT)).replace("\\", "/")
+        histo_rel = str(history_file().relative_to(ROOT)).replace("\\", "/")
         diff_text = (
             subprocess.run(["git", "diff", "--", histo_rel], cwd=str(ROOT),
                             capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
@@ -1353,12 +1396,12 @@ def auto_commit_closure(finished, now_dt):
         )
         all_slugs = sorted(f[:-3] if f.endswith(".md") else f for f in finished)
         # Only keep the slugs that really have a matching entry
-        # in the HISTORIQUE.md diff (not just "the file changed somewhere"):
+        # in the HISTORY.md diff (not just "the file changed somewhere"):
         # if 2 tasks finish the same turn and only one has a
         # real entry, the other is not included in this commit.
         slugs = [s for s in all_slugs if s in diff_text]
         if not slugs:
-            return  # no finished slug has a matching entry in HISTORIQUE.md
+            return  # no finished slug has a matching entry in HISTORY.md
         paths = sorted({p for slug in slugs for p in _closure_commit_scope(slug)})
         if not paths:
             return
@@ -1461,9 +1504,9 @@ def _digest_locks(session_id):
 
 
 def _digest_history(n=3):
-    # HISTORIQUE.md is sorted from most recent to oldest: stop at the n-th title.
+    # HISTORY.md is sorted from most recent to oldest: stop at the n-th title.
     titles = []
-    with open(HISTORIQUE, encoding="utf-8") as fh:
+    with open(history_file(), encoding="utf-8") as fh:
         for line in fh:
             if line.startswith("## "):
                 titles.append(line[3:].strip())
@@ -1819,7 +1862,7 @@ def _count_report(launchable, active, excluded, placeholders):
                  "| Session title | Batch | Zone |", "|---|---|---|"]
         lines += [f"| `{b['task']}` | {b['name']} | {', '.join(b['zone'])} |" for b in launchable]
     else:
-        why = "all active" if active else "nothing launchable (closed batches, 'A classer' or conflicting zones)"
+        why = "all active" if active else "nothing launchable (closed batches, 'Unsorted' or conflicting zones)"
         lines = [f"**0 terminals**: {why}"]
     if active:
         lines.append("Active: " + ", ".join(b["name"] for b in active))
@@ -2494,7 +2537,7 @@ def main():
         entries.append(f"- {now} ➕ **added to backlog**: `{f}`")
 
     if finished:  # non-blocking reminder logged in the changelog
-        entries.append(f"  ↳ ⚠️ check: entry in `HISTORIQUE.md` + checklist `crew/TESTS/<chantier>.md` "
+        entries.append(f"  ↳ ⚠️ check: entry in `{history_file().name}` + checklist `crew/TESTS/<chantier>.md` "
                        "for " + ", ".join(sorted(finished)))
 
     completed_tests = process_completed_tests()
@@ -2505,7 +2548,7 @@ def main():
 
     rotated_historique = rotate_historique(now_dt)
     for slug in rotated_historique:
-        entries.append(f"- {now} 🗄️ **history archived**: `{slug}` → `HISTORIQUE_ARCHIVE.md` "
+        entries.append(f"- {now} 🗄️ **history archived**: `{slug}` → `{history_archive_file().name}` "
                        f"(> {HISTORIQUE_ROTATE_MONTHS} months)")
 
     pruned_headers = []
@@ -2516,7 +2559,7 @@ def main():
             BATCH_FILE.write_text(pruned_text, encoding="utf-8")
             for h in pruned_headers:
                 entries.append(f"- {now} 🧹 **closed batch removed from CLAUDE_BATCH.md**: `{h}` "
-                               "(history already in HISTORIQUE.md)")
+                               f"(history already in {history_file().name})")
 
     # Live locks per batch (multi-Claude anti-collision). Only the
     # read-modify-write section of crew_lock.json (load -> mutate -> save) is
@@ -2648,10 +2691,10 @@ def main():
 
     if entries and prev:  # do not log the first reference snapshot
         head = ""
-        if not CHANGELOG.exists():
+        if not changelog_file().exists():
             head = ("# Task changelog\n\n"
                     "> Fed automatically by the Stop hook (`crew/crew_hook.py`).\n\n")
-        with CHANGELOG.open("a", encoding="utf-8") as fh:
+        with changelog_file().open("a", encoding="utf-8") as fh:
             fh.write(head + "\n".join(entries) + "\n")
 
     auto_commit_closure(finished, now_dt)

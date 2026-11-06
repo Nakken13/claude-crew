@@ -8,7 +8,7 @@ write (crew/CLAUDE_CONTEXT/SCAFFOLD_VERSION.json) so a user customization is
 never silently overwritten.
 
 Never writes to user data folders (crew/TODO, crew/CURRENT_TASKS,
-crew/PROBLEMS, crew/ICEBOX, crew/TESTS, crew/CLAUDE_CONTEXT/HISTORIQUE.md,
+crew/PROBLEMS, crew/ICEBOX, crew/TESTS, crew/CLAUDE_CONTEXT/HISTORY.md (or HISTORIQUE.md),
 ...): only the explicit allowlist passed by the caller is ever touched.
 
 CLI usage (dry-run by default, writes nothing without --apply):
@@ -21,6 +21,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -44,7 +45,7 @@ ENGINE_FILES_COMMON = [
     "SECURITY.md",
     "check_placeholders.py",
     "crew/dashboard.bat",
-    "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md",
+    "crew/CLAUDE_CONTEXT/LIFECYCLE.md",
 ]
 
 # Extra engine files, only for projects bootstrapped before the plugin
@@ -60,6 +61,21 @@ ENGINE_FILES_LEGACY = [
     ".claude/skills/crew-start/SKILL.md",
     ".claude/skills/crew-collab/SKILL.md",
 ]
+
+# Source path -> former French path. A project that still has the French-named file keeps
+# being updated in place (never gets a duplicate under the English name); see migrate_names().
+PATH_ALIASES = {"crew/CLAUDE_CONTEXT/LIFECYCLE.md": "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md"}
+
+
+def project_path(project_root, rel):
+    """Where `rel` (a source path) lives in the project: the legacy French name when
+    only that one exists, otherwise `rel` itself."""
+    legacy = PATH_ALIASES.get(rel)
+    root = pathlib.Path(project_root)
+    if legacy and not (root / rel).exists() and (root / legacy).exists():
+        return legacy
+    return rel
+
 
 def legacy_persona_files(project_root, source_root=None):
     """Legacy personas (`.claude/agents/*.md`) derived from a glob over the
@@ -136,11 +152,13 @@ def plan(project_root, source_root, whitelist):
     recorded = load_scaffold_version(project_root).get("files", {})
     decisions = []
     for rel in whitelist:
-        local_hash = hash_file(project_root / rel)
+        dest = project_path(project_root, rel)
+        local_hash = hash_file(project_root / dest)
         source_hash = hash_file(source_root / rel)
-        recorded_hash = recorded.get(rel)
+        recorded_hash = recorded.get(dest)
         decisions.append({
             "path": rel,
+            "dest": dest,
             "status": classify(local_hash, recorded_hash, source_hash),
             "local_hash": local_hash,
             "source_hash": source_hash,
@@ -157,10 +175,11 @@ def apply(project_root, source_root, decisions):
     for d in decisions:
         if d["status"] not in ("apply", "new"):
             continue
-        dst = project_root / d["path"]
+        dest = d.get("dest", d["path"])
+        dst = project_root / dest
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_root / d["path"], dst)
-        applied.append(d["path"])
+        applied.append(dest)
     return applied
 
 
@@ -195,9 +214,10 @@ def seed(project_root, whitelist, version, force=False):
         )
     files = {}
     for rel in whitelist:
-        h = hash_file(project_root / rel)
+        dest = project_path(project_root, rel)
+        h = hash_file(project_root / dest)
         if h is not None:
-            files[rel] = h
+            files[dest] = h
     data = {"version": version, "files": files}
     save_scaffold_version(project_root, data)
     return data
@@ -210,7 +230,7 @@ def record_version(project_root, source_version, decisions):
     files = data.setdefault("files", {})
     for d in decisions:
         if d["status"] in ("apply", "new"):
-            files[d["path"]] = d["source_hash"]
+            files[d.get("dest", d["path"])] = d["source_hash"]
     data["version"] = source_version
     save_scaffold_version(project_root, data)
     return data
@@ -341,6 +361,98 @@ def _handle_double_hook(project_root, remove):
         print("--remove-double-hook: no double hook detected, nothing to remove.")
 
 
+# --- Migration to the English names (optional, per project) -------------------
+
+CONTEXT = "crew/CLAUDE_CONTEXT/"
+RENAMES = [
+    (CONTEXT + "HISTORIQUE_ARCHIVE.md", CONTEXT + "HISTORY_ARCHIVE.md"),
+    (CONTEXT + "HISTORIQUE.md", CONTEXT + "HISTORY.md"),
+    (CONTEXT + "CHANGELOG_TACHES.md", CONTEXT + "TASK_CHANGELOG.md"),
+    (CONTEXT + "CYCLE_DE_VIE.md", CONTEXT + "LIFECYCLE.md"),
+]
+# Files whose prose mentions the renamed files (plain text replacement of the file names).
+REFERENCE_FILES = ["CLAUDE.md", "AGENTS.md", "PRODUCT.md", CONTEXT + "AGENTS.md", ".gitignore"]
+# Field/section labels rewritten in place: file -> [(old, new)] (plain, case-sensitive).
+LABEL_REWRITES = {
+    CONTEXT + "TESTS_POLICY.md": [("Niveau :", "Level:"), ("Niveau:", "Level:"),
+                                   ("Zones risqu" + "\u00e9es :", "Risky zones:"), ("Zones risqu" + "\u00e9es:", "Risky zones:")],
+}
+UNSORTED_LEGACY_RE = re.compile(r"^(#{2,3}\s*)[A\u00c0] classer\b", re.MULTILINE | re.IGNORECASE)
+
+
+def _git(project_root, *args):
+    return subprocess.run(["git", *args], cwd=str(project_root), capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
+
+
+def _is_tracked(project_root, rel):
+    return _git(project_root, "ls-files", "--error-unmatch", "--", rel).returncode == 0
+
+
+def _rename(project_root, old, new):
+    """git mv for tracked files (keeps history), plain rename otherwise."""
+    root = pathlib.Path(project_root)
+    if _is_tracked(root, old) and _git(root, "mv", old, new).returncode == 0:
+        return
+    (root / new).parent.mkdir(parents=True, exist_ok=True)
+    os.replace(root / old, root / new)
+
+
+def _rewritten_text(project_root, rel):
+    """New content of `rel` after the label/reference rewrites, or None if nothing changes."""
+    path = pathlib.Path(project_root) / rel
+    if not path.exists():
+        return None
+    raw = path.read_bytes().decode("utf-8")
+    text = raw
+    if rel == "crew/CLAUDE_BATCH.md":
+        text = UNSORTED_LEGACY_RE.sub(r"\1Unsorted", text)
+    for old, new in LABEL_REWRITES.get(rel, []):
+        text = text.replace(old, new)
+    if rel in REFERENCE_FILES:
+        for old, new in RENAMES:
+            text = text.replace(pathlib.PurePosixPath(old).name, pathlib.PurePosixPath(new).name)
+    return None if text == raw else text
+
+
+def migrate_names(project_root, apply=False):
+    """Moves a project from the former French names (HISTORIQUE.md, CHANGELOG_TACHES.md,
+    CYCLE_DE_VIE.md, the `A classer` section, `Niveau :` ...) to the English ones.
+    Dry-run unless apply=True. Never overwrites: when both names exist the pair is reported
+    as a conflict and left alone. Idempotent. Returns
+    {"applied": bool, "actions": [{kind, from, to?}], "conflicts": [{from, to, reason}]}."""
+    root = pathlib.Path(project_root)
+    actions, conflicts = [], []
+    for old, new in RENAMES:
+        if not (root / old).exists():
+            continue
+        if (root / new).exists():
+            conflicts.append({"from": old, "to": new, "reason": "both names exist; merge them by hand"})
+            continue
+        actions.append({"kind": "rename", "from": old, "to": new})
+        if apply:
+            _rename(root, old, new)
+    candidates = list(LABEL_REWRITES) + ["crew/CLAUDE_BATCH.md"] + REFERENCE_FILES
+    for rel in dict.fromkeys(candidates):
+        text = _rewritten_text(root, rel)
+        if text is None:
+            continue
+        actions.append({"kind": "rewrite", "from": rel})
+        if apply:
+            (root / rel).write_bytes(text.encode("utf-8"))
+    if apply:
+        data = load_scaffold_version(root)
+        files = data.get("files", {})
+        moved = {old: new for old, new in RENAMES if any(a["kind"] == "rename" and a["from"] == old for a in actions)}
+        for old, new in moved.items():
+            if old in files:
+                files[new] = files.pop(old)
+        if moved and files:
+            save_scaffold_version(root, data)
+    return {"applied": bool(apply), "actions": actions, "conflicts": conflicts}
+
+
+
 def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", required=True, help="root of the target project")
@@ -356,10 +468,28 @@ def _main():
                               "(accepts the current local content as baseline), then exit without comparing to the source")
     parser.add_argument("--force", action="store_true",
                          help="with --seed, deliberately re-seed an already recorded baseline")
+    parser.add_argument("--migrate-names", action="store_true",
+                         help="rename the former French files/labels to their English names "
+                              "(dry-run unless --apply); all collaborators must run a plugin that understands both")
     parser.add_argument("--remove-double-hook", action="store_true",
                          help="remove the local crew/crew_hook.py hooks from the project settings "
                               "when the crew-mates plugin is also active (otherwise: warning only)")
     args = parser.parse_args()
+
+    if args.migrate_names:
+        report = migrate_names(args.project, apply=args.apply)
+        for a in report["actions"]:
+            print(f"{a['kind']:>8}  {a['from']}" + (f"  ->  {a['to']}" if "to" in a else ""))
+        for c in report["conflicts"]:
+            print(f"conflict  {c['from']}  ->  {c['to']}  ({c['reason']})")
+        if not report["actions"] and not report["conflicts"]:
+            print("Nothing to migrate: this project already uses the English names.")
+        elif args.apply:
+            print("\nMigrated. Commit the renames, and make sure every collaborator updates the plugin "
+                  "(an old crew-mates version does not know the English names).")
+        else:
+            print("\nDry-run \u2014 re-run with --apply to write.")
+        return
 
     _handle_double_hook(args.project, args.remove_double_hook)
 

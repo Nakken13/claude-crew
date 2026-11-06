@@ -94,10 +94,7 @@ def repo(tmp_path, monkeypatch):
     # _closure_commit_scope (via HISTORIQUE_ARCHIVE) crashes with "not in the
     # subpath" as soon as ROOT points to tmp_path (real bug found while writing
     # rotate_historique).
-    monkeypatch.setattr(h, "HISTORIQUE", ctx / "HISTORIQUE.md")
-    monkeypatch.setattr(h, "HISTORIQUE_ARCHIVE", ctx / "HISTORIQUE_ARCHIVE.md")
     monkeypatch.setattr(h, "BATCH_FILE", batch_file)
-    monkeypatch.setattr(h, "CHANGELOG", changelog)
     monkeypatch.setattr(h, "BATCH_LOCKS_MD", batch_locks_md)
     monkeypatch.setattr(h, "LOCKS_FILE", locks_file)
     monkeypatch.setattr(h, "LOCKS_MUTEX", locks_mutex)
@@ -911,8 +908,6 @@ def test_rotate_historique_writes_archive_and_trims_live_file(repo, monkeypatch)
         encoding="utf-8",
     )
     archive = ctx / "HISTORIQUE_ARCHIVE.md"
-    monkeypatch.setattr(h, "HISTORIQUE", histo)
-    monkeypatch.setattr(h, "HISTORIQUE_ARCHIVE", archive)
 
     rotated = h.rotate_historique(datetime.datetime(2026, 8, 29))
 
@@ -2006,6 +2001,90 @@ def _unpinned_subprocess_calls(path):
 def test_engine_subprocess_calls_pin_stdin():
     repo = pathlib.Path(__file__).resolve().parent.parent
     files = [repo / "crew" / "crew_hook.py", repo / "scripts" / "crew_hook.py",
+             repo / "crew" / "crew_update.py", repo / "scripts" / "crew_update.py",
              repo / "scripts" / "dashboard" / "server.py"]
     bad = [b for f in files if f.exists() for b in _unpinned_subprocess_calls(f)]
     assert not bad, "subprocess call(s) inherit stdin: " + ", ".join(bad)
+
+
+# --- English file/section names with French legacy names still honored ------
+# New projects use HISTORY.md / HISTORY_ARCHIVE.md / TASK_CHANGELOG.md / LIFECYCLE.md and
+# an "Unsorted" section; projects created earlier keep HISTORIQUE.md, HISTORIQUE_ARCHIVE.md,
+# CHANGELOG_TACHES.md, CYCLE_DE_VIE.md and "À classer". Both must work, English wins if both exist.
+
+def _drop_legacy_names(ctx):
+    for n in ("HISTORIQUE.md", "HISTORIQUE_ARCHIVE.md", "CHANGELOG_TACHES.md"):
+        (ctx / n).unlink(missing_ok=True)
+
+
+def test_names_default_to_english_when_nothing_exists(repo):
+    root, dirs, ctx = repo
+    _drop_legacy_names(ctx)
+    assert h.history_file() == ctx / "HISTORY.md"
+    assert h.history_archive_file() == ctx / "HISTORY_ARCHIVE.md"
+    assert h.changelog_file() == ctx / "TASK_CHANGELOG.md"
+
+
+def test_legacy_french_names_are_kept_when_they_exist(repo):
+    root, dirs, ctx = repo
+    (ctx / "HISTORIQUE_ARCHIVE.md").write_text("# a\n", encoding="utf-8")
+    assert h.history_file() == ctx / "HISTORIQUE.md"
+    assert h.history_archive_file() == ctx / "HISTORIQUE_ARCHIVE.md"
+    assert h.changelog_file() == ctx / "CHANGELOG_TACHES.md"
+
+
+def test_english_name_wins_when_both_exist(repo):
+    root, dirs, ctx = repo
+    (ctx / "HISTORY.md").write_text("# new\n", encoding="utf-8")
+    assert h.history_file() == ctx / "HISTORY.md"
+
+
+def test_rotate_works_with_english_names(repo):
+    root, dirs, ctx = repo
+    _drop_legacy_names(ctx)
+    (ctx / "HISTORY.md").write_text(
+        "# History\n\n## old-task — 2025-01-10\nWhat: old.\n\n## recent-task — 2026-08-20\nWhat: recent.\n\n",
+        encoding="utf-8")
+    assert h.rotate_historique(datetime.datetime(2026, 8, 29)) == ["old-task"]
+    assert "old-task" in (ctx / "HISTORY_ARCHIVE.md").read_text(encoding="utf-8")
+    assert "old-task" not in (ctx / "HISTORY.md").read_text(encoding="utf-8")
+    assert not (ctx / "HISTORIQUE_ARCHIVE.md").exists()
+
+
+def test_closure_commit_includes_english_named_history(repo):
+    root, dirs, ctx = repo
+    _git(root, "mv", "crew/CLAUDE_CONTEXT/HISTORIQUE.md", "crew/CLAUDE_CONTEXT/HISTORY.md")
+    _git(root, "mv", "crew/CLAUDE_CONTEXT/CHANGELOG_TACHES.md", "crew/CLAUDE_CONTEXT/TASK_CHANGELOG.md")
+    _git(root, "commit", "-qm", "english names")
+    slug = "ma-tache"
+    task_file = dirs["CURRENT_TASKS"] / f"{slug}.md"
+    task_file.write_text(f"# {slug}\n", encoding="utf-8")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "seed")
+    task_file.unlink()
+    histo = ctx / "HISTORY.md"
+    histo.write_text(histo.read_text(encoding="utf-8") + f"\n## {slug}\nWhat: done.\n", encoding="utf-8")
+    h.auto_commit_closure({f"{slug}.md"}, datetime.datetime(2026, 8, 22, 23, 0, 0))
+    assert "crew/CLAUDE_CONTEXT/HISTORY.md" in _last_commit_files(root)
+
+
+@pytest.mark.parametrize("header", ["## Unsorted", "## À classer", "### A classer"])
+def test_unsorted_section_bounds_the_last_batch(header):
+    text = ("## Batch A\n- `a.md`\nZone : `src/a/`\n\n" + header + "\n- `loose.md`\n")
+    sections = h.slugs_by_batch_section(text)
+    assert [s["slugs"] for s in sections] == [{"a.md"}]
+
+
+def test_lifecycle_doc_resolves_english_then_legacy(repo):
+    root, dirs, ctx = repo
+    assert h.lifecycle_doc_rel() == "crew/CLAUDE_CONTEXT/LIFECYCLE.md"          # nothing yet: English default
+    (ctx / "CYCLE_DE_VIE.md").write_text("x", encoding="utf-8")
+    assert h.lifecycle_doc_rel() == "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md"       # legacy project
+    (ctx / "LIFECYCLE.md").write_text("x", encoding="utf-8")
+    assert h.lifecycle_doc_rel() == "crew/CLAUDE_CONTEXT/LIFECYCLE.md"          # English wins
+
+
+def test_mods_accept_the_same_unsorted_header_as_the_engine():
+    ts = (pathlib.Path(__file__).resolve().parent.parent / "hooks" / "mods" / "shared.ts").read_text(encoding="utf-8")
+    line = next(l for l in ts.splitlines() if l.startswith("const UNCLASSIFIED_HEADER_RE"))
+    assert "Unsorted" in line and "classer" in line

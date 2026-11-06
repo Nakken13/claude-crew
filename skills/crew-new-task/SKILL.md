@@ -4,13 +4,13 @@ description: Creates a crew task (TODO or CURRENT_TASKS) with its file, INDEX.md
 ---
 
 This skill encodes the task-creation protocol already defined in
-`crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (§ Task management, § Batching) — it
+`crew/CLAUDE_CONTEXT/LIFECYCLE.md` (§ Task management, § Batching) — it
 does not replace that document, it saves rewriting a long prompt by hand each
 time. Single source of truth = `CLAUDE.md`; this file only standardizes the call.
 
 **Repo-root anchoring is mandatory**: every `crew/...` path in this skill is
 resolved **from the repo root**, never from the current cwd. In a single-subtree
-session (see `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Segmented AGENTS.md guides), the cwd
+session (see `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Segmented AGENTS.md guides), the cwd
 may be a subfolder — a relative `crew/...` path written as-is would create a
 duplicate phantom `crew/` there instead of touching the root. Resolve the root
 once at the start (`git rev-parse --show-toplevel` or equivalent) if it is not
@@ -33,8 +33,8 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
      `crew/CURRENT_TASKS/<slug>.md`);
    - update of the `INDEX.md` of the relevant folder;
    - categorization in `crew/CLAUDE_BATCH.md`: impact zone, attachment to an
-     existing batch if overlapping, otherwise a new batch or the `À classer`
-     (to be sorted) section; check the disjointness invariant between active
+     existing batch if overlapping, otherwise a new batch or the `Unsorted`
+     (to be sorted) section (reuse the header the file already has: `## Unsorted`, or the legacy `## À classer`); check the disjointness invariant between active
      batches;
    - explicit instruction: touch no file outside `crew/`.
    If the `manager` persona does not exist in this project (partial scaffold),

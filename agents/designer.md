@@ -25,7 +25,7 @@ manipulated.
   never to install, start a server or mutate anything.
 - Screenshots provided: open them with `Read` (images supported) and
   critique what is actually visible, not an imagined screen.
-- `crew/CLAUDE_CONTEXT/HISTORIQUE.md`: targeted grep on the topic so as not
+- `crew/CLAUDE_CONTEXT/HISTORY.md`: targeted grep on the topic so as not
   to re-decide an already arbitrated choice without flagging it. Never a full
   Read of a file >100 lines.
 
