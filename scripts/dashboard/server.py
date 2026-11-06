@@ -181,7 +181,7 @@ def move_task(slug: str, body: MoveRequest):
     rel_dst = (h.DIRS[body.to] / slug).relative_to(h.ROOT).as_posix()
     result = subprocess.run(
         ["git", "mv", rel_src, rel_dst], cwd=str(h.ROOT), capture_output=True, text=True
-    )
+    , stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         raise HTTPException(500, f"git mv a echoue : {result.stderr.strip()}")
     return {"slug": slug, "from": source, "to": body.to}
