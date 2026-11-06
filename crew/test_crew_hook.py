@@ -1976,3 +1976,34 @@ def test_legacy_ignored_file_with_single_owner_still_works(ign):
     h.IGNORED_FILE.write_text('{"owner": "Bob", "ignored": ["a1.md"]}', encoding="utf-8")
     assert {"slug": "a1.md", "reason": "ignored locally (task of Bob)"} in h.next_task("S1")["skipped"]
     assert h.ignore_cli(["list"])["by_owner"] == {"Bob": 1}
+
+
+# --- stdin isolation -------------------------------------------------------
+# On Windows a hook can be started with an invalid inherited stdin handle; any
+# child process that inherits it dies with `[WinError 6] invalid handle`, which
+# made the closure auto-commit fail silently. Every subprocess the engine
+# spawns must therefore pin stdin AND stdout/stderr explicitly (no inheritance;
+# pytest's fd capture leaves the OS-level std handles stale for the same reason).
+
+def _unpinned_subprocess_calls(path):
+    import ast
+    tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+    bad = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("run", "Popen", "check_output", "call")
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "subprocess"):
+            kw = {k.arg for k in node.keywords}
+            pinned_in = bool(kw & {"stdin", "input"})
+            pinned_out = "capture_output" in kw or {"stdout", "stderr"} <= kw
+            if not (pinned_in and pinned_out):
+                bad.append(f"{path}:{node.lineno}")
+    return bad
+
+
+def test_engine_subprocess_calls_pin_stdin():
+    repo = pathlib.Path(__file__).resolve().parent.parent
+    files = [repo / "crew" / "crew_hook.py", repo / "scripts" / "crew_hook.py",
+             repo / "scripts" / "dashboard" / "server.py"]
+    bad = [b for f in files if f.exists() for b in _unpinned_subprocess_calls(f)]
+    assert not bad, "subprocess call(s) inherit stdin: " + ", ".join(bad)

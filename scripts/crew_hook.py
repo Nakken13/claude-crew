@@ -1271,12 +1271,13 @@ def regen_batch_locks_md(sections, locks, active):
 
 def _git_tracked(rel):
     r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel],
-                        cwd=str(ROOT), capture_output=True, text=True)
+                        cwd=str(ROOT), capture_output=True, text=True, stdin=subprocess.DEVNULL)
     return r.returncode == 0
 
 
 def _git_ignored(rel):
-    r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=str(ROOT))
+    r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=str(ROOT),
+                       stdin=subprocess.DEVNULL, capture_output=True)
     return r.returncode == 0
 
 
@@ -1346,9 +1347,9 @@ def auto_commit_closure(finished, now_dt):
         histo_rel = str((CTX / "HISTORIQUE.md").relative_to(ROOT)).replace("\\", "/")
         diff_text = (
             subprocess.run(["git", "diff", "--", histo_rel], cwd=str(ROOT),
-                            capture_output=True, text=True).stdout
+                            capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
             + subprocess.run(["git", "diff", "--cached", "--", histo_rel], cwd=str(ROOT),
-                              capture_output=True, text=True).stdout
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout
         )
         all_slugs = sorted(f[:-3] if f.endswith(".md") else f for f in finished)
         # Ne retient que les slugs ayant reellement une entree correspondante
@@ -1362,13 +1363,13 @@ def auto_commit_closure(finished, now_dt):
         if not paths:
             return
         subprocess.run(["git", "add", "--"] + paths, cwd=str(ROOT), check=True,
-                        capture_output=True, text=True)
+                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if subprocess.run(["git", "diff", "--cached", "--quiet", "--"] + paths,
-                           cwd=str(ROOT)).returncode == 0:
+                           cwd=str(ROOT), stdin=subprocess.DEVNULL, capture_output=True).returncode == 0:
             return  # rien de reellement nouveau sur CE scope -> deja commit (idempotence)
         msg = "chore(crew): cloture tache " + ", ".join(slugs)
         subprocess.run(["git", "commit", "-m", msg, "--"] + paths, cwd=str(ROOT),
-                        check=True, capture_output=True, text=True)
+                        check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     except Exception as e:
         sys.stderr.write(f"[auto-commit] commit de cloture non effectue (non bloquant) : {e}\n")
         # Best-effort : si `git add` a partiellement reussi avant l'echec
@@ -1378,7 +1379,7 @@ def auto_commit_closure(finished, now_dt):
         # commit lui-meme).
         if paths:
             try:
-                subprocess.run(["git", "reset", "--"] + paths, cwd=str(ROOT), capture_output=True)
+                subprocess.run(["git", "reset", "--"] + paths, cwd=str(ROOT), capture_output=True, stdin=subprocess.DEVNULL)
             except Exception:
                 pass
 
@@ -1833,7 +1834,7 @@ def _orphan_worktrees(locks):
     """Worktrees `*-batch-*` presents sur disque sans session qui les porte."""
     try:
         out = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=str(MAIN_ROOT),
-                             capture_output=True, text=True, timeout=10).stdout
+                             capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL).stdout
     except Exception:
         return []
     norm = lambda x: str(pathlib.Path(x).resolve()).replace("\\", "/").lower()
