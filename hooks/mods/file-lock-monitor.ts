@@ -1,10 +1,10 @@
 /**
- * Mod 9 — file-lock-monitor.ts (Anti-collision multi-sessions)
+ * Mod 9 — file-lock-monitor.ts (Multi-session anti-collision)
  *
- * Écoute les événements `tool.call` (`Edit`, `Write`, `MultiEdit`).
- * Si une session tente de modifier un fichier déjà verrouillé (Zone `CLAUDE_BATCH.md`
- * détenue dans `crew_lock.json` ou fichier activement modifié dans `.claude/crew-sessions.lock`
- * par un autre agent du crew), affiche une alerte visuelle immédiate dans l'UI.
+ * Listens to `tool.call` events (`Edit`, `Write`, `MultiEdit`).
+ * If a session tries to modify an already locked file (`CLAUDE_BATCH.md` Zone
+ * held in `crew_lock.json`, or a file actively modified in `.claude/crew-sessions.lock`
+ * by another crew agent), shows an immediate visual alert in the UI.
  *
  * 100% local / 0-token.
  */
@@ -94,7 +94,7 @@ export function detectFileCollision(params: {
     if (otherSid === currentSessionId) continue;
     const touchedAt = info.activeFiles?.[repoRelPath];
     if (typeof touchedAt === 'number') {
-      const msg = `🚨 COLLISION FICHIER : \`${repoRelPath}\` (${toolName}) est en cours de modification par la session @${otherSid.slice(0, 8)}${info.batch ? ` (${info.batch})` : ''} !`;
+      const msg = `🚨 FILE COLLISION: \`${repoRelPath}\` (${toolName}) is being modified by session @${otherSid.slice(0, 8)}${info.batch ? ` (${info.batch})` : ''}!`;
       return {
         filePath: repoRelPath,
         toolName,
@@ -132,7 +132,7 @@ export function detectFileCollision(params: {
     for (const zp of sec.zonePaths) {
       if (pathMatchesZone(repoRelPath, zp)) {
         const ownerSid = Array.from(foreignHolders)[0];
-        const msg = `🚨 COLLISION ZONE : \`${repoRelPath}\` (${toolName}) tombe sous la Zone \`${zp}\` verrouillée par @${ownerSid.slice(0, 8)} (${sec.key}) !`;
+        const msg = `🚨 ZONE COLLISION: \`${repoRelPath}\` (${toolName}) falls under the Zone \`${zp}\` locked by @${ownerSid.slice(0, 8)} (${sec.key})!`;
         return {
           filePath: repoRelPath,
           toolName,
@@ -156,7 +156,7 @@ export function getActiveCollisionAlerts(nowMs = Date.now()): FileCollisionAlert
   return fileLockMonitorState.alerts;
 }
 
-/** Une seule ligne : `🚨 2 collisions : stripe.ts, hotfile.ts (@other-se B)`. */
+/** A single line: `🚨 2 collisions : stripe.ts, hotfile.ts (@other-se B)`. */
 export function formatCollisionAlertsCompact(alerts: FileCollisionAlert[]): string {
   const files = [...new Set(alerts.map((a) => a.filePath.split('/').pop() || a.filePath))];
   const shown = files.slice(0, 2).join(', ') + (files.length > 2 ? ` +${files.length - 2}` : '');

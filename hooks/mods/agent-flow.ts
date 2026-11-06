@@ -1,9 +1,9 @@
 /**
  * Mod 5 — agent-flow.ts
  *
- * Intercepte les lancements de subagents (`tool.call` sur les agents de `crew-mates` :
+ * Intercepts subagent launches (`tool.call` on the `crew-mates` agents:
  * `Agent`, `Task`, `ceo`, `manager`, `comms`, `architect`, `designer`, `legal`, `social`, `seo`)
- * et dessine en direct l'arbre d'exécution (statut, outils, durée).
+ * and draws the live execution tree (status, tools, duration).
  *
  * 100% local / 0-token.
  */
@@ -124,7 +124,7 @@ export function registerAgentFlow(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-agents',
-        description: 'Afficher l’arbre d’exécution en direct des subagents crew-mates (0-token)',
+        description: 'Show the live execution tree of crew-mates subagents (0-token)',
       })
       .catch(() => undefined);
     return next(e);
@@ -218,11 +218,11 @@ export function registerAgentFlow(on: ModRegistrar): void {
       $.ui.invalidate('ui.render');
       return {
         text: shouldOpen
-          ? `🎭 Agent Flow ouvert (${agentFlowState.nodes.length} subagent(s) tracés).`
-          : '🎭 Agent Flow fermé.',
+          ? `🎭 Agent Flow opened (${agentFlowState.nodes.length} subagent(s) traced).`
+          : '🎭 Agent Flow closed.',
       };
     } catch {
-      return { text: '🎭 Impossible de basculer le panneau Agent Flow.' };
+      return { text: '🎭 Unable to toggle the Agent Flow panel.' };
     }
   });
 
@@ -260,13 +260,13 @@ export function registerAgentFlow(on: ModRegistrar): void {
         Text({
           bold: true,
           color: 'magenta',
-          children: [`🎭 Arbre d'exécution Subagents (${nodes.length})`],
+          children: [`🎭 Subagent Execution Tree (${nodes.length})`],
         }),
         ...(nodes.length === 0
           ? [
               Text({
                 dimColor: true,
-                children: ['Aucun subagent crew-mates lancé durant cette session.'],
+                children: ['No crew-mates subagent launched during this session.'],
               }),
             ]
           : nodes.map((node, idx) =>

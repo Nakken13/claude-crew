@@ -1,12 +1,12 @@
 /**
  * Mod 6 — crew-radar.ts (Compteurs globaux)
  *
- * Affiche dans la barre de statut (ligne au-dessus du prompt) :
- * `🟢 X Sessions en ligne | ⚡ Y Current Tasks | 📋 Z Todo`
+ * Shows in the status bar (line above the prompt):
+ * `🟢 X Sessions online | ⚡ Y Current Tasks | 📋 Z Todo`
  *
- * Utilise un système de lock léger (`.claude/crew-sessions.lock`) mis à jour
- * au `session.start` / `session.end` (et heartbeat à chaque tour) et lit l'état
- * global des tâches du projet (`crew/CURRENT_TASKS/`, `crew/TODO/`, `crew_lock.json`).
+ * Uses a lightweight lock system (`.claude/crew-sessions.lock`) updated on
+ * `session.start` / `session.end` (and heartbeat on every turn) and reads the
+ * project's global task state (`crew/CURRENT_TASKS/`, `crew/TODO/`, `crew_lock.json`).
  *
  * 100% local / 0-token.
  */
@@ -47,11 +47,11 @@ export const crewRadarState: CrewRadarState = {
 };
 
 export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): string {
-  const base = `🟢 ${state.onlineSessions} Sessions en ligne | ⚡ ${state.currentTasks} Current Tasks | 📋 ${state.todoTasks} Todo`;
+  const base = `🟢 ${state.onlineSessions} Sessions online | ⚡ ${state.currentTasks} Current Tasks | 📋 ${state.todoTasks} Todo`;
   return state.pausedTasks > 0 ? `${base} | ⏸️ ${state.pausedTasks} Paused` : base;
 }
 
-/** Version courte pour la bande : `🟢2 ⚡1 📋5 ⏸0` (sessions, en cours, todo, pause) ; 0 affiché, jamais omis ; ` 👤N` ajouté si le mode collab écarte N tâches d'autres devs. */
+/** Short version for the band: `🟢2 ⚡1 📋5 ⏸0` (sessions, in progress, todo, paused); 0 is shown, never omitted; ` 👤N` appended if collab mode sets aside N tasks of other devs. */
 export function formatCrewRadarCompact(state: CrewRadarState = crewRadarState): string {
   const others = state.othersTasks > 0 ? ` 👤${state.othersTasks}` : '';
   return `🟢${state.onlineSessions} ⚡${state.currentTasks} 📋${state.todoTasks} ⏸️${state.pausedTasks}${others}`;
@@ -98,7 +98,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
     const lockPath = joinPath(mainRoot, SESSIONS_LOCK_REL_PATH);
     const rawLock = await $.fs.read(lockPath).catch(() => '');
     const parsedLock = parseSessionsLock(rawLock, nowMs);
-    // L'id de repli genere au chargement du mod est remplace par l'id reel : ne pas laisser de fantome.
+    // The fallback id generated when the mod loads is replaced by the real id: do not leave a ghost.
     if (previousSid !== sid) delete parsedLock.sessions[previousSid];
 
     const existing = parsedLock.sessions[sid];

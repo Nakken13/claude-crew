@@ -1,46 +1,46 @@
 # AGENTS.md — <NOM_PROJET>
 
-Guide invariants + repo map pour tout agent (Claude Code ou autre) travaillant
-sur ce projet. À remplir/vérifier avant le premier vrai chantier — ne pas
-laisser de placeholder `<...>` non résolu.
+Invariants guide + repo map for any agent (Claude Code or other) working on
+this project. Fill in/check before the first real work item — do not leave an
+unresolved `<...>` placeholder.
 
 ## Stack
 
-<Lister la stack réellement vérifiée depuis les fichiers de manifeste
-(package.json, requirements.txt, go.mod, Cargo.toml...), pas de suppositions.>
+<List the stack actually verified from the manifest files (package.json,
+requirements.txt, go.mod, Cargo.toml...), no guesses.>
 
 ## Repository map
 
 ```text
-<arborescence des dossiers significatifs, avec un rôle en une ligne chacun>
+<tree of significant folders, with a one-line role for each>
 ```
 
-## Commandes vérifiées
+## Verified commands
 
 ```bash
 <install>
-<dev/run local>
+<local dev/run>
 <tests>
 <build>
 ```
 
-Toute commande listée ici doit avoir été exécutée avec succès au moins une
-fois — ne pas documenter une commande non testée.
+Every command listed here must have been run successfully at least once —
+do not document an untested command.
 
-## Règles de code
+## Code rules
 
-<Conventions spécifiques au projet : structure des routes/handlers, schémas
-de validation, style de logging, ce qui ne doit jamais être fait (ex. pas de
-print debug, pas de secret loggé, pas de migration destructive sans accord).>
+<Project-specific conventions: structure of routes/handlers, validation
+schemas, logging style, what must never be done (e.g. no debug print, no
+logged secret, no destructive migration without agreement).>
 
 ## Secrets and boundaries
 
-<Où vivent les secrets (env vars, vault...), ce qui ne doit jamais atteindre
-le client/logs, référence vers SECURITY.md si présent.>
+<Where secrets live (env vars, vault...), what must never reach the
+client/logs, reference to SECURITY.md if present.>
 
 ## Documentation routing
 
-- Vision produit / scope : `PRODUCT.md` (si présent).
-- Conventions de contribution : `CONTRIBUTING.md` (si présent).
-- Limites sécurité : `SECURITY.md` (si présent).
-- Guide global de contexte : `crew/CLAUDE_CONTEXT/AGENTS.md`.
+- Product vision / scope: `PRODUCT.md` (if present).
+- Contribution conventions: `CONTRIBUTING.md` (if present).
+- Security limits: `SECURITY.md` (if present).
+- Global context guide: `crew/CLAUDE_CONTEXT/AGENTS.md`.

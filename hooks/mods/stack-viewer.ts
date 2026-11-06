@@ -1,8 +1,8 @@
 /**
  * Mod 4 — stack-viewer.ts
  *
- * Volet UI (`/crew-stack`) affichant l'arbre de ce qui est chargé dans la session
- * (`CLAUDE.md`, règles, MCP, skills, agents, mods) avec leur source et priorité.
+ * UI pane (`/crew-stack`) showing the tree of what is loaded in the session
+ * (`CLAUDE.md`, rules, MCP, skills, agents, mods) with their source and priority.
  *
  * 100% local / 0-token.
  */
@@ -94,7 +94,7 @@ export function parseHooksSummaryFromJson(jsonText: string): {
 export function renderStackCategoryLines(title: string, items: StackEntry[]): string[] {
   const lines: string[] = [`${title} (${items.length})`];
   if (items.length === 0) {
-    lines.push('  └── (aucun élément détecté)');
+    lines.push('  └── (no item detected)');
     return lines;
   }
   items.forEach((item, index) => {
@@ -106,7 +106,7 @@ export function renderStackCategoryLines(title: string, items: StackEntry[]): st
 
 export function formatFullStackTree(snap: StackSnapshot = stackViewerState.snapshot): string[] {
   return [
-    ...renderStackCategoryLines('📄 Contexte & Règles', snap.contextAndRules),
+    ...renderStackCategoryLines('📄 Context & Rules', snap.contextAndRules),
     ...renderStackCategoryLines('🔌 Serveurs MCP', snap.mcpServers),
     ...renderStackCategoryLines('⚡ Skills', snap.skills),
     ...renderStackCategoryLines('🎭 Agents (Personas)', snap.agents),
@@ -119,7 +119,7 @@ export function registerStackViewer(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-stack',
-        description: 'Afficher l’arbre de la stack chargée (CLAUDE.md, règles, MCP, skills, agents, mods)',
+        description: 'Show the loaded stack tree (CLAUDE.md, rules, MCP, skills, agents, mods)',
       })
       .catch(() => undefined);
 
@@ -130,9 +130,9 @@ export function registerStackViewer(on: ModRegistrar): void {
       { rel: 'CLAUDE.md', source: 'Racine projet', priority: 'P2 · Projet' },
       { rel: 'AGENTS.md', source: 'Racine projet', priority: 'P2 · Invariants agents' },
       { rel: 'crew/CLAUDE_CONTEXT/AGENTS.md', source: 'Crew Context', priority: 'P2 · Contexte crew' },
-      { rel: '.claude/settings.json', source: 'Projet partagé', priority: 'P2 · Settings équipe' },
+      { rel: '.claude/settings.json', source: 'Shared project', priority: 'P2 · Team settings' },
       { rel: 'PRODUCT.md', source: 'Racine projet', priority: 'P3 · Produit' },
-      { rel: 'SECURITY.md', source: 'Racine projet', priority: 'P3 · Sécurité' },
+      { rel: 'SECURITY.md', source: 'Project root', priority: 'P3 · Security' },
       { rel: 'CONTRIBUTING.md', source: 'Racine projet', priority: 'P3 · Conventions' },
     ];
 
@@ -150,8 +150,8 @@ export function registerStackViewer(on: ModRegistrar): void {
     for (const rf of ruleFiles) {
       contextAndRules.push({
         name: `.claude/rules/${rf}`,
-        source: 'Règles modulaires',
-        priority: 'P2 · Règle projet',
+        source: 'Modular rules',
+        priority: 'P2 · Project rule',
       });
     }
 
@@ -284,11 +284,11 @@ export function registerStackViewer(on: ModRegistrar): void {
       const s = stackViewerState.snapshot;
       return {
         text: shouldOpen
-          ? `📚 Stack Viewer ouvert — ${s.contextAndRules.length} contexte/règles, ${s.mcpServers.length} MCP, ${s.skills.length} skills, ${s.agents.length} agents, ${s.modsAndHooks.length} mods/hooks.`
-          : '📚 Stack Viewer fermé.',
+          ? `📚 Stack Viewer opened — ${s.contextAndRules.length} context/rules, ${s.mcpServers.length} MCP, ${s.skills.length} skills, ${s.agents.length} agents, ${s.modsAndHooks.length} mods/hooks.`
+          : '📚 Stack Viewer closed.',
       };
     } catch {
-      return { text: '📚 Impossible de basculer le panneau Stack Viewer.' };
+      return { text: '📚 Unable to toggle the Stack Viewer panel.' };
     }
   });
 
@@ -307,13 +307,13 @@ export function registerStackViewer(on: ModRegistrar): void {
         Text({
           bold: true,
           color: 'cyan',
-          children: ['📚 Arbre de la Stack Session (Source & Priorité)'],
+          children: ['📚 Session Stack Tree (Source & Priority)'],
         }),
         ...lines.map((line) =>
           Text({
             bold: !line.startsWith('  '),
             color: !line.startsWith('  ') ? 'green' : undefined,
-            dimColor: line.includes('(aucun élément'),
+            dimColor: line.includes('(no item'),
             children: [line],
           }),
         ),

@@ -30,7 +30,7 @@ current tasks). Slash argument: `on`, `off`, `status`; with no argument, read
 ## `status`
 
 One line for the mode and your name, then **one person per segment, separated by
-` | `**: `Bob 12 tasks | Alice 5 tasks | Sofian (you) 1 task`. Add `(you)` when
+` | `**: `Bob 12 tasks | Alice 5 tasks | Carol (you) 1 task`. Add `(you)` when
 `me` is true; use the singular for 1. A name of `(unassigned)` means TODO tasks
 set aside with no known owner. Nothing else.
 

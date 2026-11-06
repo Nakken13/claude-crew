@@ -1,123 +1,123 @@
-# Audit — claude-crew vs plugin ECC 2.2.0 (tokens & réactivité)
+# Audit — claude-crew vs ECC 2.2.0 plugin (tokens & responsiveness)
 
-Date : 2026-10-01. Objectif : identifier ce qu'ECC fait pour consommer moins
-de contexte / répondre plus vite, et ce que claude-crew doit compléter.
-Mesures prises sur ce repo (Windows 11, Python 3.12, Node). Les problèmes
-constatés sont consignés dans `crew/PROBLEMS/` (un fichier par problème),
-les arbitrages viennent du persona `architect`.
+Date: 2026-10-01. Goal: identify what ECC does to consume less context /
+respond faster, and what claude-crew needs to complement.
+Measurements taken on this repo (Windows 11, Python 3.12, Node). The problems
+found are recorded in `crew/PROBLEMS/` (one file per problem),
+and the trade-offs come from the `architect` persona.
 
-## 1. Ordres de grandeur
+## 1. Orders of magnitude
 
 | | claude-crew | ECC 2.2.0 |
 |---|---|---|
-| Agents / skills / commandes | 4 (6 sur origin/main) / 8 / 0 | 68 / 286 / 94 |
-| CLAUDE.md chargé à chaque session | `template/CLAUDE.md` 2955 mots (~4k tokens) | ~600 mots (3,9 KB) |
-| Descriptions frontmatter (toujours chargées) | ~3,4k chars skills + ~1,5k agents | ~80k chars skills + ~10k commandes |
-| Entrées hooks | 4 (PreToolUse, PostToolUse Write, Stop, SessionEnd) | 23, consolidées en dispatchers, split sync/async |
-| Profil / désactivation des hooks | aucun | `userConfig.hook_profile` minimal/standard/strict + `ECC_DISABLED_HOOKS` |
-| Continuité de session | aucune (crew-start relit `crew/` à la main) | SessionStart digest plafonné 8000 chars + PreCompact résumé Haiku |
-| Moniteur de contexte | seuil fixe 150k, stderr | seuil scalé fenêtre, répétition 60k, `additionalContext` debouncé |
+| Agents / skills / commands | 4 (6 on origin/main) / 8 / 0 | 68 / 286 / 94 |
+| CLAUDE.md loaded every session | `template/CLAUDE.md` 2955 words (~4k tokens) | ~600 words (3.9 KB) |
+| Frontmatter descriptions (always loaded) | ~3.4k chars skills + ~1.5k agents | ~80k chars skills + ~10k commands |
+| Hook entries | 4 (PreToolUse, PostToolUse Write, Stop, SessionEnd) | 23, consolidated into dispatchers, sync/async split |
+| Hook profile / disabling | none | `userConfig.hook_profile` minimal/standard/strict + `ECC_DISABLED_HOOKS` |
+| Session continuity | none (crew-start rereads `crew/` by hand) | SessionStart digest capped at 8000 chars + PreCompact Haiku summary |
+| Context monitor | fixed 150k threshold, stderr | window-scaled threshold, 60k repeat, debounced `additionalContext` |
 
-ECC n'est pas un modèle de sobriété en soi : son listing de skills coûte
-~20k tokens par session, GateGuard refuse le premier Edit/Bash par fichier
-(un aller-retour supplémentaire à chaque fois, constaté dans cette session),
-et `observe` est enregistré deux fois. Ce qu'il faut lui emprunter, ce sont
-des **mécanismes**, pas son volume.
+ECC is not a model of frugality in itself: its skills listing costs
+~20k tokens per session, GateGuard refuses the first Edit/Bash per file
+(one extra round trip each time, observed in this session),
+and `observe` is registered twice. What we should borrow from it are
+**mechanisms**, not its volume.
 
-## 2. Mesures claude-crew
+## 2. claude-crew measurements
 
-- Hook PreToolUse (`Bash|Edit|Write|MultiEdit`) : 540-1200 ms par appel
-  outil. Démarrage Python nu : 500-1000 ms ; `python -I -S` ~800 ms ; Node
-  nu 380-740 ms. **Le coût est le spawn de process, pas le langage** —
-  migrer vers Node n'apporterait rien ici.
-- Hook Stop : ~740 ms. Doit rester synchrone (peut renvoyer
+- PreToolUse hook (`Bash|Edit|Write|MultiEdit`): 540-1200 ms per tool
+  call. Bare Python startup: 500-1000 ms; `python -I -S` ~800 ms; bare
+  Node 380-740 ms. **The cost is process spawning, not the language** —
+  migrating to Node would bring nothing here.
+- Stop hook: ~740 ms. Must stay synchronous (can return
   `{"decision":"block"}`).
-- Faux positif reproduit sur ce repo : `check_batches()` lit `` `CLAUDE.md` ``
-  dans la prose d'en-tête de `crew/CLAUDE_BATCH.md` et émet
-  « référence une tâche inexistante : `CLAUDE.md` » — dans **tous** les
-  projets bootstrapés (l'en-tête vient du template).
-- `template/CLAUDE.md` : routage skills 697 mots, cycle de vie 910,
-  efficience 457, personas 405, batching 396, commandes 248, graphify 143.
-  Les skills `crew-start` et `crew-close-task` ré-encodent déjà
-  l'anti-collision et la procédure de clôture : ~1300 mots sont relus deux
-  fois à chaque invocation.
-- Dérive de repo : le local est **derrière `origin/main`** (personas
-  `designer` et `legal` mergées via PR, présentes dans le plugin installé
-  0.2.1) et **devant** d'un commit (`89e83da`). À resynchroniser avant tout
-  chantier.
+- False positive reproduced on this repo: `check_batches()` reads `` `CLAUDE.md` ``
+  in the header prose of `crew/CLAUDE_BATCH.md` and emits
+  "references a nonexistent task: `CLAUDE.md`" — in **all**
+  bootstrapped projects (the header comes from the template).
+- `template/CLAUDE.md`: skills routing 697 words, lifecycle 910,
+  efficiency 457, personas 405, batching 396, commands 248, graphify 143.
+  The `crew-start` and `crew-close-task` skills already re-encode
+  the anti-collision and closure procedure: ~1300 words are read twice
+  on every invocation.
+- Repo drift: the local copy is **behind `origin/main`** (`designer` and
+  `legal` personas merged via PR, present in the installed 0.2.1 plugin)
+  and **ahead** by one commit (`89e83da`). Resync before any
+  work.
 
-## 3. Ce qu'ECC fait et qu'on peut reprendre
+## 3. What ECC does that we can adopt
 
-Réutilisable tel quel (adapté en Python) :
-1. **Gating des hooks** par profil + liste d'ids désactivables, exposé en
-   `userConfig` dans `plugin.json` et en variable d'environnement.
-2. **SessionStart avec plafond dur** (chars) et interrupteur `off` — borne
-   le coût fixe payé à chaque session.
-3. **Seuil de compaction lu dans `usage`** du transcript, scalé à la fenêtre
-   (160k/200k, 250k/1M), avec intervalle de répétition.
-4. **Split sync/async** : tout hook qui ne rend pas de décision bloquante
-   passe en `"async": true` (chez nous : SessionEnd, PostToolUse Write).
-5. **Accumuler puis agir une fois au Stop** plutôt qu'à chaque edit
-   (ECC : format/typecheck ; chez nous : déjà le cas pour l'index/journal,
-   à conserver).
-6. **Skill d'audit `context-budget`** (prompt-only) : descriptions > 30 mots,
-   skills > 400 lignes, CLAUDE.md combiné > 300 lignes, ~500 tokens par
-   outil MCP → à proposer comme passe `/crew-status --context` ou dans
+Reusable as is (adapted to Python):
+1. **Hook gating** by profile + list of disableable ids, exposed as
+   `userConfig` in `plugin.json` and as an environment variable.
+2. **SessionStart with a hard cap** (chars) and an `off` switch — bounds
+   the fixed cost paid every session.
+3. **Compaction threshold read from the transcript's `usage`**, scaled to the window
+   (160k/200k, 250k/1M), with a repeat interval.
+4. **Sync/async split**: any hook that does not return a blocking decision
+   goes `"async": true` (for us: SessionEnd, PostToolUse Write).
+5. **Accumulate, then act once at Stop** rather than on every edit
+   (ECC: format/typecheck; for us: already the case for the index/journal,
+   to be kept).
+6. **`context-budget` audit skill** (prompt-only): descriptions > 30 words,
+   skills > 400 lines, combined CLAUDE.md > 300 lines, ~500 tokens per
+   MCP tool → to be offered as a `/crew-status --context` pass or in
    `claude-md-management`.
 
-À ne pas reprendre : GateGuard fact-forcing (friction, +1 tour par fichier),
-résumé LLM Haiku en PreCompact (latence synchrone, dépendance CLI, store
-hors `crew/`), observe/instincts (lourd, no-op Windows), dispatcher Node
-(pas de gain : nos 4 hooks sont déjà un seul script).
+Not to adopt: GateGuard fact-forcing (friction, +1 turn per file),
+Haiku LLM summary in PreCompact (synchronous latency, CLI dependency, store
+outside `crew/`), observe/instincts (heavy, Windows no-op), Node dispatcher
+(no gain: our 4 hooks are already a single script).
 
-## 4. Arbitrages (persona `architect`)
+## 4. Trade-offs (`architect` persona)
 
-**A. Slimming `template/CLAUDE.md`** → progressive disclosure, cible
-1000-1200 mots. Garder en une ligne chaque obligation (schéma d'états +
-règle d'or, « démarrer = manager / crew-start, jamais git mv nu »,
-invariant zones disjointes, clause personas 1 %, routage skills 1 ligne
-par skill, règle des 100 lignes, 150k/100k, `crew/` ancré racine).
-Déplacer les procédures détaillées (§0-4, PAUSED, anti-collision en 4
-points, nettoyage auto, description du hook) vers les skills `crew-*`
-existants — pas de nouveau `RULES.md`. Écarter `.claude/rules` + `paths:`
-(règles non path-scopées). Risque : non-adhérence si une obligation perd sa
-phrase d'ancrage ; migration des CLAUDE.md déjà personnalisés
-(`crew-update`) à arbitrer avec `ceo`. Effort M.
+**A. Slimming `template/CLAUDE.md`** → progressive disclosure, target
+1000-1200 words. Keep each obligation in one line (state diagram + golden
+rule, "start = manager / crew-start, never a bare git mv",
+disjoint-zones invariant, 1% personas clause, skills routing 1 line
+per skill, 100-line rule, 150k/100k, `crew/` anchored at root).
+Move the detailed procedures (§0-4, PAUSED, 4-point anti-collision,
+auto-cleanup, hook description) into the existing `crew-*` skills —
+no new `RULES.md`. Rule out `.claude/rules` + `paths:`
+(rules that are not path-scoped). Risk: non-adherence if an obligation loses
+its anchor sentence; migration of already-customized CLAUDE.md files
+(`crew-update`) to be arbitrated with `ceo`. Effort M.
 
-**B. Latence PreToolUse** → pré-filtre shell + marqueur fichier.
-`save_locks` écrit/supprime `crew/CLAUDE_CONTEXT/.gate_armed` quand
-≥ 2 sessions ; la commande du hook fait `[ -e …/.gate_armed ] || exit 0`
-avant de spawner Python (pour `Bash`, laisser passer toujours les claims
-`git mv` / `crew-resume:` qui doivent écrire le verrou même en solo).
-Spawn évité dans le cas majoritaire (une session) : gain ≈ 0,4-1 s par
-appel outil. `CREW_HOOK_PROFILE=minimal` en escape hatch. Effort S/M.
+**B. PreToolUse latency** → shell pre-filter + file marker.
+`save_locks` writes/removes `crew/CLAUDE_CONTEXT/.gate_armed` when
+≥ 2 sessions; the hook command does `[ -e …/.gate_armed ] || exit 0`
+before spawning Python (for `Bash`, always let through the `git mv` /
+`crew-resume:` claims that must write the lock even when solo).
+Spawn avoided in the majority case (one session): gain ≈ 0.4-1 s per
+tool call. `CREW_HOOK_PROFILE=minimal` as an escape hatch. Effort S/M.
 
-**C. Continuité de session** → hook SessionStart (`startup|resume|compact`)
-injectant un digest pur fichier ≤ 2k chars via `additionalContext` :
-CURRENT_TASKS/PAUSED (slug, titre, cases), batchs actifs + zones, verrous
-d'autres sessions, 3 derniers titres HISTORIQUE, warnings batch. Vue
-dérivée, jamais réécrite dans `crew/` (source unique respectée). Remplace
-les 3-6k tokens d'outils que `crew-start` dépense à relire l'état. Écarter
-PreCompact (redondant : `SessionStart` source `compact` ré-injecte le
+**C. Session continuity** → SessionStart hook (`startup|resume|compact`)
+injecting a pure-file digest ≤ 2k chars via `additionalContext`:
+CURRENT_TASKS/PAUSED (slug, title, boxes), active batches + zones, other
+sessions' locks, last 3 HISTORIQUE titles, batch warnings. Derived view,
+never rewritten into `crew/` (single source respected). Replaces
+the 3-6k tokens of tools that `crew-start` spends rereading the state. Rule out
+PreCompact (redundant: `SessionStart` source `compact` re-injects the
 digest). Effort S/M.
 
-**D. Moniteur de contexte** → ré-arbitrer `alerte-contexte-150k`
-(2026-08-25) : passer de stderr à `{"systemMessage": …}` dans le JSON
-Stop, seuil scalé (fenêtre 1M détectée via `model` `[1m]` ou total
-> 210k → 800k), répétition tous les 50k avec état par session. Écarter la
-détection « 5 outils identiques » (exigerait un PostToolUse par appel,
-contraire à B). Effort S.
+**D. Context monitor** → re-arbitrate `alerte-contexte-150k`
+(2026-08-25): move from stderr to `{"systemMessage": …}` in the Stop
+JSON, scaled threshold (1M window detected via `model` `[1m]` or total
+> 210k → 800k), repeat every 50k with per-session state. Rule out
+the "5 identical tools" detection (it would require a PostToolUse per call,
+contrary to B). Effort S.
 
-## 5. Ordre de mise en œuvre conseillé
+## 5. Recommended implementation order
 
-1. Resynchroniser le repo (`git pull --rebase origin main`).
-2. Bug `check_batches` : parser avec `TASK_LINE_RE` (déjà utilisé par
-   `prune_closed_batches`) au lieu de la regex générique. Quick win.
-3. B — marqueur `.gate_armed` + pré-filtre shell + `async` sur SessionEnd /
-   PostToolUse Write. Plus gros gain perçu.
-4. D — systemMessage + seuil scalé + intervalle.
-5. C — SessionStart digest + simplification de `crew-start` étape 1.
-6. A — slimming du template, en dernier (dépend de ce que C/D ajoutent au
-   contexte, impose une migration `crew-update`).
+1. Resync the repo (`git pull --rebase origin main`).
+2. `check_batches` bug: parse with `TASK_LINE_RE` (already used by
+   `prune_closed_batches`) instead of the generic regex. Quick win.
+3. B — `.gate_armed` marker + shell pre-filter + `async` on SessionEnd /
+   PostToolUse Write. Biggest perceived gain.
+4. D — systemMessage + scaled threshold + interval.
+5. C — SessionStart digest + simplification of `crew-start` step 1.
+6. A — template slimming, last (depends on what C/D add to the
+   context, requires a `crew-update` migration).
 
-Fichiers de problèmes : `crew/PROBLEMS/` (cf. INDEX.md régénéré par le hook).
+Problem files: `crew/PROBLEMS/` (see INDEX.md regenerated by the hook).

@@ -1,12 +1,12 @@
 /**
- * Mod 10 — batch-eta-cost.ts (Estimation de fin)
+ * Mod 10 — batch-eta-cost.ts (Completion estimate)
  *
- * Calcule la vitesse moyenne d'exécution des tâches terminées du batch en cours
- * pour afficher une estimation temps réel :
- * `⏱️ Fin estimée : ~8 min (~45k tokens restants)`
+ * Computes the average execution speed of the completed tasks of the current
+ * batch to display a real-time estimate:
+ * `⏱️ ETA: ~8 min (~45k tokens left)`
  *
- * Persiste localement les métriques des tâches complétées dans
- * `.claude/crew-batch-metrics.json` (aucun appel LLM, 100% local / 0-token).
+ * Locally persists the metrics of completed tasks in
+ * `.claude/crew-batch-metrics.json` (no LLM call, 100% local / 0-token).
  */
 
 import {
@@ -130,7 +130,7 @@ export function computeBatchEta(params: {
 
   const remainingWholeTasks = Math.max(0, batchTotalTasks - batchDoneTasks);
   if (remainingWholeTasks === 0) {
-    const doneLine = '⏱️ Fin estimée : terminé ✅ (0 token restant)';
+    const doneLine = '⏱️ ETA: done ✅ (0 tokens left)';
     return {
       batchKey,
       remainingTasksCount: 0,
@@ -171,7 +171,7 @@ export function computeBatchEta(params: {
       estimatedRemainingMs: null,
       estimatedRemainingTokens: null,
       isComplete: false,
-      line: `⏱️ Fin estimée : calibration (${remainingWholeTasks} tâche(s) restante(s))`,
+      line: `⏱️ ETA: calibrating (${remainingWholeTasks} task(s) remaining)`,
     };
   }
 
@@ -187,7 +187,7 @@ export function computeBatchEta(params: {
 
   const etaFmt = formatEtaMinutes(estimatedRemainingMs);
   const tokFmt = formatCompactTokens(estimatedRemainingTokens);
-  const line = `⏱️ Fin estimée : ${etaFmt} (~${tokFmt} tokens restants)`;
+  const line = `⏱️ ETA: ${etaFmt} (~${tokFmt} tokens left)`;
 
   return {
     batchKey,

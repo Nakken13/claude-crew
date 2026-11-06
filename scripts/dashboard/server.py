@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Dashboard crew — visualisation temps reel + gestion (tasks/batches/
-sessions) du crew/ d'un projet quelconque bootstrappe depuis ce scaffold.
+"""Crew dashboard — real-time view + management (tasks/batches/sessions) of
+the crew/ folder of any project bootstrapped from this scaffold.
 
-Reutilise directement la logique de parsing/anti-collision de crew_hook.py
-(meme module que celui invoque par les hooks Stop/PreToolUse) plutot que de
-la reimplementer, pour ne jamais diverger de l'invariant qu'ils font deja
-respecter. Lance via le skill `crew-dashboard` depuis la racine du projet
-cible (cwd = racine projet) ; CLAUDE_PROJECT_DIR est force sur cwd avant
-l'import de crew_hook pour que son ROOT/CREW pointent sur CE projet et non
-sur l'installation du plugin.
+Directly reuses the parsing/anti-collision logic of crew_hook.py (the same
+module invoked by the Stop/PreToolUse hooks) rather than reimplementing it,
+so it never diverges from the invariant they already enforce. Launched via
+the `crew-dashboard` skill from the root of the target project (cwd =
+project root); CLAUDE_PROJECT_DIR is forced to cwd before importing
+crew_hook so its ROOT/CREW point at THIS project and not at the plugin
+installation.
 """
 import datetime
 import os
@@ -21,7 +21,7 @@ import sys
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 os.environ.setdefault("CLAUDE_PROJECT_DIR", os.getcwd())
-import crew_hook as h  # noqa: E402  (import apres setup sys.path/env, voir docstring)
+import crew_hook as h  # noqa: E402  (import after sys.path/env setup, see docstring)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -30,33 +30,32 @@ from pydantic import BaseModel
 app = FastAPI(title="Crew Dashboard")
 
 TASK_FOLDERS = ("TODO", "CURRENT_TASKS", "PAUSED", "ICEBOX")
-DASHBOARD_SESSION_ID = "dashboard-ui"  # identite de session stable utilisee quand le
-# dashboard revendique lui-meme un verrou live (cf. _claim_current_tasks_lock) — au meme
-# titre qu'une session Claude, pour que check_batch_collisions/check_zone_overlaps voient
-# une tache demarree depuis le dashboard comme deja prise, exactement comme via /crew-start.
+DASHBOARD_SESSION_ID = "dashboard-ui"  # stable session identity used when the
+# dashboard itself claims a live lock (see _claim_current_tasks_lock) — on a par
+# with a Claude session, so check_batch_collisions/check_zone_overlaps see a task
+# started from the dashboard as already taken, exactly as via /crew-start.
 CHECKBOX_RE = re.compile(r"^([ \t]*[-*]\s*\[)( |x|X)(\].*)$", re.MULTILINE)
 
 
 def _validate_basename(name, kind):
-    """Rejette tout `name` qui n'est pas un simple nom de fichier : separateurs
-    ('/' ou '\\', quel que soit l'OS hote), chemin absolu, lettre de lecteur
-    Windows ('C:...'), ou '.'/'..'. Sans ca, `h.DIRS[sub] / name` (pathlib `/`)
-    ignore silencieusement `h.DIRS[sub]` des qu'on lui passe un chemin absolu —
-    permettant une ecriture/lecture arbitraire hors de `crew/` (cf. code review)."""
+    """Rejects any `name` that is not a plain file name: separators
+    ('/' or '\\', whatever the host OS), absolute path, Windows drive letter
+    ('C:...'), or '.'/'..'. Without this, `h.DIRS[sub] / name` (pathlib `/`)
+    silently ignores `h.DIRS[sub]` as soon as an absolute path is passed —
+    allowing arbitrary read/write outside `crew/` (see code review)."""
     if not name or "/" in name or "\\" in name or name in (".", "..") or re.match(r"^[A-Za-z]:", name):
-        raise HTTPException(400, f"{kind} invalide (nom de fichier simple attendu) : {name}")
+        raise HTTPException(400, f"invalid {kind} (plain file name expected): {name}")
     return name
 
 
 def _release_task_lock(slug):
-    """Retire `slug` de la session qui le detient (sous mutex), quelle que
-    soit cette session — le dashboard deplace le fichier hors de
-    CURRENT_TASKS de toute facon (admin action explicite), donc plus aucune
-    session ne devrait continuer a le tenir verrouille apres coup. Sans ca,
-    un verrou pose par `_claim_current_tasks_lock` (ou par une vraie session
-    /crew-start) resterait fantome jusqu'au TTL des qu'on renvoie la tache
-    en TODO/PAUSED/ICEBOX depuis le dashboard. Supprime aussi l'entree
-    session si elle ne porte plus aucune tache."""
+    """Removes `slug` from the session holding it (under mutex), whichever
+    session that is — the dashboard moves the file out of CURRENT_TASKS
+    anyway (explicit admin action), so no session should keep it locked
+    afterwards. Without this, a lock set by `_claim_current_tasks_lock` (or
+    by a real /crew-start session) would stay a ghost until the TTL as soon
+    as the task is sent back to TODO/PAUSED/ICEBOX from the dashboard. Also
+    deletes the session entry if it no longer carries any task."""
     with h.LocksMutex():
         locks = h.load_locks()
         sid = h._slug_session_map(locks).get(slug)
@@ -69,15 +68,15 @@ def _release_task_lock(slug):
 
 
 def _claim_current_tasks_lock(slug, session_id, sections):
-    """Enregistre sous mutex le verrou live pour une tache que le dashboard
-    deplace vers CURRENT_TASKS — miroir HTTP-friendly de `h._claim_git_mv_lock`
-    (meme sequence : reload+purge sous mutex, re-verifie la collision de slug
-    exact ET de voisinage de batch fraiches sous mutex plutot que de se fier au
-    pre-check fait hors mutex par l'appelant, enregistre, regenere
-    BATCH_LOCKS.md), sauf qu'elle leve HTTPException au lieu de `sys.exit(2)`
-    (un serveur ASGI ne doit jamais mourir sur une collision cote client).
-    Sans ceci, une tache demarree depuis le dashboard restait invisible aux
-    verifications anti-collision (cf. code review, issue #5)."""
+    """Registers under mutex the live lock for a task the dashboard moves to
+    CURRENT_TASKS — HTTP-friendly mirror of `h._claim_git_mv_lock` (same
+    sequence: reload+purge under mutex, re-check the exact-slug collision AND
+    the batch-neighbourhood collision freshly under mutex rather than
+    trusting the pre-check done outside the mutex by the caller, register,
+    regenerate BATCH_LOCKS.md), except that it raises HTTPException instead
+    of `sys.exit(2)` (an ASGI server must never die on a client-side
+    collision). Without this, a task started from the dashboard stayed
+    invisible to the anti-collision checks (see code review, issue #5)."""
     with h.LocksMutex():
         locks = h.load_locks()
         now_dt = datetime.datetime.now()
@@ -85,7 +84,7 @@ def _claim_current_tasks_lock(slug, session_id, sections):
         other_session = h._slug_session_map(locks).get(slug)
         if other_session and other_session != session_id:
             since = locks.get("sessions", {}).get(other_session, {}).get("since", "?")
-            raise HTTPException(409, f"`{slug}` deja verrouille par une autre session (depuis {since})")
+            raise HTTPException(409, f"`{slug}` already locked by another session (since {since})")
         reason = h.check_batch_collisions({slug}, sections, locks, session_id)
         if reason:
             raise HTTPException(409, reason)
@@ -103,7 +102,7 @@ def _list_tasks():
 
 def _list_batches(locks):
     sections = h.load_sections()
-    active = h.in_progress_task_slugs(locks)  # pas TODO : un batch du backlog n'est pas actif
+    active = h.in_progress_task_slugs(locks)  # not TODO: a backlog batch is not active
     warnings, blocking = h.check_zone_overlaps(sections, active, locks, observer=True)
     batches = [
         {
@@ -152,8 +151,8 @@ def get_state():
 
 @app.get("/api/claims")
 def get_claims(refresh: bool = False):
-    """Kanban multi-devs (lecture seule, aucune ecriture depuis le dashboard).
-    Sans `refresh` : ref locale, aucun reseau ; `refresh=1` : fetch du remote."""
+    """Multi-dev kanban (read-only, nothing written from the dashboard).
+    Without `refresh`: local ref, no network; `refresh=1`: fetch from the remote."""
     return h.claims_board(refresh=refresh)
 
 
@@ -165,12 +164,12 @@ class MoveRequest(BaseModel):
 def move_task(slug: str, body: MoveRequest):
     _validate_basename(slug, "slug")
     if body.to not in TASK_FOLDERS:
-        raise HTTPException(400, f"destination invalide : {body.to}")
+        raise HTTPException(400, f"invalid destination: {body.to}")
     source = next((name for name in TASK_FOLDERS if (h.DIRS[name] / slug).is_file()), None)
     if source is None:
-        raise HTTPException(404, f"tache introuvable : {slug}")
+        raise HTTPException(404, f"task not found: {slug}")
     if source == body.to:
-        raise HTTPException(400, "source et destination identiques")
+        raise HTTPException(400, "source and destination are identical")
 
     if body.to == "CURRENT_TASKS":
         _claim_current_tasks_lock(slug, DASHBOARD_SESSION_ID, h.load_sections())
@@ -183,7 +182,7 @@ def move_task(slug: str, body: MoveRequest):
         ["git", "mv", rel_src, rel_dst], cwd=str(h.ROOT), capture_output=True, text=True
     , stdin=subprocess.DEVNULL)
     if result.returncode != 0:
-        raise HTTPException(500, f"git mv a echoue : {result.stderr.strip()}")
+        raise HTTPException(500, f"git mv failed: {result.stderr.strip()}")
     return {"slug": slug, "from": source, "to": body.to}
 
 
@@ -193,17 +192,17 @@ class ToggleRequest(BaseModel):
 
 @app.post("/api/tests/{file}/toggle")
 def toggle_test_item(file: str, body: ToggleRequest):
-    _validate_basename(file, "fichier")
+    _validate_basename(file, "file")
     target = next(
         (h.DIRS[sub] / file for sub in ("TESTS/IA", "TESTS/DEV") if (h.DIRS[sub] / file).is_file()),
         None,
     )
     if target is None:
-        raise HTTPException(404, f"fichier de test introuvable : {file}")
+        raise HTTPException(404, f"test file not found: {file}")
     text = target.read_text(encoding="utf-8")
     matches = list(CHECKBOX_RE.finditer(text))
     if not (0 <= body.item_index < len(matches)):
-        raise HTTPException(400, f"item_index hors bornes (0-{len(matches) - 1})")
+        raise HTTPException(400, f"item_index out of range (0-{len(matches) - 1})")
     m = matches[body.item_index]
     new_mark = " " if m.group(2).lower() == "x" else "x"
     target.write_text(text[: m.start(2)] + new_mark + text[m.end(2) :], encoding="utf-8")
@@ -216,7 +215,7 @@ def purge_session(session_id: str):
         locks = h.load_locks()
         sessions = locks.get("sessions", {})
         if session_id not in sessions:
-            raise HTTPException(404, f"session introuvable : {session_id}")
+            raise HTTPException(404, f"session not found: {session_id}")
         del sessions[session_id]
         h.save_locks(locks)
     return {"session_id": session_id, "purged": True}
@@ -227,8 +226,8 @@ app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 
 def _pick_port(preferred=8943):
-    """Port par defaut distinctif (evite 3000/8000, deja pris par Next.js/uvicorn
-    de projets cibles) ; fallback sur un port libre assigne par l'OS si pris."""
+    """Distinctive default port (avoids 3000/8000, already taken by Next.js/uvicorn
+    of target projects); falls back to a free port assigned by the OS if taken."""
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         probe.bind(("127.0.0.1", preferred))
@@ -246,5 +245,5 @@ if __name__ == "__main__":
     import uvicorn
 
     port = _pick_port()
-    print(f"Crew Dashboard : http://127.0.0.1:{port}")
+    print(f"Crew Dashboard: http://127.0.0.1:{port}")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

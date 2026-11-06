@@ -170,7 +170,7 @@ function collectTexts(node: unknown): string {
 }
 
 describe('crew-mates 10 Zero-Token Mods suite', () => {
-  test('Étape 2 (Mods 1-5): cache TTL, token weather, turn inspector, stack viewer, agent flow', async () => {
+  test('Step 2 (Mods 1-5): cache TTL, token weather, turn inspector, stack viewer, agent flow', async () => {
     const h = createHarness({
       'CLAUDE.md': '# Project Rules\n',
       'AGENTS.md': '# Agents\n',
@@ -204,7 +204,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('turn.start', {});
     await h.emit('tool.call', {
       tool: 'Agent',
-      input: { subagent_type: 'manager', description: 'Découpage du batch' },
+      input: { subagent_type: 'manager', description: 'Batch breakdown' },
     });
     expect(agentFlowState.nodes.length).toBe(1);
     expect(agentFlowState.nodes[0].agentName).toBe('manager');
@@ -249,17 +249,17 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(row).toContain('Read×2');
     expect(row).toContain('R:140k');
 
-    // Volets ouverts au démarrage de session : on repart d'un état fermé pour tester la bascule
+    // Panes are opened at session start: restart from a closed state to test the toggle
     await h.emit('command.run', { args: 'turns off' }, 'command=crew-ui');
     await h.emit('command.run', { args: '' }, 'command=crew-turns');
     expect(h.openedPanes).toContain('crew-turns');
     const turnsPaneTree = await h.emit('ui.render', { requestId: 'crew-turns' }, 'component=Pane');
-    expect(collectTexts(turnsPaneTree)).toContain('Historique des tours');
+    expect(collectTexts(turnsPaneTree)).toContain('Turn history');
 
     await h.emit('session.end', { sessionId: 'sess-alpha-1234' });
   });
 
-  test('Étape 3 (Mods 6-10) & /crew-ui: radar, progress 4/6 & 3/4, kanban board, file collision alert, ETA', async () => {
+  test('Step 3 (Mods 6-10) & /crew-ui: radar, progress 4/6 & 3/4, kanban board, file collision alert, ETA', async () => {
     const nowIso = new Date().toISOString();
     const h = createHarness({
       '.claude/crew-sessions.lock': JSON.stringify({
@@ -293,18 +293,18 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
         },
       }),
       'crew/CURRENT_TASKS/active-feature.md': [
-        '# Implémenter les Mods',
-        '- [x] Étape 1',
-        '- [x] Étape 2',
-        '- [x] Étape 3',
-        '- [x] Étape 4',
-        '- [s] Étape 5 en cours',
-        '- [ ] Étape 6 restante',
+        '# Implement the Mods',
+        '- [x] Step 1',
+        '- [x] Step 2',
+        '- [x] Step 3',
+        '- [x] Step 4',
+        '- [s] Step 5 in progress',
+        '- [ ] Step 6 remaining',
       ].join('\n'),
       'crew/CURRENT_TASKS/payment-api.md': '# Payment API\n- [ ] Step 1\n',
-      'crew/TODO/next-in-a.md': '# Suite Batch A\n- [ ] Action 1\n',
-      'crew/TODO/blocked-by-b.md': '# Conflit Zone B\n- [ ] Action 1\n',
-      'crew/PAUSED/waiting-design.md': '# Validation UI\n- [x] Mock\n- [ ] Review\n',
+      'crew/TODO/next-in-a.md': '# Next in Batch A\n- [ ] Action 1\n',
+      'crew/TODO/blocked-by-b.md': '# Zone B conflict\n- [ ] Action 1\n',
+      'crew/PAUSED/waiting-design.md': '# UI validation\n- [x] Mock\n- [ ] Review\n',
       'crew/CLAUDE_BATCH.md': [
         '# Batching',
         '',
@@ -336,7 +336,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(crewRadarState.onlineSessions).toBe(2);
     expect(crewRadarState.currentTasks).toBe(2);
     expect(crewRadarState.todoTasks).toBe(2);
-    expect(formatCrewRadarLine()).toContain('🟢 2 Sessions en ligne | ⚡ 2 Current Tasks | 📋 2 Todo');
+    expect(formatCrewRadarLine()).toContain('🟢 2 Sessions online | ⚡ 2 Current Tasks | 📋 2 Todo');
 
     // Mod 7: Batch Progress exact specification formatting:
     // 4 [x] out of 6 ([x]×4 + [s]×1 + [ ]×1) => Task : [████░░] 4/6 (66%)
@@ -364,7 +364,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     });
     expect(fileLockMonitorState.alerts.length).toBe(1);
     expect(fileLockMonitorState.alerts[0].source).toBe('batch-zone');
-    expect(h.toasts.some((t) => t.includes('COLLISION ZONE'))).toBe(true);
+    expect(h.toasts.some((t) => t.includes('ZONE COLLISION'))).toBe(true);
 
     // Case B: Direct active-file collision via `.claude/crew-sessions.lock`
     await h.emit('tool.call', {
@@ -398,23 +398,23 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
         inFlightTasks: {},
       },
     });
-    expect(eta.line).toBe('⏱️ Fin estimée : ~8 min (~45k tokens restants)');
+    expect(eta.line).toBe('⏱️ ETA: ~8 min (~45k tokens left)');
 
     // Step 4: Unified `/crew-ui` slash command toggles panes and bands locally
     await h.emit('command.run', { args: 'board off' }, 'command=crew-ui');
     const boardRes = await h.emit('command.run', { args: 'board' }, 'command=crew-ui');
-    expect(String(boardRes.text)).toContain('ouvert');
+    expect(String(boardRes.text)).toContain('opened');
     expect(h.openedPanes).toContain('crew-board');
 
     const allOpenRes = await h.emit('command.run', { args: 'all on' }, 'command=crew-ui');
-    expect(String(allOpenRes.text)).toContain('ouverts');
+    expect(String(allOpenRes.text)).toContain('are open');
     expect(crewUiState.panes['crew-turns']).toBe(true);
     expect(crewUiState.panes['crew-stack']).toBe(true);
     expect(crewUiState.panes['crew-board']).toBe(true);
     expect(crewUiState.panes['crew-agents']).toBe(true);
 
     const radarOffRes = await h.emit('command.run', { args: 'radar off' }, 'command=crew-ui');
-    expect(String(radarOffRes.text)).toContain('masqué');
+    expect(String(radarOffRes.text)).toContain('hidden');
     expect(crewUiState.bands.radar).toBe(false);
     crewUiState.bands.radar = true;
 
@@ -506,12 +506,12 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(collectTexts(boardTree)).toContain('Todo | In Progress | Done | Blocked');
 
     const stackTree = await h.emit('ui.render', { requestId: 'crew-stack' }, 'component=Pane');
-    expect(collectTexts(stackTree)).toContain('Arbre de la Stack Session');
+    expect(collectTexts(stackTree)).toContain('Session Stack Tree');
 
     const agentsTree = await h.emit('ui.render', { requestId: 'crew-agents' }, 'component=Pane');
-    expect(collectTexts(agentsTree)).toContain("Arbre d'exécution Subagents");
+    expect(collectTexts(agentsTree)).toContain('Subagent Execution Tree');
 
-    // Le cache vit dans son volet latéral, plus dans la bande au-dessus du prompt
+    // The cache lives in its side pane, no longer in the band above the prompt
     const cacheTree = await h.emit('ui.render', { requestId: 'crew-cache' }, 'component=Pane');
     expect(collectTexts(cacheTree)).toContain('Prompt Cache');
     expect(collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'))).not.toContain('cache_read');
@@ -519,7 +519,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-vel-1' });
   });
 
-  test('météo : le contexte vient de $.session.usage() quand turn.complete ne porte pas de tokens', async () => {
+  test('weather: context comes from $.session.usage() when turn.complete carries no tokens', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
       usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
@@ -530,7 +530,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-weather-1' });
   });
 
-  test('événement turn.complete réaliste (usage du moteur) : météo et compteurs de cache bougent', async () => {
+  test('realistic turn.complete event (engine usage): weather and cache counters move', async () => {
     const h = createHarness();
     const cacheBefore = promptCacheState.sessionCacheReadTokens;
     await h.emit('session.start', { sessionId: 'sess-real-1' });
@@ -553,7 +553,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-real-1' });
   });
 
-  test('cache : le TTL 1h détecté reste 1h sur un tour en lecture seule (sans cache_creation)', async () => {
+  test('cache: the detected 1h TTL stays 1h on a read-only turn (no cache_creation)', async () => {
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-ttl-1' });
     await h.emit('turn.complete', {
@@ -574,7 +574,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-ttl-1' });
   });
 
-  test('sessions fantomes : entree inactive > 30 min purgee, ancien id remplace par l\'id reel', async () => {
+  test('ghost sessions: inactive entry > 30 min purged, old id replaced by the real id', async () => {
     const h = createHarness();
     const nowMs = Date.now();
     const iso = (ms: number) => new Date(ms).toISOString();
@@ -599,11 +599,11 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
 
   test('radar: TODO tasks listed in crew_ignored.json leave 📋 and move to 👤', async () => {
     const h = createHarness({
-      'crew/TODO/mine.md': '# Ma tâche\n- [ ] x\n',
-      'crew/TODO/theirs-1.md': '# A lui\n- [ ] x\n',
-      'crew/TODO/theirs-2.md': '# A lui aussi\n- [ ] x\n',
+      'crew/TODO/mine.md': '# My task\n- [ ] x\n',
+      'crew/TODO/theirs-1.md': '# Theirs\n- [ ] x\n',
+      'crew/TODO/theirs-2.md': '# Theirs too\n- [ ] x\n',
       'crew/CLAUDE_CONTEXT/CREW_CONFIG.md': 'remote_claims : true\n',
-      'crew/CLAUDE_CONTEXT/crew_ignored.json': JSON.stringify({ ignored: { 'theirs-1.md': 'Bob', 'theirs-2.md': 'Alice', 'deja-supprimee.md': 'Bob' } }),
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': JSON.stringify({ ignored: { 'theirs-1.md': 'Bob', 'theirs-2.md': 'Alice', 'already-deleted.md': 'Bob' } }),
     });
     await h.emit('session.start', { sessionId: 'sess-ign-1' });
     expect(crewRadarState.todoTasks).toBe(1);
@@ -644,7 +644,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
   test('radar: without crew_ignored.json (or corrupt), no 👤 and 📋 counts everything', async () => {
     const h = createHarness({
       'crew/TODO/a.md': '# A\n- [ ] x\n',
-      'crew/CLAUDE_CONTEXT/crew_ignored.json': '{pas du json',
+      'crew/CLAUDE_CONTEXT/crew_ignored.json': '{not json',
     });
     await h.emit('session.start', { sessionId: 'sess-ign-2' });
     expect(crewRadarState.todoTasks).toBe(1);
@@ -653,7 +653,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-ign-2' });
   });
 
-  test('/crew-ui : une erreur interne remonte son message au lieu d\'un texte générique', async () => {
+  test('/crew-ui: an internal error surfaces its message instead of generic text', async () => {
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-err-1' });
     (h.api.ui as { open: unknown }).open = async () => {
@@ -664,7 +664,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-err-1' });
   });
 
-  test("env asynchrone du moteur ($.env.get renvoie une promesse) : projectRoot reste une chaîne", async () => {
+  test("engine async env ($.env.get returns a promise): projectRoot stays a string", async () => {
     const h = createHarness();
     (h.api.env as { get: unknown }).get = async (k: string) => (k === 'CLAUDE_PROJECT_DIR' ? '/proj' : undefined);
     await h.emit('session.start', { sessionId: 'sess-env-1', cwd: '/proj' });
@@ -673,7 +673,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(typeof lock.sessions?.['sess-env-1']?.cwd).toBe('string');
     await h.emit('session.end', { sessionId: 'sess-env-1' });
   });
-  test('météo : seuils 49/50/74/75/89/90 % -> palier, jamais de NaN', () => {
+  test('weather: thresholds 49/50/74/75/89/90 % -> tier, never NaN', () => {
     const cases: Array<[number, string]> = [
       [49, '☀️ Clear'],
       [50, '⛅ Cloudy'],
@@ -687,7 +687,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
       expect(snap.percent).toBe(pct);
       expect(snap.label).toBe(label);
     }
-    // entrées invalides directes (cf. crew/PROBLEMS/token-weather-nan-entree-invalide.md)
+    // direct invalid inputs (see crew/PROBLEMS/token-weather-nan-entree-invalide.md)
     for (const bad of [-5, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
       const snap = computeTokenWeather(bad, 0);
       expect(snap.line).not.toContain('NaN');
@@ -697,7 +697,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather(500_000, 200_000).percent).toBe(100);
   });
 
-  test('météo : toute fenêtre > 150k plafonnée à 150k (politique crew)', () => {
+  test('weather: any window > 150k capped at 150k (crew policy)', () => {
     const big = computeTokenWeather(150_000, 1_000_000);
     expect(big.contextWindow).toBe(150_000);
     expect(big.percent).toBe(100);
@@ -707,7 +707,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(computeTokenWeather(100_000, 200_000).contextWindow).toBe(150_000);
   });
 
-  test('météo : session.usage() en erreur ou turn.complete sans usage -> ancien état conservé', async () => {
+  test('weather: session.usage() erroring or turn.complete without usage -> previous state kept', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
       usage: async () => ({ context: { tokens: 90_000, window: 200_000, percent: 60 } }),
@@ -737,7 +737,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  test('cache : défaut 1h ; CLAUDE_CACHE_TTL=5m -> 300', async () => {
+  test('cache: default 1h; CLAUDE_CACHE_TTL=5m -> 300', async () => {
     resetPromptCacheState();
     const h1 = createHarness();
     (h1.api.env as { get: (k: string) => unknown }).get = (k) =>
@@ -753,7 +753,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h2.emit('session.end', { sessionId: 'sess-cache-ttl-default' });
   });
 
-  test('cache : défaut 1h avec compte à rebours ; un write 5m seul ne rétrograde jamais', async () => {
+  test('cache: default 1h with countdown; a lone 5m write never downgrades', async () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-default' });
@@ -779,7 +779,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-cache-default' });
   });
 
-  test('cache : sans tour (lastRefreshAtMs null) -> placeholder, aucun toast ; usage sans champs cache -> pas de crash', async () => {
+  test('cache: no turn (lastRefreshAtMs null) -> placeholder, no toast; usage without cache fields -> no crash', async () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-edge' });
@@ -787,7 +787,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(idle.line).toContain('--:--');
     expect(idle.isExpiringSoon).toBe(false);
     await sleep(1_300);
-    expect(h.toasts.filter((t) => t.includes('Prompt cache expire'))).toHaveLength(0);
+    expect(h.toasts.filter((t) => t.includes('Prompt cache expires'))).toHaveLength(0);
 
     await h.emit('turn.complete', { reason: 'answer', durationMs: 500, usage: { input_tokens: 10, output_tokens: 2 } });
     expect(Number.isFinite(computePromptCacheStatus().hitRatePercent)).toBe(true);
@@ -795,26 +795,26 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-cache-edge' });
   });
 
-  test('cache : < 60 s -> un seul toast par rafraichissement, rien apres session.end', async () => {
+  test('cache: < 60 s -> a single toast per refresh, nothing after session.end', async () => {
     resetPromptCacheState();
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-cache-toast' });
-    promptCacheState.ttlSeconds = 300; // TTL 5 min observé
-    promptCacheState.lastRefreshAtMs = Date.now() - 245_000; // 55 s restantes
+    promptCacheState.ttlSeconds = 300; // TTL 5 min observed
+    promptCacheState.lastRefreshAtMs = Date.now() - 245_000; // 55 s remaining
     await sleep(2_300);
-    const alerts = () => h.toasts.filter((t) => t.includes('Prompt cache expire'));
+    const alerts = () => h.toasts.filter((t) => t.includes('Prompt cache expires'));
     expect(alerts()).toHaveLength(1);
 
     await h.emit('session.end', { sessionId: 'sess-cache-toast' });
     const toastsAfterEnd = h.toasts.length;
     const invalidationsAfterEnd = h.invalidations;
-    promptCacheState.lastRefreshAtMs = Date.now() - 250_000; // nouveau rafraichissement a alerter
+    promptCacheState.lastRefreshAtMs = Date.now() - 250_000; // new refresh to alert on
     promptCacheState.alertedExpiringForRefreshMs = null;
     await sleep(1_500);
     expect(h.toasts.length).toBe(toastsAfterEnd);
     expect(h.invalidations).toBe(invalidationsAfterEnd);
   });
-  test('démarrage de session : les 5 volets Zero-Token sont ouverts sans voler le focus', async () => {
+  test('session start: the 5 Zero-Token panes are open without stealing focus', async () => {
     const h = createHarness();
     await h.emit('session.start', { sessionId: 'sess-autostart-1' });
     expect([...h.openedPanes].sort()).toEqual(
@@ -823,7 +823,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-autostart-1' });
   });
 
-  test("ui.open : l'hôte n'accepte que focus:true ou l'absence du champ (jamais focus:false)", async () => {
+  test("ui.open: the host only accepts focus:true or the field being absent (never focus:false)", async () => {
     const h = createHarness();
     const opened: Array<Record<string, unknown>> = [];
     const realOpen = h.api.ui.open;

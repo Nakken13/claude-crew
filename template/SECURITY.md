@@ -1,26 +1,26 @@
 # SECURITY.md — <NOM_PROJET>
 
-À remplir dès que le projet a de l'auth, des secrets, ou des données
-utilisateur sensibles ; à supprimer sinon.
+Fill in as soon as the project has auth, secrets, or sensitive user data;
+delete otherwise.
 
 ## Secrets
 
-<Où ils vivent (env vars, vault manager...), jamais commit `.env`, jamais
-loggés, jamais renvoyés au client.>
+<Where they live (env vars, vault manager...), never commit `.env`, never
+logged, never sent back to the client.>
 
 ## Auth boundaries
 
-<Modèle d'auth (tokens, sessions, RLS...), où vit le token côté client (ex.
-en mémoire seulement, jamais localStorage si XSS est une préoccupation),
-comment le refresh est géré.>
+<Auth model (tokens, sessions, RLS...), where the token lives client-side (e.g.
+in memory only, never localStorage if XSS is a concern), how refresh is
+handled.>
 
-## Données sensibles / PII
+## Sensitive data / PII
 
-<Quelles données sont sensibles dans ce projet, règles de masquage/logging,
-rétention.>
+<Which data is sensitive in this project, masking/logging rules,
+retention.>
 
-## Pré-production checklist
+## Pre-production checklist
 
-<Ce qui doit être vérifié avant un premier déploiement public : `/docs`
-désactivé, checkpointer/dev fallback qui ne doit jamais tourner en prod,
+<What must be verified before a first public deployment: `/docs`
+disabled, checkpointer/dev fallback that must never run in prod,
 CORS, rate limiting...>

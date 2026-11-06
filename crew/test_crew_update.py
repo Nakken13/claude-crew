@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests pour crew_update.py (tache mecanisme-mise-a-jour-scaffold-multi-projets).
-Chaque test travaille sur un projet-cible et une source-scaffold factices
-dans tmp_path (jamais le vrai depot), fichiers reels sur disque, hashing
-reel — pas de mock."""
+"""Tests for crew_update.py (task mecanisme-mise-a-jour-scaffold-multi-projets).
+Each test works on a fake target project and a fake scaffold source in
+tmp_path (never the real repo), real files on disk, real hashing —
+no mocks."""
 import json
 import pathlib
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import crew_update as u
 
 
-# --- classify() : logique pure de decision par fichier ---------------------
+# --- classify(): pure per-file decision logic ------------------------------
 
 def test_classify_new_when_missing_locally_but_present_in_source():
     assert u.classify(local_hash=None, recorded_hash=None, source_hash="abc") == "new"
@@ -28,29 +28,29 @@ def test_classify_up_to_date_when_local_matches_source():
 
 
 def test_classify_apply_when_unmodified_since_last_write_and_source_changed():
-    # local == ce qu'on a ecrit la derniere fois, mais source a change depuis
+    # local == what we wrote last time, but the source has changed since
     assert u.classify(local_hash="old", recorded_hash="old", source_hash="new") == "apply"
 
 
 def test_classify_conflict_when_local_diverges_from_recorded():
-    # l'utilisateur a touche le fichier depuis notre derniere ecriture
+    # the user touched the file since our last write
     assert u.classify(local_hash="user-edit", recorded_hash="old", source_hash="new") == "conflict"
 
 
 def test_classify_up_to_date_when_local_equals_source_despite_recorded_mismatch():
-    # local != recorded mais local == source : convergence, rien a appliquer.
+    # local != recorded but local == source: convergence, nothing to apply.
     assert u.classify(local_hash="new", recorded_hash="old", source_hash="new") == "up_to_date"
 
 
 def test_classify_removed_when_local_exists_but_source_no_longer_has_it():
-    # Le fichier a disparu de la source (deplace/supprime en amont) : ne
-    # jamais tomber dans "apply" (shutil.copyfile planterait sur un fichier
-    # source inexistant), quel que soit l'etat de recorded_hash.
+    # The file is gone from the source (moved/deleted upstream): never fall
+    # into "apply" (shutil.copyfile would crash on a nonexistent source
+    # file), whatever the state of recorded_hash.
     assert u.classify(local_hash="old", recorded_hash="old", source_hash=None) == "removed"
     assert u.classify(local_hash="user-edit", recorded_hash="old", source_hash=None) == "removed"
 
 
-# --- fixtures : arborescences projet-cible / source-scaffold factices ------
+# --- fixtures: fake target-project / scaffold-source trees -----------------
 
 @pytest.fixture
 def source_root(tmp_path):
@@ -75,8 +75,8 @@ def project_root(tmp_path):
     (proj / "check_placeholders.py").write_text("print('v1')\n", encoding="utf-8")
     (proj / "crew" / "crew_hook.py").write_text("hook v1\n", encoding="utf-8")
     (proj / ".claude" / "skills" / "crew-init" / "SKILL.md").write_text("skill v1\n", encoding="utf-8")
-    (proj / "crew" / "TODO" / "user-task.md").write_text("# une tache utilisateur\n", encoding="utf-8")
-    (proj / "crew" / "CLAUDE_CONTEXT" / "HISTORIQUE.md").write_text("# historique utilisateur\n", encoding="utf-8")
+    (proj / "crew" / "TODO" / "user-task.md").write_text("# a user task\n", encoding="utf-8")
+    (proj / "crew" / "CLAUDE_CONTEXT" / "HISTORIQUE.md").write_text("# user history\n", encoding="utf-8")
     return proj
 
 
@@ -84,12 +84,12 @@ WHITELIST = ["CLAUDE.md", "check_placeholders.py", "crew/crew_hook.py",
              ".claude/skills/crew-init/SKILL.md"]
 
 
-# --- plan() / apply() : jamais de donnees utilisateur touchees -------------
+# --- plan() / apply(): user data is never touched --------------------------
 
 def test_plan_flags_conflict_when_no_recorded_hash_exists_yet(project_root, source_root):
-    # Aucun SCAFFOLD_VERSION.json existant encore -> recorded_hash absent pour
-    # tous les fichiers -> tout diff local/source doit ressortir en conflict
-    # (pas en apply), car on ne peut pas prouver l'absence de personnalisation.
+    # No SCAFFOLD_VERSION.json exists yet -> recorded_hash absent for every
+    # file -> any local/source diff must come out as conflict (not apply),
+    # because the absence of customization cannot be proven.
     decisions = u.plan(project_root, source_root, WHITELIST)
     statuses = {d["path"]: d["status"] for d in decisions}
     assert statuses == {
@@ -101,8 +101,8 @@ def test_plan_flags_conflict_when_no_recorded_hash_exists_yet(project_root, sour
 
 
 def test_plan_flags_apply_once_recorded_hash_matches_current_local_content(project_root, source_root):
-    # Simule un crew-init initial : on enregistre le hash de la version v1
-    # deja presente localement comme "derniere version ecrite par nous".
+    # Simulates an initial crew-init: record the hash of the v1 version
+    # already present locally as "last version written by us".
     recorded = u.seed(project_root, WHITELIST, "1.0.0")["files"]
 
     decisions = u.plan(project_root, source_root, WHITELIST)
@@ -118,7 +118,7 @@ def test_plan_flags_apply_once_recorded_hash_matches_current_local_content(proje
 def test_plan_flags_conflict_when_user_edited_file_after_last_recorded_write(project_root, source_root):
     recorded = u.seed(project_root, WHITELIST, "1.0.0")["files"]
 
-    # L'utilisateur personnalise CLAUDE.md apres coup.
+    # The user customizes CLAUDE.md afterwards.
     (project_root / "CLAUDE.md").write_text("claude v1 + notes perso\n", encoding="utf-8")
 
     decisions = u.plan(project_root, source_root, WHITELIST)
@@ -138,9 +138,9 @@ def test_apply_writes_only_apply_and_new_files_and_skips_conflicts(project_root,
         "check_placeholders.py", "crew/crew_hook.py",
         ".claude/skills/crew-init/SKILL.md",
     ])
-    # Le fichier en conflit n'est jamais ecrase.
+    # The conflicting file is never overwritten.
     assert (project_root / "CLAUDE.md").read_text(encoding="utf-8") == "claude v1 + notes perso\n"
-    # Les fichiers "apply" recoivent bien le contenu source.
+    # "apply" files do receive the source content.
     assert (project_root / "check_placeholders.py").read_text(encoding="utf-8") == "print('v2')\n"
     assert (project_root / "crew" / "crew_hook.py").read_text(encoding="utf-8") == "hook v2\n"
 
@@ -151,14 +151,14 @@ def test_apply_never_touches_user_data_directories(project_root, source_root):
     decisions = u.plan(project_root, source_root, WHITELIST)
     u.apply(project_root, source_root, decisions)
 
-    assert (project_root / "crew" / "TODO" / "user-task.md").read_text(encoding="utf-8") == "# une tache utilisateur\n"
-    assert (project_root / "crew" / "CLAUDE_CONTEXT" / "HISTORIQUE.md").read_text(encoding="utf-8") == "# historique utilisateur\n"
+    assert (project_root / "crew" / "TODO" / "user-task.md").read_text(encoding="utf-8") == "# a user task\n"
+    assert (project_root / "crew" / "CLAUDE_CONTEXT" / "HISTORIQUE.md").read_text(encoding="utf-8") == "# user history\n"
 
 
 def test_apply_never_crashes_on_a_file_removed_from_source(project_root, source_root):
-    # Reproduction du bug trouve en code review : un fichier de la liste
-    # blanche existe encore localement mais a disparu de la source (deplace/
-    # supprime en amont, ex. crew_hook.py deplace de crew/ vers scripts/).
+    # Reproduction of the bug found in code review: an allowlist file still
+    # exists locally but is gone from the source (moved/deleted upstream,
+    # e.g. crew_hook.py moved from crew/ to scripts/).
     recorded = u.seed(project_root, WHITELIST, "1.0.0")["files"]
     (source_root / "crew" / "crew_hook.py").unlink()
 
@@ -166,14 +166,14 @@ def test_apply_never_crashes_on_a_file_removed_from_source(project_root, source_
     statuses = {d["path"]: d["status"] for d in decisions}
     assert statuses["crew/crew_hook.py"] == "removed"
 
-    applied = u.apply(project_root, source_root, decisions)  # ne doit pas lever
+    applied = u.apply(project_root, source_root, decisions)  # must not raise
 
     assert "crew/crew_hook.py" not in applied
     assert (project_root / "crew" / "crew_hook.py").read_text(encoding="utf-8") == "hook v1\n"
 
 
 def test_apply_creates_new_engine_file_absent_locally(project_root, source_root):
-    (source_root / "NEW_ENGINE_FILE.md").write_text("nouveau fichier moteur\n", encoding="utf-8")
+    (source_root / "NEW_ENGINE_FILE.md").write_text("new engine file\n", encoding="utf-8")
     whitelist = WHITELIST + ["NEW_ENGINE_FILE.md"]
     recorded = u.seed(project_root, WHITELIST, "1.0.0")["files"]
 
@@ -181,10 +181,10 @@ def test_apply_creates_new_engine_file_absent_locally(project_root, source_root)
     applied = u.apply(project_root, source_root, decisions)
 
     assert "NEW_ENGINE_FILE.md" in applied
-    assert (project_root / "NEW_ENGINE_FILE.md").read_text(encoding="utf-8") == "nouveau fichier moteur\n"
+    assert (project_root / "NEW_ENGINE_FILE.md").read_text(encoding="utf-8") == "new engine file\n"
 
 
-# --- record_version() : bump version + hashes apres application -----------
+# --- record_version(): bump version + hashes after apply -------------------
 
 def test_record_version_stores_new_hashes_only_for_applied_files(project_root, source_root):
     recorded = u.seed(project_root, WHITELIST, "1.0.0")["files"]
@@ -195,9 +195,9 @@ def test_record_version_stores_new_hashes_only_for_applied_files(project_root, s
     data = u.record_version(project_root, "2.0.0", decisions)
 
     assert data["version"] == "2.0.0"
-    # Fichier applique -> hash source enregistre.
+    # Applied file -> source hash recorded.
     assert data["files"]["crew/crew_hook.py"] == u.hash_file(source_root / "crew/crew_hook.py")
-    # Fichier en conflit -> hash enregistre inchange (pas celui de la source).
+    # Conflicting file -> recorded hash unchanged (not the source one).
     assert data["files"]["CLAUDE.md"] == recorded["CLAUDE.md"]
 
     on_disk = json.loads((project_root / "crew" / "CLAUDE_CONTEXT" / "SCAFFOLD_VERSION.json").read_text(encoding="utf-8"))
@@ -208,13 +208,13 @@ def test_load_scaffold_version_defaults_when_file_absent(project_root):
     assert u.load_scaffold_version(project_root) == {"version": None, "files": {}}
 
 
-# --- seed() : bootstrap d'un projet legacy sans SCAFFOLD_VERSION.json ------
+# --- seed(): bootstrap of a legacy project without SCAFFOLD_VERSION.json ---
 
 def test_seed_records_current_local_content_as_trusted_baseline(project_root):
-    # Cas des projets bootstrapes avant l'existence de ce mecanisme (aucun
-    # SCAFFOLD_VERSION.json) : on accepte le contenu local actuel comme etant
-    # "notre derniere ecriture connue", pour que le prochain plan() compare
-    # les vrais changements source au lieu de tout marquer conflict.
+    # Case of projects bootstrapped before this mechanism existed (no
+    # SCAFFOLD_VERSION.json): accept the current local content as "our last
+    # known write", so the next plan() compares the real source changes
+    # instead of marking everything conflict.
     data = u.seed(project_root, WHITELIST, "1.0.0")
 
     assert data["version"] == "1.0.0"
@@ -233,9 +233,9 @@ def test_plan_flags_apply_after_seeding_when_source_has_since_changed(project_ro
 
     decisions = u.plan(project_root, source_root, WHITELIST)
     statuses = {d["path"]: d["status"] for d in decisions}
-    # Rien n'a ete personnalise depuis le seed -> tout diff avec la source
-    # ressort en apply, pas en conflict (c'est le probleme trouve en review :
-    # sans seed, le premier run classe tout en conflict).
+    # Nothing was customized since the seed -> any diff with the source
+    # comes out as apply, not conflict (this is the problem found in review:
+    # without seed, the first run classifies everything as conflict).
     assert statuses == {
         "CLAUDE.md": "apply",
         "check_placeholders.py": "apply",
@@ -245,15 +245,15 @@ def test_plan_flags_apply_after_seeding_when_source_has_since_changed(project_ro
 
 
 def test_seed_refuses_to_clobber_existing_recorded_hashes_without_force(project_root):
-    # Trouve en review "altitude" : contrairement a record_version() qui
-    # merge, seed() ecrasait sans condition — un second appel (par erreur,
-    # ou sur un projet deja seede) perdait silencieusement l'historique.
+    # Found in "altitude" review: unlike record_version() which merges,
+    # seed() used to overwrite unconditionally — a second call (by mistake,
+    # or on an already seeded project) silently lost the history.
     u.seed(project_root, WHITELIST, "1.0.0")
 
     with pytest.raises(ValueError):
         u.seed(project_root, WHITELIST, "2.0.0")
 
-    # L'historique du premier seed n'a pas bouge.
+    # The history of the first seed did not move.
     assert u.load_scaffold_version(project_root)["version"] == "1.0.0"
 
 
@@ -264,7 +264,7 @@ def test_seed_overwrites_when_force_is_true(project_root):
     assert u.load_scaffold_version(project_root)["version"] == "2.0.0"
 
 
-# --- detect_mode() : legacy (skills/agents copies localement) vs plugin ---
+# --- detect_mode(): legacy (skills/agents copied locally) vs plugin --------
 
 def test_detect_mode_returns_legacy_when_local_crew_init_skill_present(project_root):
     assert u.detect_mode(project_root) == "legacy"
@@ -277,7 +277,7 @@ def test_detect_mode_returns_plugin_when_no_local_crew_init_skill(tmp_path):
     assert u.detect_mode(plugin_project) == "plugin"
 
 
-# --- detect_double_hook() : plugin actif + hook local crew_hook.py ---------
+# --- detect_double_hook(): active plugin + local crew_hook.py hook ---------
 
 LOCAL_HOOK_CMD = 'python "$CLAUDE_PROJECT_DIR/crew/crew_hook.py"'
 PLUGIN_HOOK_CMD = 'python "${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py"'
@@ -409,7 +409,7 @@ def test_remove_double_hook_keeps_preexisting_empty_groups(tmp_path):
 
     after = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert after["hooks"]["Stop"] == [{"matcher": "", "hooks": []}]
-# --- personas : liste derivee d'un glob, pas d'une liste codee en dur -------
+# --- personas: list derived from a glob, not a hardcoded list -------------
 
 def _persona(root, name, text):
     d = root / ".claude" / "agents"
@@ -422,11 +422,11 @@ def test_legacy_static_list_carries_no_hardcoded_persona():
 
 
 def test_legacy_persona_files_come_from_agents_glob_of_project_and_source(project_root, source_root):
-    _persona(source_root, "persona-jamais-listee.md", "v2\n")
+    _persona(source_root, "persona-never-listed.md", "v2\n")
     _persona(project_root, "ancienne.md", "v1\n")
     assert u.legacy_persona_files(project_root, source_root) == [
         ".claude/agents/ancienne.md",
-        ".claude/agents/persona-jamais-listee.md",
+        ".claude/agents/persona-never-listed.md",
     ]
 
 
@@ -459,7 +459,7 @@ def test_main_apply_creates_new_persona_and_keeps_project_only_persona(project_r
 
     agents = project_root / ".claude" / "agents"
     assert (agents / "ceo.md").read_text(encoding="utf-8") == "v2\n"
-    # absente de la source -> "removed", mais jamais supprimee ni modifiee
+    # absent from the source -> "removed", but never deleted nor modified
     assert (agents / "mine.md").read_text(encoding="utf-8") == "ma persona perso\n"
 
 
@@ -474,8 +474,8 @@ def test_main_seed_records_local_personas_without_a_source(project_root, monkeyp
 
 
 def test_renamed_persona_old_file_is_reported_removed_and_never_deleted(project_root, source_root):
-    # upgrade growth -> social : le nouveau fichier est cree, l'ancien est
-    # signale (`removed`) mais jamais supprime ni modifie silencieusement
+    # upgrade growth -> social: the new file is created, the old one is
+    # reported (`removed`) but never deleted nor silently modified
     _persona(project_root, "growth.md", "v1\n")
     _persona(source_root, "social.md", "v2\n")
     u.seed(project_root, u.legacy_persona_files(project_root), "1.0.0")
@@ -492,12 +492,12 @@ def test_renamed_persona_old_file_is_reported_removed_and_never_deleted(project_
     assert (agents / "social.md").read_text(encoding="utf-8") == "v2\n"
 
 
-# --- politique de tests : fichier utilisateur, jamais moteur ----------------
+# --- tests policy: user file, never an engine file --------------------------
 
 def test_tests_policy_is_never_an_engine_file():
-    """TESTS_POLICY.md appartient au projet : /crew-update ne doit ni le
-    modifier ni le classer en conflict (sinon l'edition de `Niveau` serait
-    ecrasee a la mise a jour suivante)."""
+    """TESTS_POLICY.md belongs to the project: /crew-update must neither
+    modify it nor classify it as conflict (otherwise the edit of `Niveau`
+    would be overwritten at the next update)."""
     for engine in (u.ENGINE_FILES_COMMON, u.ENGINE_FILES_LEGACY):
         assert not any("TESTS_POLICY" in f for f in engine)
 

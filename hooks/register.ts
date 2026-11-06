@@ -1,14 +1,14 @@
 /**
- * Point d'entrée unique des 10 Mods "Zero-Token" de `crew-mates`.
- * Déclaré dans `hooks/hooks.json` via `"modules": ["./register.ts"]`.
+ * Single entry point for the 10 "Zero-Token" Mods of `crew-mates`.
+ * Declared in `hooks/hooks.json` via `"modules": ["./register.ts"]`.
  *
- * Architecture :
- * - Multiplexeur middleware en oignon (`createModBus`) permettant aux 10 mods de
- *   `hooks/mods/*.ts` d'utiliser chacun l'API idiomatique `register(on)` / `($, e, next)`
- *   tout en exposant exactement un handler consolidé par couple `(event, matcher)` au
- *   validateur statique de Claude Code (`claude plugin validate`).
- * - Règles d'or : 0 appel LLM (`$.model.*` / `$.prompt.*` / `prompt.compose` interdits),
- *   0 dépendance npm externe, 0 import `node:*`.
+ * Architecture:
+ * - Onion-style middleware multiplexer (`createModBus`) that lets the 10 mods of
+ *   `hooks/mods/*.ts` each use the idiomatic `register(on)` / `($, e, next)` API
+ *   while exposing exactly one consolidated handler per `(event, matcher)` pair to
+ *   Claude Code's static validator (`claude plugin validate`).
+ * - Golden rules: 0 LLM calls (`$.model.*` / `$.prompt.*` / `prompt.compose` forbidden),
+ *   0 external npm dependencies, 0 `node:*` imports.
  */
 
 import {
@@ -76,7 +76,7 @@ interface ModBusBuckets {
   commands: Map<string, HookHandler<any, any>>;
 }
 
-// $.env.get est asynchrone dans le moteur ; les mods lisent l'env en synchrone : on résout une fois.
+// $.env.get is asynchronous in the engine; the mods read env synchronously: resolve it once.
 const envCache: Record<string, string | undefined> = {};
 
 async function refreshEnvCache(
@@ -175,20 +175,20 @@ export function formatCrewUiOverview(): string {
   const flag = (v: boolean) => (v ? '🟢 ON' : '⚪ OFF');
 
   return [
-    '🎛️ crew-mates Zero-Token UI (10 Mods 100% locaux)',
-    'Usage : /crew-ui [all|radar|progress|usage|board|turns|stack|agents] [on|off]',
+    '🎛️ crew-mates Zero-Token UI (10 fully local Mods)',
+    'Usage: /crew-ui [all|radar|progress|usage|board|turns|stack|agents] [on|off]',
     '',
-    'Bande unique AbovePrompt (crew à gauche, météo à droite) :',
+    'Single AbovePrompt band (crew on the left, weather on the right):',
     `  • radar    (${flag(b.radar)})    — ${formatCrewRadarLine()}`,
     `  • progress (${flag(b.progress)}) — ${formatCombinedBatchProgressLine()}`,
     `  • weather  (${flag(b.weather)})  — ${computeTokenWeather().line}`,
     `  • usage    (${flag(b.usage)})    — ${formatUsageLine()}`,
-    `  • locks    (${flag(b.locks)})    — Anti-collision multi-sessions (Edit/Write)`,
+    `  • locks    (${flag(b.locks)})    — Multi-session anti-collision (Edit/Write)`,
     '',
-    'Volets interactifs (Panes) :',
+    'Interactive panes:',
     `  • board    (${flag(p['crew-board'])})  — /crew-board  (${batchBoardState.allBoards.length} batch(s))`,
     `  • cache    (${flag(p['crew-cache'])})  — /crew-ui cache  (${computePromptCacheStatus().line})`,
-    `  • turns    (${flag(p['crew-turns'])})  — /crew-turns  (${turnInspectorState.turns.length} tour(s))`,
+    `  • turns    (${flag(p['crew-turns'])})  — /crew-turns  (${turnInspectorState.turns.length} turn(s))`,
     `  • stack    (${flag(p['crew-stack'])})  — /crew-stack  (${stackViewerState.snapshot.modsAndHooks.length} mods/hooks)`,
     `  • agents   (${flag(p['crew-agents'])}) — /crew-agents (${agentFlowState.nodes.length} subagent(s))`,
   ].join('\n');
@@ -197,8 +197,8 @@ export function formatCrewUiOverview(): string {
 export function register(on: ModRegistrar): void {
   const { buckets, registrar } = createModBus();
 
-  // Initialisation ordonnée des 10 Mods dans le bus modulaire :
-  // Étape 3 (Tâches, Batchs & Multi-sessions) + Étape 2 (Visibilité & Contexte)
+  // Ordered initialization of the 10 Mods in the modular bus:
+  // Step 3 (Tasks, Batches & Multi-sessions) + Step 2 (Visibility & Context)
   registerCrewRadar(registrar);
   registerBatchProgress(registrar);
   registerBatchEtaCost(registrar);
@@ -224,36 +224,36 @@ export function register(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-ui',
-        description: 'Contrôler les 10 Mods Zero-Token crew-mates (bandes de statut & volets UI)',
+        description: 'Control the 10 crew-mates Zero-Token Mods (status bands & UI panes)',
         argumentHint: '[all|radar|progress|usage|board|turns|stack|agents]',
       })
       .catch(() => undefined);
     await $.command
       .register({
         name: 'crew-turns',
-        description: 'Ouvrir/fermer le panneau latéral Turn Inspector (0-token)',
+        description: 'Open/close the Turn Inspector side panel (0-token)',
       })
       .catch(() => undefined);
     await $.command
       .register({
         name: 'crew-stack',
-        description: 'Afficher l’arbre de la stack chargée (CLAUDE.md, règles, MCP, skills, agents, mods)',
+        description: 'Show the loaded stack tree (CLAUDE.md, rules, MCP, skills, agents, mods)',
       })
       .catch(() => undefined);
     await $.command
       .register({
         name: 'crew-board',
-        description: 'Ouvrir/fermer le Kanban & graphe de dépendances du batch (Todo | In Progress | Done | Blocked)',
+        description: 'Open/close the batch Kanban & dependency graph (Todo | In Progress | Done | Blocked)',
       })
       .catch(() => undefined);
     await $.command
       .register({
         name: 'crew-agents',
-        description: 'Afficher l’arbre d’exécution en direct des subagents crew-mates (0-token)',
+        description: 'Show the live execution tree of crew-mates subagents (0-token)',
       })
       .catch(() => undefined);
 
-    // Les bandes sont actives par défaut ; les volets, eux, s'ouvrent ici (équivalent de `/crew-ui all`).
+    // Bands are active by default; panes are opened here (equivalent of `/crew-ui all`).
     for (const paneId of Object.keys(PANE_META) as CrewPaneId[]) {
       crewUiState.panes[paneId] = true;
       await Promise.resolve(
@@ -355,7 +355,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
     };
-    // e.usage somme les requêtes du tour ; la taille réelle du contexte vient de la session.
+    // e.usage sums the turn's requests; the real context size comes from the session.
     let enriched: unknown = e;
     const ev = e as Record<string, unknown>;
     if (ev.contextTokens === undefined) {
@@ -365,7 +365,7 @@ export function register(on: ModRegistrar): void {
           enriched = { ...ev, contextTokens: ctx.tokens, contextWindow: ctx.window };
         }
       } catch {
-        // session.usage indisponible : on garde l'événement tel quel (météo à 0 %)
+        // session.usage unavailable: keep the event as is (weather at 0 %)
       }
     }
     return composeMiddlewareChain(buckets.turnComplete, api, enriched, next);
@@ -412,7 +412,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
     };
-    // Une seule ligne : crew à gauche, météo à droite (segments versés par chaque mod)
+    // Single line: crew on the left, weather on the right (segments contributed by each mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
     return composeMiddlewareChain(orderedBands, api, e, next)
       .then((tree) => (isBandAccumulator(tree) ? renderBandAccumulator(tree, $.ui.resolve(e)) : tree))
@@ -451,7 +451,7 @@ export function register(on: ModRegistrar): void {
     return composeMiddlewareChain(buckets.pane, api, e, next).catch(() => next(e));
   });
 
-  // Commandes dédiées de chaque volet (interceptées localement, 0-token)
+  // Dedicated command of each pane (intercepted locally, 0-token)
   on('command.run', { command: 'crew-turns' }, async ($, e) => {
     return Promise.resolve()
       .then(() => {
@@ -477,7 +477,7 @@ export function register(on: ModRegistrar): void {
         };
         return handler(api, e, async () => undefined);
       })
-      .catch(() => ({ text: '🔍 Erreur locale sur /crew-turns.' }));
+      .catch(() => ({ text: '🔍 Local error on /crew-turns.' }));
   });
 
   on('command.run', { command: 'crew-stack' }, async ($, e) => {
@@ -505,7 +505,7 @@ export function register(on: ModRegistrar): void {
         };
         return handler(api, e, async () => undefined);
       })
-      .catch(() => ({ text: '📚 Erreur locale sur /crew-stack.' }));
+      .catch(() => ({ text: '📚 Local error on /crew-stack.' }));
   });
 
   on('command.run', { command: 'crew-board' }, async ($, e) => {
@@ -533,7 +533,7 @@ export function register(on: ModRegistrar): void {
         };
         return handler(api, e, async () => undefined);
       })
-      .catch(() => ({ text: '📋 Erreur locale sur /crew-board.' }));
+      .catch(() => ({ text: '📋 Local error on /crew-board.' }));
   });
 
   on('command.run', { command: 'crew-agents' }, async ($, e) => {
@@ -561,10 +561,10 @@ export function register(on: ModRegistrar): void {
         };
         return handler(api, e, async () => undefined);
       })
-      .catch(() => ({ text: '🎭 Erreur locale sur /crew-agents.' }));
+      .catch(() => ({ text: '🎭 Local error on /crew-agents.' }));
   });
 
-  // Commande slash unifiée `/crew-ui [all|radar|progress|usage|board|turns|stack|agents]` (0-token)
+  // Unified slash command `/crew-ui [all|radar|progress|usage|board|turns|stack|agents]` (0-token)
   on('command.run', { command: 'crew-ui' }, async ($, e) => {
     return Promise.resolve()
       .then(async () => {
@@ -582,8 +582,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: crewUiState.bands.radar
-              ? `🟢 Crew Radar activé : ${formatCrewRadarLine()}`
-              : '⚪ Crew Radar masqué.',
+              ? `🟢 Crew Radar enabled: ${formatCrewRadarLine()}`
+              : '⚪ Crew Radar hidden.',
           };
         }
 
@@ -592,8 +592,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: crewUiState.bands.progress
-              ? `📊 Batch & Task Progress activé : ${formatCombinedBatchProgressLine()}`
-              : '⚪ Batch & Task Progress masqué.',
+              ? `📊 Batch & Task Progress enabled: ${formatCombinedBatchProgressLine()}`
+              : '⚪ Batch & Task Progress hidden.',
           };
         }
 
@@ -602,8 +602,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: crewUiState.bands.usage
-              ? `🟧 Usage activé : ${formatUsageLine()}`
-              : '⚪ Usage masqué.',
+              ? `🟧 Usage enabled: ${formatUsageLine()}`
+              : '⚪ Usage hidden.',
           };
         }
 
@@ -612,8 +612,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: crewUiState.bands.weather
-              ? `☀️ Token Weather activé : ${computeTokenWeather().line}`
-              : '⚪ Token Weather masqué.',
+              ? `☀️ Token Weather enabled: ${computeTokenWeather().line}`
+              : '⚪ Token Weather hidden.',
           };
         }
 
@@ -647,8 +647,8 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: nextOpen
-              ? `${PANE_META[paneId].title} ouvert.`
-              : `${PANE_META[paneId].title} fermé.`,
+              ? `${PANE_META[paneId].title} opened.`
+              : `${PANE_META[paneId].title} closed.`,
           };
         }
 
@@ -684,17 +684,17 @@ export function register(on: ModRegistrar): void {
           $.ui.invalidate('ui.render');
           return {
             text: shouldEnable
-              ? '🎛️ Tous les volets et bandes Zero-Token crew-mates sont ouverts.'
-              : '⚪ Volets Zero-Token crew-mates fermés.',
+              ? '🎛️ All crew-mates Zero-Token panes and bands are open.'
+              : '⚪ crew-mates Zero-Token panes closed.',
           };
         }
 
         return {
-          text: `❓ Sous-commande inconnue "${target}". Utilisez : /crew-ui [all|radar|progress|usage|board|turns|stack|agents]`,
+          text: `❓ Unknown subcommand "${target}". Use: /crew-ui [all|radar|progress|usage|board|turns|stack|agents]`,
         };
       })
       .catch((err: unknown) => ({
-        text: `❌ Erreur locale lors de l’exécution de /crew-ui : ${err instanceof Error ? err.message : String(err)}`,
+        text: `❌ Local error while running /crew-ui: ${err instanceof Error ? err.message : String(err)}`,
       }));
   });
 }

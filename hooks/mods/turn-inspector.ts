@@ -1,8 +1,8 @@
 /**
  * Mod 3 — turn-inspector.ts
  *
- * Panneau latéral (`/crew-turns`) historisant chaque tour :
- * tokens in/out, cache read/write, outils appelés, durée et barre de progression.
+ * Side panel (`/crew-turns`) logging each turn:
+ * tokens in/out, cache read/write, tools called, duration and progress bar.
  *
  * 100% local / 0-token.
  */
@@ -73,7 +73,7 @@ export function registerTurnInspector(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-turns',
-        description: 'Ouvrir/fermer le panneau latéral Turn Inspector (0-token)',
+        description: 'Open/close the Turn Inspector side panel (0-token)',
       })
       .catch(() => undefined);
     return next(e);
@@ -174,11 +174,11 @@ export function registerTurnInspector(on: ModRegistrar): void {
       $.ui.invalidate('ui.render');
       return {
         text: shouldOpen
-          ? `🔍 Turn Inspector ouvert (${turnInspectorState.turns.length} tour(s) enregistrés).`
-          : '🔍 Turn Inspector fermé.',
+          ? `🔍 Turn Inspector opened (${turnInspectorState.turns.length} turn(s) recorded).`
+          : '🔍 Turn Inspector closed.',
       };
     } catch {
-      return { text: '🔍 Impossible de basculer le panneau Turn Inspector.' };
+      return { text: '🔍 Unable to toggle the Turn Inspector panel.' };
     }
   });
 
@@ -198,7 +198,7 @@ export function registerTurnInspector(on: ModRegistrar): void {
         ? [
             Text({
               dimColor: true,
-              children: ['Aucun tour complété dans cette session pour le moment.'],
+              children: ['No completed turn in this session yet.'],
             }),
           ]
         : [...turnInspectorState.turns]
@@ -219,7 +219,7 @@ export function registerTurnInspector(on: ModRegistrar): void {
         Text({
           bold: true,
           color: 'cyan',
-          children: [`🔍 Historique des tours (${turnInspectorState.turns.length})`],
+          children: [`🔍 Turn history (${turnInspectorState.turns.length})`],
         }),
         Text({
           dimColor: true,

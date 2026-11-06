@@ -1,116 +1,112 @@
 ---
 name: crew-init
-description: Bootstrap le scaffold crew (CLAUDE.md, AGENTS.md, crew/…) sur un projet neuf ou existant — copie, détecte la stack, résout les placeholders. Trigger — "/crew-init", "initialise le scaffold crew".
+description: Bootstraps the crew scaffold (CLAUDE.md, AGENTS.md, crew/…) on a new or existing project — copies, detects the stack, resolves placeholders. Also triggers on — "/crew-init", "initialise le scaffold crew", "initialize the crew scaffold".
 ---
 
-Ce skill exécute le bootstrap déjà décrit en prose dans le `README.md` du
-scaffold (`${CLAUDE_PLUGIN_ROOT}/template/`) — il ne remplace pas ce
-document, il évite de dérouler les étapes à la main et de laisser un
-placeholder non résolu par oubli.
+This skill runs the bootstrap already described in prose in the scaffold's
+`README.md` (`${CLAUDE_PLUGIN_ROOT}/template/`) — it does not replace that
+document, it saves running the steps by hand and leaving a placeholder
+unresolved by oversight.
 
-## Détection de l'état actuel
+## Current-state detection
 
-1. Le projet a déjà `CLAUDE.md` + `crew/` remplis (pas de `<...>` restant) →
-   ne rien faire, dire à l'utilisateur que le scaffold est déjà initialisé et
-   proposer `/crew-status` à la place, ou `/crew-update` si une version plus
-   récente du scaffold est disponible.
-2. Le projet a `CLAUDE.md` + `crew/` avec des placeholders `<...>` non
-   résolus → reprendre directement à "Résolution des placeholders" ci-dessous
-   (pas besoin de recopier les fichiers).
-3. Rien de tout ça → bootstrap complet, étapes ci-dessous depuis le début.
+1. The project already has `CLAUDE.md` + `crew/` filled in (no `<...>` left) →
+   do nothing, tell the user the scaffold is already initialized and suggest
+   `/crew-status` instead, or `/crew-update` if a newer scaffold version is
+   available.
+2. The project has `CLAUDE.md` + `crew/` with unresolved `<...>` placeholders →
+   resume directly at "Placeholder resolution" below (no need to copy the files
+   again).
+3. Neither → full bootstrap, steps below from the start.
 
-## Étapes
+## Steps
 
-0. **Vérifier l'installation du plugin** : si `${CLAUDE_PLUGIN_ROOT}` n'est pas
-   défini ou ne résout vers aucun répertoire existant, ce skill tourne hors
-   contexte plugin — arrêter immédiatement et dire à l'utilisateur d'installer
-   d'abord le plugin (`/plugin marketplace add Nakken13/claude-crew` puis
-   `/plugin install crew-mates@crew-mates`) avant de relancer `/crew-init`.
-   Ne jamais tenter une copie partielle dans ce cas.
-1. **Copier** à la racine du projet (sans écraser un fichier déjà présent et
-   déjà rempli), depuis `${CLAUDE_PLUGIN_ROOT}/template/` : `CLAUDE.md`,
+0. **Check the plugin installation**: if `${CLAUDE_PLUGIN_ROOT}` is not defined or
+   does not resolve to an existing directory, this skill is running outside a
+   plugin context — stop immediately and tell the user to install the plugin
+   first (`/plugin marketplace add Nakken13/claude-crew` then
+   `/plugin install crew-mates@crew-mates`) before rerunning `/crew-init`. Never
+   attempt a partial copy in this case.
+1. **Copy** to the project root (without overwriting a file already present and
+   already filled in), from `${CLAUDE_PLUGIN_ROOT}/template/`: `CLAUDE.md`,
    `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`,
-   `check_placeholders.py`, le dossier `crew/` entier (structure vide :
-   `README.md` + `INDEX.md` par sous-dossier, aucun fichier de tâche).
-   **Ne pas copier** les skills, les agents, ni les scripts de hooks — ils
-   tournent directement depuis le plugin installé (`${CLAUDE_PLUGIN_ROOT}`),
-   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` sont
-   déjà disponibles sans rien copier. Ne rien toucher à `.claude/settings.json`
-   pour les hooks crew — ils sont fournis par le plugin (`hooks/hooks.json`),
-   pas par une entrée locale.
-   **Vérifier/installer les dépendances des skills routés dans `CLAUDE.md`** —
-   `claude plugin list` ne les liste pas tous, certains manquent silencieusement
-   si on ne les checke pas explicitement :
-   - Plugins officiels (`claude plugin list | grep -E
-     "superpowers|security-guidance|playwright|claude-md-management|frontend-design"`) :
-     pour chaque manquant, `claude plugin marketplace add
-     anthropics/claude-plugins-official` (idempotent si déjà ajoutée) puis
-     `claude plugin install <nom>@claude-plugins-official`.
-   - `taste-skill` (skill `design-taste-frontend`) — uniquement si le projet a
-     une stack front (détectée à l'étape suivante) : `claude plugin list | grep
-     taste-skill` ; sinon `claude plugin marketplace add
-     https://github.com/Leonxlnx/taste-skill` puis `claude plugin install
+   `check_placeholders.py`, the entire `crew/` folder (empty structure:
+   `README.md` + `INDEX.md` per subfolder, no task file).
+   **Do not copy** the skills, the agents, or the hook scripts — they run
+   directly from the installed plugin (`${CLAUDE_PLUGIN_ROOT}`),
+   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` are
+   already available with nothing to copy. Touch nothing in
+   `.claude/settings.json` for the crew hooks — they are provided by the plugin
+   (`hooks/hooks.json`), not by a local entry.
+   **Check/install the dependencies of the skills routed in `CLAUDE.md`** —
+   `claude plugin list` does not list them all, some are silently missing unless
+   checked explicitly:
+   - Official plugins (`claude plugin list | grep -E
+     "superpowers|security-guidance|playwright|claude-md-management|frontend-design"`):
+     for each missing one, `claude plugin marketplace add
+     anthropics/claude-plugins-official` (idempotent if already added) then
+     `claude plugin install <name>@claude-plugins-official`.
+   - `taste-skill` (skill `design-taste-frontend`) — only if the project has a
+     front-end stack (detected in the next step): `claude plugin list | grep
+     taste-skill`; otherwise `claude plugin marketplace add
+     https://github.com/Leonxlnx/taste-skill` then `claude plugin install
      taste-skill@taste-skill`.
-   - `graphify` CLI (nécessaire à `graphify init/update/query`, cf. § graphify
-     de `CLAUDE.md`) — vérifier `graphify` sur le PATH ; sinon `pipx install
-     graphifyy` (nom du package pip réel, pas `graphify`).
-   - `impeccable` et `ui-ux-pro-max` (skills, pas des plugins — utilisés par le
-     routage design) — vérifier `~/.claude/skills/impeccable` et
-     `~/.claude/skills/ui-ux-pro-max` ; sinon `git clone
-     https://github.com/pbakaus/impeccable.git ~/.claude/skills/impeccable` et
+   - `graphify` CLI (needed by `graphify init/update/query`, see § graphify of
+     `CLAUDE.md`) — check `graphify` is on the PATH; otherwise `pipx install
+     graphifyy` (the real pip package name, not `graphify`).
+   - `impeccable` and `ui-ux-pro-max` (skills, not plugins — used by the design
+     routing) — check `~/.claude/skills/impeccable` and
+     `~/.claude/skills/ui-ux-pro-max`; otherwise `git clone
+     https://github.com/pbakaus/impeccable.git ~/.claude/skills/impeccable` and
      `git clone https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
      ~/.claude/skills/ui-ux-pro-max`.
    - `motion-design-rn`, `accessibility-motion`, `haptics`, `sound-design-ui`
-     (uniquement si le projet a une stack React Native/mobile) — source non
-     identifiée à ce jour. Vérifier `~/.claude/skills/<nom>` ; si absent,
-     avertir l'utilisateur ("skill non trouvé, source inconnue — le fournir ou
-     retirer la ligne RN/mobile du routage") plutôt que d'inventer une
-     installation.
-2. **Détecter la stack réelle** : lire les manifestes présents
-   (`package.json`, `requirements.txt`/`pyproject.toml`, `go.mod`,
-   `Cargo.toml`, etc.) — jamais de supposition non vérifiée.
-3. **Poser via `AskUserQuestion`** ce qui n'est pas déductible du code :
-   - Nom du projet, si pas déjà évident depuis un manifeste.
-   - Vision produit / utilisateur cible / scope (`PRODUCT.md`) — option
-     "outil interne, pas pertinent" → réduire le fichier à une ligne ou le
-     supprimer.
-   - Convention commits/branches/PR (`CONTRIBUTING.md`) — option "pas de
-     convention imposée" → le dire explicitement plutôt que de laisser un
-     placeholder.
-   - Modèle secrets/auth (`SECURITY.md`) — option "pas d'auth/données
-     sensibles" → supprimer le fichier.
-4. **Résolution des placeholders** : remplacer tous les `<NOM_PROJET>` et
-   `<...>` dans `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/`CONTRIBUTING.md`/
-   `SECURITY.md` avec les réponses obtenues + la stack détectée. Repo map et
-   commandes vérifiées : uniquement des commandes réellement exécutées avec
-   succès pendant ce bootstrap, jamais une commande non testée.
-4bis. **Politique de tests (sans question supplémentaire)** : `crew/` copié
-   contient déjà `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`. À partir de la
-   description du projet (étape 3) et du code (étape 2), y renseigner le
-   niveau (`light` par défaut ; `none` seulement si le projet est
-   manifestement sans enjeu ; jamais `full`) et les zones risquées dans les
-   mots du projet. Description vague → `light` sans zones. Ne pas écraser un
-   fichier déjà personnalisé.
-5. **Adapter le routage skills** : dans la section "Routage des skills" de
-   `CLAUDE.md`, retirer les lignes qui ne s'appliquent pas à la stack
-   détectée (ex. lignes React Native/mobile si pas de RN, `dataviz` si pas de
+     (only if the project has a React Native/mobile stack) — source not
+     identified to date. Check `~/.claude/skills/<name>`; if missing, warn the
+     user ("skill not found, source unknown — provide it or remove the RN/mobile
+     line from the routing") rather than inventing an installation.
+2. **Detect the real stack**: read the manifests present (`package.json`,
+   `requirements.txt`/`pyproject.toml`, `go.mod`, `Cargo.toml`, etc.) — never an
+   unverified assumption.
+3. **Ask via `AskUserQuestion`** what cannot be deduced from the code:
+   - Project name, if not already obvious from a manifest.
+   - Product vision / target user / scope (`PRODUCT.md`) — option "internal
+     tool, not relevant" → reduce the file to one line or delete it.
+   - Commit/branch/PR convention (`CONTRIBUTING.md`) — option "no imposed
+     convention" → say so explicitly rather than leave a placeholder.
+   - Secrets/auth model (`SECURITY.md`) — option "no auth/sensitive data" →
+     delete the file.
+4. **Placeholder resolution**: replace every `<NOM_PROJET>` and `<...>` in
+   `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/`CONTRIBUTING.md`/`SECURITY.md` with the
+   answers obtained + the detected stack. Repo map and verified commands: only
+   commands actually run successfully during this bootstrap, never an untested
+   command.
+4bis. **Test policy (no extra question)**: the copied `crew/` already contains
+   `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`. From the project description (step 3)
+   and the code (step 2), fill in the level (`light` by default; `none` only if
+   the project is manifestly low-stakes; never `full`) and the risky zones in the
+   project's own words. Vague description → `light` with no zones. Do not
+   overwrite an already customized file.
+5. **Adapt the skills routing**: in the "Skill routing" (skills routing)
+   section of `CLAUDE.md`, remove the lines that do not apply to the detected
+   stack (e.g. React Native/mobile lines if no RN, `dataviz` if no
    dashboard/chart).
-6. Si le repo dépasse quelques fichiers : lancer `graphify init .`.
-7. Lancer `python check_placeholders.py` à la racine. S'il reste des
-   placeholders, les résoudre et relancer jusqu'à exit 0.
-8. Demander à l'utilisateur s'il veut garder `check_placeholders.py` en
-   pre-commit ou le supprimer (c'est un outil de bootstrap, pas destiné à
-   rester par défaut une fois le scaffold rempli).
-9. **Rapporter** : fichiers créés/remplis, décisions prises (fichiers
-   supprimés type `PRODUCT.md`, lignes retirées du routage skills), statut
-   final de `check_placeholders.py`, et la **politique de tests déduite**
-   (niveau + zones risquées, éditables dans `TESTS_POLICY.md`).
+6. If the repo is larger than a few files: run `graphify init .`.
+7. Run `python check_placeholders.py` at the root. If placeholders remain,
+   resolve them and rerun until exit 0.
+8. Ask the user whether to keep `check_placeholders.py` as a pre-commit check or
+   delete it (it is a bootstrap tool, not meant to stay by default once the
+   scaffold is filled in).
+9. **Report**: files created/filled, decisions taken (deleted files such as
+   `PRODUCT.md`, lines removed from the skills routing), final status of
+   `check_placeholders.py`, and the **deduced test policy** (level + risky zones,
+   editable in `TESTS_POLICY.md`).
 
-## Ce que ce skill ne fait pas
+## What this skill does not do
 
-- Ne réécrit jamais un `CLAUDE.md`/`AGENTS.md` déjà rempli sans que
-  l'utilisateur l'ait demandé explicitement.
-- Ne devine pas la stack ou les commandes — lit les manifestes / exécute
-  réellement, ne suppose jamais.
-- Ne lance pas `graphify init` sur un repo trivial (quelques fichiers) — pas
-  utile à cette échelle.
+- Never rewrites an already filled-in `CLAUDE.md`/`AGENTS.md` unless the user
+  explicitly asked.
+- Does not guess the stack or the commands — reads the manifests / actually runs
+  them, never assumes.
+- Does not run `graphify init` on a trivial repo (a few files) — not useful at
+  that scale.

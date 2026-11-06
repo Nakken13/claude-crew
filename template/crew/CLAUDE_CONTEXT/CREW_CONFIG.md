@@ -1,22 +1,22 @@
-# Configuration crew du projet
+# Project crew configuration
 
-Fichier appartenant au projet : `/crew-update` ne le modifie jamais. Lignes
-`clé : valeur`, éditables librement.
+File owned by the project: `/crew-update` never modifies it. Lines
+`key : value`, freely editable.
 
-## Claims distants (plusieurs devs sur le même repo)
+## Remote claims (several devs on the same repo)
 
-Synchronise en quasi temps réel « qui travaille sur quoi » et les tâches `TODO/`
-créées, via la ref git `refs/crew/claims` (poussée seule, jamais sur `main`).
-À activer quand plusieurs personnes lancent `/crew-start` sur le même dépôt ;
-chacun doit l'activer pour être protégé. Détails : `crew/CLAUDE_CONTEXT/AGENTS.md`.
+Syncs in near real time "who is working on what" and the `TODO/` tasks
+created, via the git ref `refs/crew/claims` (pushed on its own, never on `main`).
+Enable it when several people run `/crew-start` on the same repo;
+each one must enable it to be protected. Details: `crew/CLAUDE_CONTEXT/AGENTS.md`.
 
 remote_claims : false
 
-Remote git utilisé pour la ref (défaut : `origin`) :
+Git remote used for the ref (default: `origin`):
 
 claims_remote : origin
 
-Ref portant les claims (défaut : `refs/crew/claims`). Si ton serveur git refuse les
-refs personnalisées, décommente pour un repli sur une branche dédiée :
+Ref carrying the claims (default: `refs/crew/claims`). If your git server refuses
+custom refs, uncomment to fall back to a dedicated branch:
 
 # claims_ref : refs/heads/crew-claims

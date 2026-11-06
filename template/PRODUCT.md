@@ -1,22 +1,21 @@
 # PRODUCT.md — <NOM_PROJET>
 
-À remplir dès que le projet a une vision produit/utilisateurs réels ; à
-supprimer (ou réduire à une ligne) si c'est un outil interne/script sans
-utilisateur externe.
+Fill in as soon as the project has a product vision/real users; delete (or
+reduce to one line) if it is an internal tool/script with no external user.
 
 ## Vision
 
-<Une phrase : quel problème ce produit résout, pour qui.>
+<One sentence: what problem this product solves, for whom.>
 
-## Utilisateur cible
+## Target user
 
-<Qui l'utilise, dans quel contexte, avec quelles contraintes.>
+<Who uses it, in what context, under what constraints.>
 
-## Scope actuel
+## Current scope
 
-<Ce qui est réellement livré aujourd'hui — pas la roadmap.>
+<What is actually shipped today — not the roadmap.>
 
-## Hors scope (explicitement)
+## Out of scope (explicitly)
 
-<Ce qu'on a décidé de ne pas faire, et pourquoi — évite qu'un futur agent
-réintroduise une fonctionnalité écartée volontairement.>
+<What we decided not to do, and why — prevents a future agent from
+reintroducing a deliberately discarded feature.>

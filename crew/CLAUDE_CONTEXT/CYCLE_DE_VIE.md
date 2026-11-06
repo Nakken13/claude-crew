@@ -1,74 +1,74 @@
-# Cycle de vie des tâches, batching et efficience de contexte
+# Task lifecycle, batching and context efficiency
 
-Doc lu **à la demande** (déplacé tel quel depuis `CLAUDE.md`, qui ne garde que le routage). À lire avant de créer/déplacer une tâche, toucher `CLAUDE_BATCH.md`, ou en cas de doute sur les seuils de contexte.
+Doc read **on demand** (moved as-is out of `CLAUDE.md`, which keeps only the routing). Read it before creating/moving a task, touching `CLAUDE_BATCH.md`, or when in doubt about the context thresholds.
 
-## Gestion des tâches — cycle de vie unique (modèle par dossiers)
+## Task management — single lifecycle (folder model)
 
-Une tâche = un fichier `.md` qui **se déplace** (`git mv`) ; jamais dans deux dossiers.
+A task = one `.md` file that **moves** (`git mv`); never in two folders.
 
 ```
-Problème brut → crew/PROBLEMS/   Pas commencée → crew/TODO/   Parkée → crew/ICEBOX/
-Commencée → crew/CURRENT_TASKS/  Bloquée (dev) → crew/PAUSED/
-Code fini → crew/CLAUDE_CONTEXT/HISTORIQUE.md + crew/TESTS/{IA,DEV}/<chantier>.md (fichier de tâche supprimé)
-Validée → cases cochées ; un test IA entièrement coché → crew/CLAUDE_CONTEXT/TESTS_DONE/
+Raw problem → crew/PROBLEMS/   Not started → crew/TODO/   Parked → crew/ICEBOX/
+Started → crew/CURRENT_TASKS/  Blocked (dev) → crew/PAUSED/
+Code done → crew/CLAUDE_CONTEXT/HISTORIQUE.md + crew/TESTS/{IA,DEV}/<workstream>.md (task file deleted)
+Validated → boxes checked; a fully checked IA test → crew/CLAUDE_CONTEXT/TESTS_DONE/
 ```
 
-Source unique = dossiers `crew/` (un `TODO.md`/`PROBLEMS.md` racine n'est qu'un pointeur).
+Single source = `crew/` folders (a root `TODO.md`/`PROBLEMS.md` is only a pointer).
 
-### 0-1. `PROBLEMS/` (inbox : un fichier par bug/friction, `🔴`/`🟡`/`✅`) → `TODO/` (backlog : jamais commencées, actions en `- [ ]`, catégorisées dans `crew/CLAUDE_BATCH.md` à l'ajout)
+### 0-1. `PROBLEMS/` (inbox: one file per bug/friction, `🔴`/`🟡`/`✅`) → `TODO/` (backlog: never started, actions as `- [ ]`, categorized in `crew/CLAUDE_BATCH.md` when added)
 
-### 2. Démarrer → déplacer vers `CURRENT_TASKS/`
-Anti-collision obligatoire avant tout déplacement (`/crew-start`, cf. § Batching). Tenir les cases à jour. `ICEBOX/` : jamais démarrée directement, repasser par `TODO/`.
+### 2. Start → move to `CURRENT_TASKS/`
+Anti-collision is mandatory before any move (`/crew-start`, see § Batching). Keep the boxes up to date. `ICEBOX/`: never started directly, go back through `TODO/`.
 
-### 2bis. `PAUSED/` — bloquée en attente de validation dev
-Tâche déjà démarrée dont la suite dépend d'une action humaine (rendu visuel, device réel, réponse externe) : `git mv` vers `PAUSED/`, retour dans `CURRENT_TASKS/` une fois validée. Compte comme active pour l'anti-collision. Jamais reprise automatiquement par l'IA.
+### 2bis. `PAUSED/` — blocked awaiting dev validation
+A task already started whose continuation depends on a human action (visual rendering, real device, external answer): `git mv` to `PAUSED/`, back to `CURRENT_TASKS/` once validated. Counts as active for anti-collision. Never resumed automatically by the AI.
 
-### 3. Code terminé
-Supprimer le fichier de `CURRENT_TASKS/`, historiser dans `HISTORIQUE.md`, sortir les tests **si la politique de tests le demande** (`/crew-close-task`). **Ne pas cocher** les tests à ce stade.
+### 3. Code done
+Delete the file from `CURRENT_TASKS/`, record it in `HISTORIQUE.md`, produce the tests **if the test policy asks for it** (`/crew-close-task`). **Do not check** the tests at this stage.
 
-### 4. `TESTS/` — checklists IA / DEV
-**Politique** : `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` décide si une checklist est écrite. Absent (projet pas encore migré) → comportement historique (`full`) jusqu'à `/crew-update`.
-`IA/` : l'IA déroule seule (pytest, `playwright`, curl, DB, logs) ; `DEV/` : action humaine réelle (mobile réel, jugement visuel). Même chantier = un fichier de chaque côté ; chemin principal + cas limites.
+### 4. `TESTS/` — IA / DEV checklists
+**Policy**: `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` decides whether a checklist is written. Absent (project not yet migrated) → historical behavior (`full`) until `/crew-update`.
+`IA/`: the AI runs them alone (pytest, `playwright`, curl, DB, logs); `DEV/`: real human action (real mobile, visual judgment). Same workstream = one file on each side; main path + edge cases.
 
-**Règle d'or :** pas commencée → `TODO/` ; commencée → `CURRENT_TASKS/` ; bloquée sur validation dev → `PAUSED/` ; finie → `HISTORIQUE.md` + `TESTS/`.
+**Golden rule:** not started → `TODO/`; started → `CURRENT_TASKS/`; blocked on dev validation → `PAUSED/`; done → `HISTORIQUE.md` + `TESTS/`.
 
-## Batching — parallélisation (`crew/CLAUDE_BATCH.md`)
+## Batching — parallelization (`crew/CLAUDE_BATCH.md`)
 
-**Un batch = un Claude** ; plusieurs batchs tournent en parallèle. Toute nouvelle tâche s'ajoute aussi à `CLAUDE_BATCH.md` : zone d'impact connue → batch existant si chevauchement/dépendance, sinon nouveau batch (ligne `Zone :`) ; zone inconnue → « À classer ». Tâche finie → barrer sa ligne (`~~`slug.md`~~`), jamais la supprimer ; un batch entièrement barré est retiré automatiquement par le hook.
+**One batch = one Claude**; several batches run in parallel. Every new task is also added to `CLAUDE_BATCH.md`: known impact zone → existing batch if overlap/dependency, otherwise new batch (`Zone :` line, i.e. the impact zone); unknown zone → the « À classer » section ("to be classified"). Task done → strike its line (`~~`slug.md`~~`), never delete it; a fully struck batch is removed automatically by the hook.
 
-**Invariant : les zones de deux batchs actifs (≥1 tâche en `CURRENT_TASKS/` ou `PAUSED/`) sont disjointes** ; fichiers partagés → même batch.
+**Invariant: the zones of two active batches (≥1 task in `CURRENT_TASKS/` or `PAUSED/`) are disjoint**; shared files → same batch.
 
-### Vérification anti-collision avant de démarrer une tâche
-`crew_hook.py next-task` (lancé par `/crew-start`) la fait de façon déterministe : verrous des autres sessions, batchs actifs (`CURRENT_TASKS/`, `PAUSED/`), chevauchement de `Zone :` → candidat écarté, suivant essayé ; rien de démarrable → signaler au user. Démarrage manuel hors `/crew-start` : appliquer les mêmes règles à la main. Le hook Stop avertit (non bloquant) des chevauchements manqués ; `/crew-status` pour une vue à la demande.
+### Anti-collision check before starting a task
+`crew_hook.py next-task` (run by `/crew-start`) does it deterministically: locks of other sessions, active batches (`CURRENT_TASKS/`, `PAUSED/`), overlap of `Zone :` → candidate discarded, next one tried; nothing startable → report to the user. Manual start outside `/crew-start`: apply the same rules by hand. The Stop hook warns (non-blocking) about missed overlaps; `/crew-status` for an on-demand view.
 
-## Efficience de contexte
+## Context efficiency
 
-### Lectures de fichiers
-**Ne jamais lire en entier un fichier de plus de 100 lignes** sans avoir délimité la zone avec grep (surtout `HISTORIQUE.md`, `graph.json`, lockfiles, migrations). Jamais la sortie complète d'une commande longue : seulement erreurs/warnings.
+### File reads
+**Never read a file of more than 100 lines in full** without bounding the area with grep (especially `HISTORIQUE.md`, `graph.json`, lockfiles, migrations). Never the full output of a long command: only errors/warnings.
 
-### Reset de session
-- Seuil ~**150k tokens** (session principale) : au-delà, **recommander `/clear` ou une nouvelle session**. Le hook Stop avertit (`systemMessage` ; même seuil 150k quelle que soit la fenêtre (200k ou 1M), répétition tous les 50k) mais la règle vaut dès que la conversation semble volumineuse.
-- Session proche de la limite, tâche non finie : committer, noter l'état dans `HISTORIQUE`/`CURRENT_TASKS`, suggérer de relancer.
-- **Subagents** : ~100k pour l'implémentation (sans descendre sous ~80k) ; ~150k pour les personas lecture seule. Consigne textuelle auto-imposée : au-delà, s'arrêter, produire un **recap** (travail fait, état, fichiers, blocages) et relancer un agent avec ce recap.
+### Session reset
+- Threshold ~**150k tokens** (main session): beyond it, **recommend `/clear` or a new session**. The Stop hook warns (`systemMessage`; same 150k threshold whatever the window (200k or 1M), repeated every 50k) but the rule applies as soon as the conversation looks large.
+- Session near the limit, task unfinished: commit, note the state in `HISTORIQUE`/`CURRENT_TASKS`, suggest restarting.
+- **Subagents**: ~100k for implementation (without dropping below ~80k); ~150k for read-only personas. Self-imposed textual instruction: beyond it, stop, produce a **recap** (work done, state, files, blockers) and relaunch an agent with that recap.
 
-### Guides AGENTS.md segmentés
-Guide global `crew/CLAUDE_CONTEXT/AGENTS.md` ; un `AGENTS.md` par subtree significatif (le lire seul en session mono-subtree). **`crew/` reste unique à la racine du repo** même si le cwd est un sous-dossier : résoudre la racine (`git rev-parse --show-toplevel`) avant toute écriture `crew/...`, sinon un `crew/` fantôme est créé.
+### Segmented AGENTS.md guides
+Global guide `crew/CLAUDE_CONTEXT/AGENTS.md`; one `AGENTS.md` per significant subtree (read it alone in a single-subtree session). **`crew/` stays unique at the repo root** even if the cwd is a subfolder: resolve the root (`git rev-parse --show-toplevel`) before any `crew/...` write, otherwise a phantom `crew/` is created.
 
 
-## Personas — routage détaillé (déplacé de CLAUDE.md)
+## Personas — detailed routing (moved from CLAUDE.md)
 
-Rôles/points de vue (`Agent({subagent_type: "<nom>"})`), pas des procédures techniques. Dispatcher une persona quand la décision a ≥2 options réelles dans son domaine, ou que l'utilisateur la demande ; pas pour une question dont la réponse est évidente ou déjà tranchée (chaque dispatch ouvre un subagent complet). Seuil par persona : `legal` et `architect` strictes (déclencheur nouveau ou choix qui engage la suite → dispatcher, et en cas de doute réel sur le caractère « évident » aussi) ; `designer`, `ceo`, `comms`, `social`, `seo` au jugement (≥2 options réelles).
+Roles/points of view (`Agent({subagent_type: "<name>"})`), not technical procedures. Dispatch a persona when the decision has ≥2 real options in its domain, or when the user asks for it; not for a question whose answer is obvious or already settled (each dispatch opens a full subagent). Threshold per persona: `legal` and `architect` strict (new trigger or a choice that commits what follows → dispatch, and also when in real doubt about whether it is "obvious"); `designer`, `ceo`, `comms`, `social`, `seo` at judgment (≥2 real options).
 
-- Arbitrage business/priorisation/scope, « ça vaut le coup ? » → `ceo` (lecture seule).
-- Découpage en tâches, batches, séquencement → `manager` (écrit sous `crew/`).
-- **Démarrage d'une tâche existante** (`TODO/` → `CURRENT_TASKS/`) → `/crew-start` (son script `next-task` fait l'anti-collision de zones, sans persona) ; `manager` seulement pour classer une tâche sans batch. Jamais de déplacement de fichier nu.
-- Copy marketing/landing/email/ton de marque → `comms` (vérifier `AGENTS.md` pour le ton d'un agent produit).
-- Choix technique structurant (2+ approches, refactor maintenant ou plus tard) → `architect` (lecture seule).
-- Décision UX/UI (parcours, hiérarchie, rétention, specs chiffrées, conventions plateforme) → `designer` (lecture seule ; retouche d'un écran → `impeccable`).
-- Exposition juridique nouvelle (données perso, SDK tiers, paiement, mineurs, IA, contenu utilisateur, scraping, licence, secteur réglementé, nouveau pays, influence/jeu-concours/prospection/allégations comparatives) → `legal` (lecture seule) avant de coder.
-- Distribution organique sur les réseaux sociaux (plateforme/format, rythme, accroches, pourquoi une vidéo plafonne, plan de test) → `social` (lecture seule ; rend un brief à `comms`).
-- Visibilité dans la recherche (Google, stores, réponses d'IA : indexation, mots-clés, schema.org, Core Web Vitals, ASO) → `seo` (lecture seule ; rend un brief à `comms`) — sans surface web publique ni fiche store, ne pas l'invoquer ; réseaux sociaux → `social`.
+- Business arbitration/prioritization/scope, "is it worth it?" → `ceo` (read-only).
+- Breakdown into tasks, batches, sequencing → `manager` (writes under `crew/`).
+- **Starting an existing task** (`TODO/` → `CURRENT_TASKS/`) → `/crew-start` (its `next-task` script does the zone anti-collision, no persona); `manager` only to classify a task without a batch. Never a bare file move.
+- Marketing/landing/email copy, brand tone → `comms` (check `AGENTS.md` for the tone of a product agent).
+- Structuring technical choice (2+ approaches, refactor now or later) → `architect` (read-only).
+- UX/UI decision (flows, hierarchy, retention, quantified specs, platform conventions) → `designer` (read-only; touching up a screen → `impeccable`).
+- New legal exposure (personal data, third-party SDK, payment, minors, AI, user content, scraping, licence, regulated sector, new country, influencer/contest/prospecting/comparative claims) → `legal` (read-only) before coding.
+- Organic distribution on social networks (platform/format, cadence, hooks, why a video plateaus, test plan) → `social` (read-only; hands a brief to `comms`).
+- Search visibility (Google, stores, AI answers: indexing, keywords, schema.org, Core Web Vitals, ASO) → `seo` (read-only; hands a brief to `comms`) — without a public web surface or store listing, do not invoke it; social networks → `social`.
 
-Pas d'implémentation par les personas ; doute entre deux → la plus proche du cœur de la demande.
+Personas never implement; doubt between two → the one closest to the core of the request.
 
-**Doublon personas** : `agents/` (source du plugin crew-mates, servi via `${CLAUDE_PLUGIN_ROOT}`) et `.claude/agents/` (copie des projets bootstrapés en mode clone manuel) sont le même contenu ; un projet n'en utilise qu'un seul. Dans ce repo (qui est la source) les deux coexistent par construction ; ne jamais installer le plugin **et** garder `.claude/agents/` dans un projet client (les personas apparaîtraient en double).
+**Persona duplicate**: `agents/` (source of the crew-mates plugin, served via `${CLAUDE_PLUGIN_ROOT}`) and `.claude/agents/` (copy for bootstrapped projects in manual clone mode) have the same content; a project uses only one of them. In this repo (which is the source) both coexist by construction; never install the plugin **and** keep `.claude/agents/` in a client project (the personas would appear twice).

@@ -1,8 +1,8 @@
 /**
  * Mod 11 — usage-band.ts
  *
- * Stats `/usage` (limites 5h / 7j, contexte, coût) sur la bande AbovePrompt,
- * en orange, côté droit. Lecture seule de `$.session.usage()` ; 0 appel LLM.
+ * `/usage` stats (5h / 7d limits, context, cost) on the AbovePrompt band,
+ * in orange, right side. Read-only use of `$.session.usage()`; 0 LLM calls.
  */
 
 import {
@@ -65,7 +65,7 @@ async function refresh($: unknown): Promise<void> {
       costUsd: typeof u?.cost?.usd === 'number' ? u.cost.usd : null,
     };
   } catch {
-    // ancien état conservé
+    // previous state kept
   }
 }
 
@@ -84,7 +84,7 @@ export function registerUsageBand(on: ModRegistrar): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.usage) return prev;
-    // Après /reload-plugins ni session.start ni turn.complete ne se déclenchent : lecture au 1er rendu.
+    // After /reload-plugins neither session.start nor turn.complete fires: read on first render.
     if (!usageBandState.snapshot) await refresh($);
     if (!usageBandState.snapshot) return prev;
     const text = formatUsageLine();

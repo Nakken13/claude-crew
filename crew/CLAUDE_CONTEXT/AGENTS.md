@@ -1,28 +1,28 @@
-# Guide global — invariants produit + anti-patterns
+# Global guide — product invariants + anti-patterns
 
-Guide de contexte étendu, lu uniquement quand une règle cross-stack est
-ambiguë (sinon lire l'`AGENTS.md` du subtree concerné suffit). À remplir au
-fil du projet avec les invariants qui ne sont écrits nulle part ailleurs :
-décisions produit qui ne se déduisent pas du code, pièges déjà rencontrés,
-anti-patterns à ne pas réintroduire.
+Extended context guide, read only when a cross-stack rule is ambiguous
+(otherwise reading the `AGENTS.md` of the relevant subtree is enough). Fill
+in over the life of the project with invariants written nowhere else:
+product decisions that cannot be deduced from the code, pitfalls already
+hit, anti-patterns not to reintroduce.
 
-## Commit auto à la clôture d'une tâche crew
+## Auto-commit when a crew task is closed
 
-Clore une tâche crew (fichier disparu de `crew/CURRENT_TASKS/` + nouvelle
-entrée dans `crew/CLAUDE_CONTEXT/HISTORIQUE.md` dans le même tour) déclenche
-un commit git **local uniquement**, scopé à `crew/` (voir
-`auto_commit_closure` dans `crew/crew_hook.py`, event Stop). Le `git push`
-n'est **jamais** automatique — reste toujours une décision humaine
-explicite. Incident source : un changement hors `crew/` avait été committé
-et poussé sans revue lors d'une session qui n'avait jamais formellement clos
-sa tâche ; ce commit auto donne une trace git systématique de chaque
-clôture sans rien pousser à la place de l'utilisateur.
+Closing a crew task (file gone from `crew/CURRENT_TASKS/` + new entry in
+`crew/CLAUDE_CONTEXT/HISTORIQUE.md` in the same turn) triggers a **local-only**
+git commit, scoped to `crew/` (see `auto_commit_closure` in
+`crew/crew_hook.py`, Stop event). The `git push` is **never** automatic — it
+always stays an explicit human decision. Source incident: a change outside
+`crew/` had been committed and pushed without review during a session that
+never formally closed its task; this auto-commit gives a systematic git trace
+of every closure without pushing anything on the user's behalf.
 
-## Piège : copies synchronisées (repo source du plugin)
-- Modifier `CLAUDE.md` racine → recopier à l'identique dans `template/CLAUDE.md` **et** `~/.claude/templates/project-scaffold/` ; vérifier avec `python scripts/dev/verify_plugin_package.py`.
-- Moteur en double : `crew/crew_hook.py` ↔ `scripts/crew_hook.py` (seule la ligne `ROOT =` diffère), `crew/crew_update.py` ↔ `scripts/crew_update.py`, `.claude/{skills,agents}` ↔ `{skills,agents}/` : toute édition va dans les deux.
-- Tests : `python -m pytest crew/` et `claude plugin test .` (`npx vitest` seul échoue : `claude-code/testing` introuvable).
-- Données de suivi `crew/` (TODO, CURRENT_TASKS, PAUSED, PROBLEMS, ICEBOX, TESTS, CLAUDE_BATCH.md, HISTORIQUE.md) gitignorées : jamais dans un worktree, travailler dans le checkout principal.
+## Pitfall: synchronized copies (plugin source repo)
+- Editing the root `CLAUDE.md` → copy it identically to `template/CLAUDE.md` **and** `~/.claude/templates/project-scaffold/`; check with `python scripts/dev/verify_plugin_package.py`.
+- Duplicated engine: `crew/crew_hook.py` ↔ `scripts/crew_hook.py` (only the `ROOT =` line differs), `crew/crew_update.py` ↔ `scripts/crew_update.py`, `.claude/{skills,agents}` ↔ `{skills,agents}/`: every edit goes in both.
+- Tests: `python -m pytest crew/` and `claude plugin test .` (`npx vitest` alone fails: `claude-code/testing` not found).
+- `crew/` tracking data (TODO, CURRENT_TASKS, PAUSED, PROBLEMS, ICEBOX, TESTS, CLAUDE_BATCH.md, HISTORIQUE.md) is gitignored: never in a worktree, work in the main checkout.
+
 ## Team mode — `/crew-collab` (solo by default)
 
 A solo project needs no remote ref, no claims and no 👤 in the status bar. `/crew-collab on`
@@ -42,32 +42,33 @@ tasks added afterwards stay startable, they remain visible in `/crew-status` and
 shows `👤N` (only while team mode is on). Other subcommands: `ignore add <slug> [--owner <name>]` ·
 `ignore remove <slug>` · `ignore list` · `ignore off`.
 
-## Claims distants (plusieurs devs sur le même repo)
+## Remote claims (several devs on the same repo)
 
-Opt-in : `remote_claims : true` dans `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (défaut
-`false` ; chaque dev l'active pour être protégé, `claims_remote` change le remote,
-`origin` par défaut ; `claims_ref : refs/heads/crew-claims` = repli sur une branche si
-le serveur refuse les refs custom). Les dossiers `crew/` restent la vérité de l'état des tâches ;
-la ref git `refs/crew/claims` (poussée seule, jamais sur `main`) ajoute « qui fait
-quoi » + les tâches `TODO` publiées : un `claims.json` slug → `{status, owner,
+Opt-in: `remote_claims : true` in `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (default
+`false`; each dev enables it to be protected, `claims_remote` changes the remote,
+`origin` by default; `claims_ref : refs/heads/crew-claims` = fall back to a branch if
+the server refuses custom refs). The `crew/` folders remain the truth for task state;
+the git ref `refs/crew/claims` (pushed on its own, never on `main`) adds "who is doing
+what" + the published `TODO` tasks: a `claims.json` slug → `{status, owner,
 author, batch, zone, branch, ts, title, body}`.
 
-Commandes (`python crew_hook.py claims …`, lancées par `/crew-start`,
-`/crew-new-task`, `/crew-close-task`) : `fetch` · `claim <slug> --session --batch
+Commands (`python crew_hook.py claims …`, run by `/crew-start`,
+`/crew-new-task`, `/crew-close-task`): `fetch` · `claim <slug> --session --batch
 --branch --zone` · `release <slug> [--done]` · `publish <slug> --title --zone
 --body-file` · `check-dup --title --zone` · `materialize <slug>` · `list`.
-`next-task` fusionne les claims distants (raison « claim distant : <owner> ») ;
-le dashboard les affiche en Kanban (lecture seule) ; le digest de session liste
-les tâches ouvertes (sans réseau).
+`next-task` merges the remote claims (reason `remote claim: <owner>` — the
+string is emitted by the code, hence still French; it means "remote claim: <owner>");
+the dashboard shows them as a read-only Kanban; the session digest lists
+the open tasks (no network).
 
-**Garanti** (devs en ligne qui utilisent la synchro) : claim atomique
-(`push --force-with-lease` sur le tip lu, 3 essais), jamais deux claims à zones
-qui se chevauchent, aucune entrée d'un autre dev écrasée en silence.
+**Guaranteed** (online devs who use the sync): atomic claim
+(`push --force-with-lease` on the tip read, 3 attempts), never two claims with
+overlapping zones, no other dev's entry silently overwritten.
 
-**Limites** : seuls les devs avec `remote_claims` sont protégés (le hook Stop
-avertit si la ref existe sans le flag) ; un doublon sémantique (titre et zone très
-différents) n'est pas détectable par script — Claude juge la liste de titres ;
-claim périmé jusqu'à 8 h si crash sans `release` (TTL calculé sur `ts`, approximatif
-si les horloges dérivent) ; droit de push sur le remote requis ; hors ligne = mode
-souple (avertissement, claim non publié) ; ne protège pas des conflits de merge de
-code.
+**Limits**: only devs with `remote_claims` are protected (the Stop hook
+warns if the ref exists without the flag); a semantic duplicate (very
+different title and zone) cannot be detected by script — Claude judges the list of titles;
+stale claim for up to 8 h if a crash happens without `release` (TTL computed from `ts`, approximate
+if clocks drift); push permission on the remote required; offline = soft mode
+(warning, claim not published); does not protect against code merge
+conflicts.

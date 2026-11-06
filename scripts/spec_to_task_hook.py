@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Hook PostToolUse (Write) : spec superpowers créée dans docs/superpowers/specs/
-→ crée automatiquement la tâche associée dans crew/CURRENT_TASKS/<slug>.md.
+"""PostToolUse (Write) hook: superpowers spec created in docs/superpowers/specs/
+→ automatically creates the matching task in crew/CURRENT_TASKS/<slug>.md.
 
-Idempotent : ne fait rien si la tâche existe déjà (CURRENT_TASKS ou TODO).
+Idempotent: does nothing if the task already exists (CURRENT_TASKS or TODO).
 """
 import json
 import os
@@ -48,7 +48,7 @@ def main() -> None:
     if spec.suffix.lower() != ".md":
         return
 
-    # 2026-07-11-checklist-conseils-personnalises-design.md → checklist-conseils-personnalises
+    # 2026-07-11-personalized-tips-checklist-design.md → personalized-tips-checklist
     slug = re.sub(r"^\d{4}-\d{2}-\d{2}-", "", spec.stem)
     slug = re.sub(r"-design$", "", slug)
     if not slug:
@@ -56,9 +56,9 @@ def main() -> None:
 
     task_path = CURRENT / f"{slug}.md"
     if task_path.exists() or (TODO / f"{slug}.md").exists():
-        return  # tâche déjà suivie, ne pas dupliquer
+        return  # task already tracked, do not duplicate
 
-    # Titre = premier heading H1 de la spec, sans le suffixe « — Design »
+    # Title = first H1 heading of the spec, without the "— Design" suffix
     title = slug.replace("-", " ")
     try:
         for line in spec.read_text(encoding="utf-8").splitlines():
@@ -75,16 +75,16 @@ def main() -> None:
     task_path.write_text(
         f"""# {title}
 
-**Statut :** 🟡 en cours (spec générée le {date.today().strftime('%d/%m/%Y')})
+**Status:** 🟡 in progress (spec generated on {date.today().strftime('%d/%m/%Y')})
 **Spec :** `{spec_rel}`
 
 ## Description
 
-Tâche créée automatiquement depuis la spec superpowers. Voir la spec pour le contexte complet.
+Task created automatically from the superpowers spec. See the spec for the full context.
 
 ## Actions
 
-- [ ] Décliner la spec en actions concrètes (remplacer cette ligne)
+- [ ] Break the spec down into concrete actions (replace this line)
 """,
         encoding="utf-8",
     )
@@ -92,13 +92,13 @@ Tâche créée automatiquement depuis la spec superpowers. Voir la spec pour le 
     print(
         json.dumps(
             {
-                "systemMessage": f"Spec → tâche créée : crew/CURRENT_TASKS/{slug}.md",
+                "systemMessage": f"Spec → task created: crew/CURRENT_TASKS/{slug}.md",
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",
                     "additionalContext": (
-                        f"Une tâche crew/CURRENT_TASKS/{slug}.md vient d'être créée automatiquement "
-                        f"depuis la spec {spec_rel}. Complète sa section Actions avec les étapes concrètes "
-                        "de la spec, et référence la tâche dans crew/CLAUDE_BATCH.md (règle de batching)."
+                        f"A task crew/CURRENT_TASKS/{slug}.md was just created automatically "
+                        f"from the spec {spec_rel}. Fill in its Actions section with the concrete steps "
+                        "from the spec, and reference the task in crew/CLAUDE_BATCH.md (batching rule)."
                     ),
                 },
             }

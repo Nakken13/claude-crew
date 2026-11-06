@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le dashboard crew (server.py). Meme pattern que
-crew/test_crew_hook.py : depot git temporaire isole, constantes de
-crew_hook monkeypatchees pour y pointer avant d'importer server (qui
-importe crew_hook a son tour)."""
+"""Tests for the crew dashboard (server.py). Same pattern as
+crew/test_crew_hook.py: isolated temporary git repo, crew_hook constants
+monkeypatched to point at it before importing server (which in turn
+imports crew_hook)."""
 import datetime
 import json
 import pathlib
@@ -61,7 +61,7 @@ def repo(tmp_path, monkeypatch):
     return {"root": root, "crew": crew, "ctx": ctx, "dirs": dirs, "srv": srv}
 
 
-def _write_task(dirs, folder, slug, title="Une tache", root=None):
+def _write_task(dirs, folder, slug, title="A task", root=None):
     path = dirs[folder] / slug
     path.write_text(f"# {title}\n", encoding="utf-8")
     if root is not None:
@@ -86,8 +86,8 @@ def test_state_lists_tasks_batches_sessions(repo):
 
 
 def test_state_batch_with_only_todo_tasks_is_not_active(repo):
-    """Un batch du backlog (taches en TODO seulement) n'est pas actif et ne
-    produit pas d'avertissement de chevauchement de zone (faux positif)."""
+    """A backlog batch (tasks in TODO only) is not active and produces no
+    zone-overlap warning (false positive)."""
     repo["crew"].joinpath("CLAUDE_BATCH.md").write_text(
         "# Batching\n\n## Batch A\n\nZone : `shared/`\n\n- `a.md`\n\n"
         "## Batch B\n\nZone : `shared/x.py`\n\n- `b.md`\n",
@@ -159,10 +159,10 @@ def test_move_rejects_unknown_slug(repo):
 def test_move_rejects_path_traversal(repo):
     _write_task(repo["dirs"], "TODO", "a.md", root=repo["root"])
     client = TestClient(repo["srv"].app)
-    # Starlette decode %2f avant le matching de route : la requete est deviee
-    # vers le mount StaticFiles (scope a static/, jamais crew/) plutot que
-    # d'atteindre move_task — 405 (methode non supportee par StaticFiles),
-    # jamais 200. L'invariant teste : aucun mouvement de fichier n'a eu lieu.
+    # Starlette decodes %2f before route matching: the request is diverted
+    # to the StaticFiles mount (scoped to static/, never crew/) instead of
+    # reaching move_task — 405 (method not supported by StaticFiles), never
+    # 200. The invariant under test: no file movement took place.
     res = client.post("/api/tasks/..%2f..%2fetc%2fpasswd/move", json={"to": "CURRENT_TASKS"})
     assert res.status_code in (404, 405)
     assert (repo["dirs"]["TODO"] / "a.md").exists()
@@ -170,21 +170,21 @@ def test_move_rejects_path_traversal(repo):
 
 def test_toggle_rejects_path_traversal(repo):
     f = repo["dirs"]["TESTS/IA"] / "chantier.md"
-    f.write_text("# Chantier\n\n- [ ] item un\n", encoding="utf-8")
+    f.write_text("# Workstream\n\n- [ ] item one\n", encoding="utf-8")
     client = TestClient(repo["srv"].app)
     res = client.post("/api/tests/..%2f..%2fetc%2fpasswd/toggle", json={"item_index": 0})
     assert res.status_code in (404, 405)
-    assert "[ ] item un" in f.read_text(encoding="utf-8")
+    assert "[ ] item one" in f.read_text(encoding="utf-8")
 
 
 def test_toggle_test_item_flips_checkbox(repo):
     f = repo["dirs"]["TESTS/IA"] / "chantier.md"
-    f.write_text("# Chantier\n\n- [ ] item un\n- [x] item deux\n", encoding="utf-8")
+    f.write_text("# Workstream\n\n- [ ] item one\n- [x] item two\n", encoding="utf-8")
     client = TestClient(repo["srv"].app)
     res = client.post("/api/tests/chantier.md/toggle", json={"item_index": 0})
     assert res.status_code == 200
     assert res.json()["checked"] is True
-    assert "[x] item un" in f.read_text(encoding="utf-8")
+    assert "[x] item one" in f.read_text(encoding="utf-8")
 
 
 def test_purge_session_removes_entry(repo):
@@ -221,7 +221,7 @@ def test_claims_endpoint_returns_board_from_local_ref_without_network(repo, monk
     monkeypatch.setattr(h, "_claims_local", lambda: ("tip", tasks))
 
     def no_fetch():
-        raise AssertionError("pas de reseau sans refresh=1")
+        raise AssertionError("no network without refresh=1")
 
     monkeypatch.setattr(h, "claims_fetch", no_fetch)
     j = TestClient(repo["srv"].app).get("/api/claims").json()

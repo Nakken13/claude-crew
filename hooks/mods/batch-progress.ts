@@ -1,9 +1,9 @@
 /**
- * Mod 7 — batch-progress.ts (Avancement Task & Batch)
+ * Mod 7 — batch-progress.ts (Task & Batch progress)
  *
- * - Parse le fichier de tâche actif pour compter les cases cochées (`- [x]` vs `- [s]`/`- [ ]`) :
+ * - Parses the active task file to count checked boxes (`- [x]` vs `- [s]`/`- [ ]`):
  *   `Task : [████░░] 4/6 (66%)`
- * - Parse le fichier de batch global (`crew/CLAUDE_BATCH.md`) pour afficher la progression globale :
+ * - Parses the global batch file (`crew/CLAUDE_BATCH.md`) to display overall progress:
  *   `Batch : [██████░░] 3/4 tasks (75%)`
  *
  * 100% local / 0-token.
@@ -58,7 +58,7 @@ export const batchProgressState: BatchProgressState = {
 
 export function formatTaskProgressSegment(state: BatchProgressState = batchProgressState): string {
   if (!state.taskSlug) {
-    return 'Task : [░░░░░░] 0/0 (aucune tâche active)';
+    return 'Task : [░░░░░░] 0/0 (no active task)';
   }
   const bar = renderDiscreteBar(state.taskDone, state.taskTotal, 6);
   return `Task : ${bar} ${state.taskDone}/${state.taskTotal} (${state.taskPercent}%)`;
@@ -82,15 +82,15 @@ export function formatCombinedBatchProgressLine(
   return parts.join('  │  ');
 }
 
-/** `⏱️ Fin estimée : ~8 min (~45k tokens restants)` -> `⏱~8min` ; calibration -> rien. */
+/** `⏱️ ETA: ~8 min (~45k tokens left)` -> `⏱~8min` ; calibrating -> nothing. */
 export function compactEta(line: string | null): string {
   if (!line) return '';
-  if (line.includes('terminé')) return '✅';
+  if (line.includes('done')) return '✅';
   const m = line.match(/:\s*(~[^(]+?)\s*(?:\(|$)/);
   return m ? `⏱${m[1].replace(/\s+/g, '')}` : '';
 }
 
-/** Version courte pour la bande : `T 2/5 · B 3/7 · ⏱~8min`. */
+/** Short version for the band: `T 2/5 · B 3/7 · ⏱~8min`. */
 export function formatCompactProgressLine(state: BatchProgressState = batchProgressState): string {
   const parts = [`T ${state.taskDone}/${state.taskTotal}`];
   if (state.batchKey && state.batchTotalTasks > 0) {
@@ -348,7 +348,7 @@ export function registerBatchProgress(on: ModRegistrar): void {
   on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.progress) return prev;
-    // Pas de tâche active : on n'occupe pas la ligne avec un état « au repos » grisé.
+    // No active task: do not occupy the line with a greyed-out "idle" state.
     if (!batchProgressState.taskSlug) return prev;
     return addBandSegments(prev, {
       slot: 'left',

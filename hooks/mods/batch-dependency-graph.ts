@@ -1,10 +1,10 @@
 /**
- * Mod 8 — batch-dependency-graph.ts (Kanban & Dépendances)
+ * Mod 8 — batch-dependency-graph.ts (Kanban & Dependencies)
  *
- * Panneau UI (`/crew-board`) affichant les colonnes :
+ * UI panel (`/crew-board`) showing the columns:
  * `Todo | In Progress | Done | Blocked`
- * du batch en cours (et les inter-dépendances de zones entre batchs),
- * liant chaque tâche à la session active correspondante.
+ * of the current batch (and the zone inter-dependencies between batches),
+ * linking each task to the matching active session.
  *
  * 100% local / 0-token.
  */
@@ -204,7 +204,7 @@ export function buildKanbanBoards(input: BuildBoardsInput): {
           sessionId: foreignZoneBlocker.sessionId,
           worktree: null,
           checkboxSummary,
-          blockReason: `🔒 Zone verrouillée par ${foreignZoneBlocker.batchKey} (@${(foreignZoneBlocker.sessionId || '').slice(0, 8)})`,
+          blockReason: `🔒 Zone locked by ${foreignZoneBlocker.batchKey} (@${(foreignZoneBlocker.sessionId || '').slice(0, 8)})`,
         });
       } else if (unmetExplicitDep) {
         columns.blocked.push({
@@ -214,7 +214,7 @@ export function buildKanbanBoards(input: BuildBoardsInput): {
           sessionId: slugToSession.get(unmetExplicitDep)?.sessionId || null,
           worktree: null,
           checkboxSummary,
-          blockReason: `⛓️ Dépend de ${unmetExplicitDep}`,
+          blockReason: `⛓️ Depends on ${unmetExplicitDep}`,
         });
       } else if (seenActiveOrPausedPredecessor) {
         columns.blocked.push({
@@ -224,7 +224,7 @@ export function buildKanbanBoards(input: BuildBoardsInput): {
           sessionId: slugToSession.get(seenActiveOrPausedPredecessor)?.sessionId || null,
           worktree: null,
           checkboxSummary,
-          blockReason: `⏳ Séquence après ${seenActiveOrPausedPredecessor}`,
+          blockReason: `⏳ Sequenced after ${seenActiveOrPausedPredecessor}`,
         });
       } else {
         columns.todo.push({
@@ -276,7 +276,7 @@ export function registerBatchDependencyGraph(on: ModRegistrar): void {
     await $.command
       .register({
         name: 'crew-board',
-        description: 'Ouvrir/fermer le Kanban & graphe de dépendances du batch (Todo | In Progress | Done | Blocked)',
+        description: 'Open/close the batch Kanban & dependency graph (Todo | In Progress | Done | Blocked)',
       })
       .catch(() => undefined);
 
@@ -525,11 +525,11 @@ export function registerBatchDependencyGraph(on: ModRegistrar): void {
 
       return {
         text: shouldOpen
-          ? `📋 Crew Kanban Board ouvert (${built.allBoards.length} batch(s) analysés).`
-          : '📋 Crew Kanban Board fermé.',
+          ? `📋 Crew Kanban Board opened (${built.allBoards.length} batch(es) analyzed).`
+          : '📋 Crew Kanban Board closed.',
       };
     } catch {
-      return { text: '📋 Impossible de basculer le panneau Crew Board.' };
+      return { text: '📋 Unable to toggle the Crew Board panel.' };
     }
   });
 
@@ -549,11 +549,11 @@ export function registerBatchDependencyGraph(on: ModRegistrar): void {
           Text({
             bold: true,
             color: 'cyan',
-            children: ['📋 Crew Kanban & Dépendances (Todo | In Progress | Done | Blocked)'],
+            children: ['📋 Crew Kanban & Dependencies (Todo | In Progress | Done | Blocked)'],
           }),
           Text({
             dimColor: true,
-            children: ['Aucun batch actif trouvé dans crew/CLAUDE_BATCH.md.'],
+            children: ['No active batch found in crew/CLAUDE_BATCH.md.'],
           }),
         ],
       });
@@ -579,7 +579,7 @@ export function registerBatchDependencyGraph(on: ModRegistrar): void {
                 `${o.batchKey}${o.sessionId ? ` (@sess:${o.sessionId.slice(0, 8)})` : ' (libre)'}`,
             )
             .join(', ')
-        : 'aucune collision de zone';
+        : 'no zone collision';
 
     return Box({
       flexDirection: 'column',
@@ -594,7 +594,7 @@ export function registerBatchDependencyGraph(on: ModRegistrar): void {
         Text({
           dimColor: true,
           children: [
-            `Zone : ${board.zonePaths.join(', ') || '(non déclarée)'}  │  Dépendances zones : ${overlapText}`,
+            `Zone : ${board.zonePaths.join(', ') || '(not declared)'}  │  Zone dependencies: ${overlapText}`,
           ],
         }),
         Text({

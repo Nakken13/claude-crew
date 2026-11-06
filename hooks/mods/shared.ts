@@ -116,7 +116,7 @@ export const PANE_META: Record<CrewPaneId, { id: CrewPaneId; title: string; comm
   },
   'crew-board': {
     id: 'crew-board',
-    title: '📋 Crew Kanban & Dépendances',
+    title: '📋 Crew Kanban & Dependencies',
     command: '/crew-board',
   },
   'crew-agents': {
@@ -383,6 +383,7 @@ export interface ParsedTaskInfo {
 }
 
 const CHECKBOX_LINE_RE = /^[ \t]*[-*]\s*\[([ xXsS])\]/gm;
+// Kept verbatim: matches French AND English dependency markers in user markdown (dépend de / bloquée par / après / blocked by / requires).
 const EXPLICIT_DEP_LINE_RE =
   /(?:d[ée]pend(?:s)?(?:\s+de|\s+on)?|bloqu[ée]e?(?:\s+par)?|blocked\s+by|apr[èe]s|requires)\s*:?\s*([^\n]+)/gi;
 const SLUG_BACKTICK_RE = /`(?:[\w\-./]*\/)?([\w\-.]+\.md)`/g;
@@ -467,6 +468,7 @@ export function batchSlugFromHeader(header: string): string {
 }
 
 const BATCH_HEADER_RE = /^#{2,3}\s*Batch\b.*$/gm;
+// Kept verbatim: matches the on-disk header `À classer` ("To classify") of CLAUDE_BATCH.md.
 const UNCLASSIFIED_HEADER_RE = /^#{2,3}\s*[AÀ] classer\b.*$/im;
 const BATCH_TASK_LINE_RE =
   /^[ \t]*(?:\d+\.|[-*])\s*(~~\s*)?`(?:[\w\-./]*\/)?([\w\-.]+\.md)`(\s*~~)?/gm;
@@ -560,7 +562,7 @@ export function parseClaudeBatch(markdown: string): ParsedBatchFile {
 /* -------------------------------------------------------------------------- */
 
 export const CREW_LOCK_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours (matches crew_hook.py)
-export const SESSIONS_LOCK_TTL_MS = 30 * 60 * 1000; // heartbeat a chaque tour : une session muette 30 min est consideree morte
+export const SESSIONS_LOCK_TTL_MS = 30 * 60 * 1000; // heartbeat on every turn: a session silent for 30 min is considered dead
 export const ACTIVE_FILE_TOUCH_TTL_MS = 15 * 60 * 1000; // 15 minutes for live file edit locks
 
 export interface CrewLockSessionEntry {
@@ -656,7 +658,7 @@ export function parseSessionsLock(jsonText: string, nowMs = Date.now()): Session
   }
 }
 
-// Borne l'explosion combinatoire de `{a,b}{c,d}…` (2^N) dans une ligne `Zone :`.
+// Bounds the combinatorial explosion of `{a,b}{c,d}…` (2^N) in a `Zone :` line.
 const MAX_BRACE_EXPANSIONS = 64;
 
 export function expandBraceGlob(pattern: string): string[] {
@@ -740,7 +742,7 @@ export interface NormalizedTurnUsage {
   contextTokens: number;
   contextWindow: number;
   ttlSeconds: number;
-  /** true si le TTL (1h ou 5m) a été observé ; false = inconnu (ne pas supposer 5 min). */
+  /** true if the TTL (1h or 5m) was observed; false = unknown (do not assume 5 min). */
   ttlDetected: boolean;
   model: string;
 }
@@ -793,7 +795,7 @@ export function extractTurnUsage(
   const ephemeral5m = num(cacheCreationDetail?.ephemeral_5m_input_tokens);
   const is1hTtl = ephemeral1h > 0 || rawTtl === '1h' || rawTtl === '3600' || rawTtl === '60m';
   const is5mTtl = ephemeral5m > 0 || rawTtl === '5m' || rawTtl === '300' || rawTtl === '5min';
-  // TTL réellement observé (écriture 1h/5m vue, ou valeur explicite) ; sinon inconnu : ne pas deviner 5 min.
+  // TTL actually observed (1h/5m write seen, or explicit value); otherwise unknown: do not guess 5 min.
   const ttlDetected = is1hTtl || is5mTtl;
   const ttlSeconds = is1hTtl ? 3600 : 300;
 
@@ -871,8 +873,8 @@ export function formatCountdownClock(remainingSeconds: number): string {
 }
 
 /**
- * Bande unique au-dessus du prompt : chaque mod y verse des segments (gauche = crew,
- * droite = météo) au lieu de dessiner sa propre ligne, ce qui évitait l'empilement.
+ * Single band above the prompt: each mod contributes segments (left = crew,
+ * right = weather) instead of drawing its own line, which avoided stacking.
  */
 export interface BandSegment {
   slot: 'left' | 'right' | 'alert';
@@ -899,7 +901,7 @@ export function addBandSegments(prev: unknown, ...segments: BandSegment[]): Band
   return { crewBand: true, foreign: prev ?? null, blocks: [], segments };
 }
 
-/** Bloc multi-lignes déjà dessiné (ex. arbre des subagents), posé au-dessus de la ligne unique. */
+/** Already-drawn multi-line block (e.g. subagent tree), placed above the single line. */
 export function addBandBlock(prev: unknown, block: unknown): BandAccumulator {
   const acc = addBandSegments(prev);
   return { ...acc, blocks: [...acc.blocks, block] };

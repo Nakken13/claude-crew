@@ -1,12 +1,12 @@
 /**
  * Mod 2 — token-weather.ts
  *
- * Jauge météo compacte sur 1 ligne :
+ * Compact weather gauge on 1 line:
  * `☀️ Clear` → `⛅ Cloudy` → `⛈️ Storm` → `🚨 Compact soon`
- * basée sur le ratio de la fenêtre de contexte.
+ * based on the context window ratio.
  *
- * Seuils calibrés sur la politique d'efficience de contexte de `crew-mates`
- * (seuil d'alerte crew à 150k / 200k = 75%) :
+ * Thresholds calibrated on the `crew-mates` context-efficiency policy
+ * (crew alert threshold at 150k / 200k = 75%):
  * - < 50%  : ☀️ Clear
  * - 50-74% : ⛅ Cloudy
  * - 75-89% : ⛈️ Storm
@@ -58,7 +58,7 @@ export function computeTokenWeather(
   contextWindow = tokenWeatherState.contextWindow,
 ): TokenWeatherSnapshot {
   const rawWindow = contextWindow > 0 ? contextWindow : 200_000;
-  // La jauge vise toujours au plus le seuil de reset crew (150k), quelle que soit la fenêtre réelle.
+  // The gauge always targets at most the crew reset threshold (150k), whatever the real window.
   const safeWindow = Math.min(rawWindow, CREW_RESET_TOKENS);
   const safeTokens = Number.isFinite(contextTokens) ? Math.max(0, contextTokens) : 0;
   const ratio = Math.min(1, safeTokens / safeWindow);
@@ -99,7 +99,7 @@ export function computeTokenWeather(
   };
 }
 
-/** Version courte pour la bande : `☀️19% 39k/200k` (emoji du palier, pourcentage, tokens). */
+/** Short version for the band: `☀️19% 39k/200k` (tier emoji, percentage, tokens). */
 export function formatWeatherCompact(snap: TokenWeatherSnapshot = computeTokenWeather()): string {
   return `${snap.label.split(' ')[0]} ${snap.percent}%  ${formatCompactTokens(snap.contextTokens)}/${formatCompactTokens(snap.contextWindow)}`;
 }
@@ -117,7 +117,7 @@ export function registerTokenWeather(on: ModRegistrar): void {
     const snap = computeTokenWeather();
     if (snap.label === '🚨 Compact soon' && !tokenWeatherState.warnedCompactSoon) {
       tokenWeatherState.warnedCompactSoon = true;
-      $.ui.toast(`🚨 Fenêtre de contexte à ${snap.percent}% — lancez /compact ou /clear bientôt.`);
+      $.ui.toast(`🚨 Context window at ${snap.percent}% — run /compact or /clear soon.`);
     } else if (snap.ratio < 0.75) {
       tokenWeatherState.warnedCompactSoon = false;
     }

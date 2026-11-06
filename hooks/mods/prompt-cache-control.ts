@@ -1,9 +1,9 @@
 /**
  * Mod 1 — prompt-cache-control.ts
  *
- * Affiche au-dessus du prompt un timer de TTL du cache (1h par défaut, 5 min seulement si CLAUDE_CACHE_TTL=5m) et les compteurs
- * `cache_read_input_tokens` / `cache_creation_input_tokens`.
- * Alerte visuelle immédiate si le cache expire (< 60s).
+ * Shows above the prompt a cache TTL timer (1h by default, 5 min only if CLAUDE_CACHE_TTL=5m) and the
+ * `cache_read_input_tokens` / `cache_creation_input_tokens` counters.
+ * Immediate visual alert if the cache is about to expire (< 60s).
  *
  * 100% local / 0-token.
  */
@@ -20,7 +20,7 @@ import {
 
 export interface PromptCacheControlState {
   ttlSeconds: number;
-  /** true dès qu'un write 1h a été observé : plus de rétrogradation vers 5 min ensuite. */
+  /** true as soon as a 1h write has been observed: no more downgrade to 5 min afterwards. */
   saw1h: boolean;
   lastRefreshAtMs: number | null;
   lastCacheReadTokens: number;
@@ -31,7 +31,7 @@ export interface PromptCacheControlState {
 }
 
 export const promptCacheState: PromptCacheControlState = {
-  // Défaut 1h : l'événement turn.complete n'expose pas le détail ephemeral_1h/5m, donc 5 min n'est jamais déductible.
+  // Default 1h: the turn.complete event does not expose the ephemeral_1h/5m detail, so 5 min can never be deduced.
   ttlSeconds: 3600,
   saw1h: false,
   lastRefreshAtMs: null,
@@ -99,7 +99,7 @@ export function computePromptCacheStatus(nowMs = Date.now()): FormattedCacheStat
     color = remainingSeconds <= 20 ? 'red' : 'yellow';
     bold = true;
   } else if (isExpired) {
-    prefix = `❄️ Cache expiré (${ttlLabel}) 00:00`;
+    prefix = `❄️ Cache expired (${ttlLabel}) 00:00`;
     color = 'gray';
     bold = false;
   }
@@ -148,7 +148,7 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
       ) {
         promptCacheState.alertedExpiringForRefreshMs = promptCacheState.lastRefreshAtMs;
         $.ui.toast(
-          `⚠️ Prompt cache expire dans ${status.remainingSeconds}s (< 60s) — lancez votre tour ou /compact !`,
+          `⚠️ Prompt cache expires in ${status.remainingSeconds}s (< 60s) — run your turn or /compact!`,
         );
       }
       if (status.remainingSeconds > 0 || Date.now() - promptCacheState.lastRefreshAtMs < (promptCacheState.ttlSeconds + 2) * 1000) {
@@ -164,8 +164,8 @@ export function registerPromptCacheControl(on: ModRegistrar): void {
     const envTtl = $.env.get('CLAUDE_CACHE_TTL');
     const usage = extractTurnUsage(e as Record<string, unknown>, envTtl);
 
-    // Un write 5m isolé ne prouve rien : Claude Code écrit de petits blocs 5m même quand le préfixe est en 1h.
-    // On ne rétrograde donc jamais sur observation ; 5 min seulement via CLAUDE_CACHE_TTL=5m (session.start).
+    // A lone 5m write proves nothing: Claude Code writes small 5m blocks even when the prefix is on 1h.
+    // So we never downgrade on observation; 5 min only via CLAUDE_CACHE_TTL=5m (session.start).
     if (usage.ttlDetected && usage.ttlSeconds >= 3600) {
       promptCacheState.saw1h = true;
       if (!envTtl || !['5m', '5min', '300'].includes(envTtl.toLowerCase())) {
