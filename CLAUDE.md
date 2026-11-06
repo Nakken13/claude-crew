@@ -18,13 +18,13 @@ Adapt/remove lines that do not fit the stack.
 - Before claiming "done/tested/works" → `verification-before-completion` (actually run the tests). LSP diagnostics do not replace the test suite/build.
 - After a lasting change to `CLAUDE.md`/`AGENTS.md`/crew rules → `claude-md-management`.
 - LLM/agent: check the real provider (`grep`) before `claude-api`.
-- Multi-step tracking: **`crew/TODO` → `CURRENT_TASKS` → `HISTORIQUE`/`TESTS` is the single source of truth**; do not duplicate it with `writing-plans`/`executing-plans`/`TaskCreate` (reserved for sessions outside the crew scope).
+- Multi-step tracking: **`crew/TODO` → `CURRENT_TASKS` → `HISTORY`/`TESTS` is the single source of truth**; do not duplicate it with `writing-plans`/`executing-plans`/`TaskCreate` (reserved for sessions outside the crew scope).
 
 ## Personas (`Agent({subagent_type: "<name>"})`) — mandatory routing
 
 Roles, not procedures; dispatch when the decision has ≥2 real options in the domain (or on request), never for an obvious answer. `legal`/`architect`: strict (real doubt included); the others at your judgment. Personas never implement.
 
-`ceo` prioritization/scope · `manager` task breakdown/batches (writes under `crew/`) · `architect` structuring technical choice · `designer` UX/UI decision · `legal` new legal exposure (before coding) · `comms` copy/brand tone · `social` social-network distribution · `seo` search/store visibility (if public web surface). Starting an existing task → `/crew-start`, not `manager`. Detailed criteria: `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Personas.
+`ceo` prioritization/scope · `manager` task breakdown/batches (writes under `crew/`) · `architect` structuring technical choice · `designer` UX/UI decision · `legal` new legal exposure (before coding) · `comms` copy/brand tone · `social` social-network distribution · `seo` search/store visibility (if public web surface). Starting an existing task → `/crew-start`, not `manager`. Detailed criteria: `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Personas.
 
 ## Dedicated crew commands (`/crew-*`)
 
@@ -36,10 +36,10 @@ Tooled execution of the lifecycle and batching (procedures in each skill):
 - `/crew-close-task` — closure (review, `simplify`, history, tests).
 - `/crew-status` — read-only report; `/crew-count` — batches that can run in parallel; `/crew-dashboard` — local web dashboard; `/crew-collab` — team mode (name + remote claims, solo by default); `/crew-version` — crew-mates version.
 
-## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` before creating/moving a task or editing `CLAUDE_BATCH.md`
+## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/LIFECYCLE.md` before creating/moving a task or editing `CLAUDE_BATCH.md`
 
 Always-on rules (details in that doc):
-- A task = one `.md` that moves (`PROBLEMS/`→`TODO/`→`CURRENT_TASKS/`→`PAUSED/`→`HISTORIQUE.md`+`TESTS/`), never in two folders; never a bare move, go through `/crew-start`. Single source of truth = `crew/`.
+- A task = one `.md` that moves (`PROBLEMS/`→`TODO/`→`CURRENT_TASKS/`→`PAUSED/`→`HISTORY.md`+`TESTS/`), never in two folders; never a bare move, go through `/crew-start`. Single source of truth = `crew/`.
 - One batch = one Claude; the zones (`Zone :` lines) of active batches are disjoint. Every new task is added to `crew/CLAUDE_BATCH.md`.
 - Never read a file > 100 lines in full without bounding it with grep; never the full output of a long command.
 - Large conversation (~150k tokens): recommend `/clear` or a new session.

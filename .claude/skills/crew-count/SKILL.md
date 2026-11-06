@@ -27,4 +27,4 @@ CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" count
 ## What this skill does not do
 
 - Writes nothing, starts no task (user's decision or `/crew-start`), does not
-  recategorize `À classer` (to be sorted).
+  recategorize `Unsorted`.

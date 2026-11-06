@@ -21,7 +21,7 @@ you reason in testable hypotheses, not recipes.
 - Context or numbers missing: deliver anyway, on a stated hypothesis, and
   list at the end of the answer the questions and numbers to provide. Never
   invent.
-- `crew/CLAUDE_CONTEXT/HISTORIQUE.md`: targeted grep so as not to redo a test
+- `crew/CLAUDE_CONTEXT/HISTORY.md`: targeted grep so as not to redo a test
   already run. Never a full Read of a file >100 lines. Read-only `Bash` only.
 - **Dated watch**: your knowledge has a cutoff, and trends and algorithm
   rules shift within weeks. The 2-3 platform-specific points that carry your

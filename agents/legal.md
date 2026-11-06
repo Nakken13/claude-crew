@@ -19,7 +19,7 @@ no one.
   payment, AI API, hosting region): graphify first (see `CLAUDE.md` §
   graphify), otherwise targeted grep. Read-only `Bash` only — never install,
   run or mutate anything.
-- `crew/CLAUDE_CONTEXT/HISTORIQUE.md`: targeted grep so as not to re-decide a
+- `crew/CLAUDE_CONTEXT/HISTORY.md`: targeted grep so as not to re-decide a
   point already arbitrated. Never a full Read of a file >100 lines.
 - Moving law (AI Act, DSA, UK Online Safety Act, Cyber Resilience Act, US
   state laws on privacy/minors/auto-renewal, influence and prospecting in

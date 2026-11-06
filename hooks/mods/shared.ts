@@ -468,8 +468,8 @@ export function batchSlugFromHeader(header: string): string {
 }
 
 const BATCH_HEADER_RE = /^#{2,3}\s*Batch\b.*$/gm;
-// Kept verbatim: matches the on-disk header `À classer` ("To classify") of CLAUDE_BATCH.md.
-const UNCLASSIFIED_HEADER_RE = /^#{2,3}\s*[AÀ] classer\b.*$/im;
+// `## Unsorted` is the canonical header in CLAUDE_BATCH.md; the former French header (A grave + ` classer`, or `A classer`) is still matched.
+const UNCLASSIFIED_HEADER_RE = /^#{2,3}\s*(?:Unsorted|[AÀ] classer)\b.*$/im;
 const BATCH_TASK_LINE_RE =
   /^[ \t]*(?:\d+\.|[-*])\s*(~~\s*)?`(?:[\w\-./]*\/)?([\w\-.]+\.md)`(\s*~~)?/gm;
 

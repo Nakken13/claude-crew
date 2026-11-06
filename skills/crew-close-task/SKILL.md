@@ -3,14 +3,14 @@ name: crew-close-task
 description: Closes a finished crew task — checks the boxes, runs review + simplify passes (above the threshold), writes the history entry, produces the AI/DEV test checklists according to the project's test policy, strikes the task out of its batch. Also triggers on — "/crew-close-task", "cette tâche est finie", "clôture la tâche", "this task is done", "close the task".
 ---
 
-Run the protocol defined in `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § "Task management" (item
+Run the protocol defined in `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § "Task management" (item
 3) — skip no step. The passes in step 3 and the tests in step 5 follow their
 thresholds; modularity is always required (see `crew/CLAUDE_CONTEXT/AGENTS.md`
 if this project documents specific anti-patterns).
 
 **Repo-root anchoring is mandatory**: every `crew/...` path in this skill is
 resolved **from the repo root**, never from the current cwd. In a single-subtree
-session (see `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Segmented AGENTS.md guides), the cwd
+session (see `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Segmented AGENTS.md guides), the cwd
 may be a subfolder — a relative `crew/...` path written as-is would create a
 duplicate phantom `crew/` there instead of touching the root. Resolve the root
 once at the start (`git rev-parse --show-toplevel` or equivalent) if it is not
@@ -44,12 +44,12 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
    `git commit`, never push). Distinct from and complementary to the automatic
    crew/ bookkeeping commit (step 5 below,
    `crew/crew_hook.py::auto_commit_closure`): do not recommit here the
-   bookkeeping paths (`crew/CURRENT_TASKS/<slug>.md`, `HISTORIQUE.md`, `TESTS/`,
+   bookkeeping paths (`crew/CURRENT_TASKS/<slug>.md`, `HISTORY.md`, `TESTS/`,
    `CLAUDE_BATCH.md`, `INDEX.md`) already handled by that separate mechanism.
    Purely bookkeeping/crew doc task (no implementation file touched outside
    crew/) → explicit no-op: say so ("nothing to commit here").
 5. Once the implementation commit is done (or its no-op noted):
-   - **Decide the tests** (before writing the `HISTORIQUE` entry, which carries
+   - **Decide the tests** (before writing the `HISTORY` entry, which carries
      the verdict): read `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` and apply its
      level, grid, hesitation protocol and box cap — that file is the only source
      of these rules. **Missing** → project not yet migrated: historical behavior
@@ -61,11 +61,11 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
      needed). Do not tick these tests at creation — validation is for a later
      session.
    - Delete `crew/CURRENT_TASKS/<slug>.md`.
-   - Add an entry to `crew/CLAUDE_CONTEXT/HISTORIQUE.md`: what, when, key
+   - Add an entry to `crew/CLAUDE_CONTEXT/HISTORY.md`: what, when, key
      files/commits, and the tests verdict defined by the policy (omitted for
      `none`).
    - Strike the task's line in `crew/CLAUDE_BATCH.md` (`~~`slug.md`~~`, in its
-     batch or in the `À classer` (to be sorted) section) — **never delete the
+     batch or in the `Unsorted` section) — **never delete the
      line**: `prune_closed_batches` (`crew/crew_hook.py`) only removes a batch
      when all its referenced tasks are struck; a line deleted instead of struck
      leaves an orphan batch header that the automatic purge never detects.

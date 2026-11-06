@@ -23,12 +23,12 @@ CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" status
      counted as normal work in progress;
    - `tests_ia_unchecked`: files with unticked boxes (what remains to validate);
    - `todo_orphans`: in `TODO/` but absent from `CLAUDE_BATCH.md` (neither batch
-     nor `À classer`, the to-be-sorted section) → suggest `/crew-new-task` /
+     nor `Unsorted`, the to-be-sorted section) → suggest `/crew-new-task` /
      `manager`;
    - `bootstrap_pending` true: run `python check_placeholders.py` and include its
      result (`<...>` placeholders = scaffold not initialized → `/crew-init`);
-   - **Never-ticked checklists guard** (suggestion only): read the `Niveau :`
-     line of `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (`grep`, without reading the
+   - **Never-ticked checklists guard** (suggestion only): read the `Level:`
+     line (legacy projects: `Niveau :`) of `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (`grep`, without reading the
      file). Only if the level is `full`, or the file is missing or unreadable
      (historical `full` behavior): if the `- [ ]` in `crew/TESTS/{IA,DEV}`
      (excluding `TESTS_DONE`) clearly dominate the `- [x]` (totals via

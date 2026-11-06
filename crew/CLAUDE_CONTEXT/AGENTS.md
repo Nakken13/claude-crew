@@ -9,7 +9,7 @@ hit, anti-patterns not to reintroduce.
 ## Auto-commit when a crew task is closed
 
 Closing a crew task (file gone from `crew/CURRENT_TASKS/` + new entry in
-`crew/CLAUDE_CONTEXT/HISTORIQUE.md` in the same turn) triggers a **local-only**
+`crew/CLAUDE_CONTEXT/HISTORY.md` in the same turn) triggers a **local-only**
 git commit, scoped to `crew/` (see `auto_commit_closure` in
 `crew/crew_hook.py`, Stop event). The `git push` is **never** automatic — it
 always stays an explicit human decision. Source incident: a change outside
@@ -21,7 +21,7 @@ of every closure without pushing anything on the user's behalf.
 - Editing the root `CLAUDE.md` → copy it identically to `template/CLAUDE.md` **and** `~/.claude/templates/project-scaffold/`; check with `python scripts/dev/verify_plugin_package.py`.
 - Duplicated engine: `crew/crew_hook.py` ↔ `scripts/crew_hook.py` (only the `ROOT =` line differs), `crew/crew_update.py` ↔ `scripts/crew_update.py`, `.claude/{skills,agents}` ↔ `{skills,agents}/`: every edit goes in both.
 - Tests: `python -m pytest crew/` and `claude plugin test .` (`npx vitest` alone fails: `claude-code/testing` not found).
-- `crew/` tracking data (TODO, CURRENT_TASKS, PAUSED, PROBLEMS, ICEBOX, TESTS, CLAUDE_BATCH.md, HISTORIQUE.md) is gitignored: never in a worktree, work in the main checkout.
+- `crew/` tracking data (TODO, CURRENT_TASKS, PAUSED, PROBLEMS, ICEBOX, TESTS, CLAUDE_BATCH.md, HISTORY.md) is gitignored: never in a worktree, work in the main checkout.
 
 ## Team mode — `/crew-collab` (solo by default)
 

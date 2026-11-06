@@ -27,7 +27,7 @@ repo root (`git rev-parse --show-toplevel`), never from the current cwd
    `crew/crew_hook.py`). JSON output: `action`, `task`, `batch`,
    `worktree`, `branch`, `skipped[{slug,reason}]`, `paused`,
    `unclassified`, `ambiguous`. It already covers: other sessions' locks,
-   active/paused batches, `Zone :` overlap, ICEBOX and `À classer` (to be
+   active/paused batches, `Zone :` overlap, ICEBOX and `Unsorted` (to be
    sorted) ignored. Do not redo this sorting by hand.
 
    If `paused` is not empty, flag it to the user (task + what blocks it) — a
@@ -39,7 +39,7 @@ repo root (`git rev-parse --show-toplevel`), never from the current cwd
    - `start` → step 3 (start case).
    - `classify` → `TODO/` tasks have neither batch nor zone (`unclassified`):
      dispatch `Agent({subagent_type: "manager"})` to classify them (impact zone +
-     batch, see `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Batching), then rerun
+     batch, see `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Batching), then rerun
      step 1.
    - `none` → nothing startable: tell the user why from `skipped` (lock, active
      batch, overlap) or "TODO empty", and stop. The only case where the skill
@@ -93,7 +93,7 @@ repo root (`git rev-parse --show-toplevel`), never from the current cwd
 
 - Never starts two tasks from different batches in the same invocation — one
   `/crew-start` = one task until its closure (or a real blocker).
-- Never picks from `crew/ICEBOX/` nor from `À classer` (to be sorted) without
+- Never picks from `crew/ICEBOX/` nor from `Unsorted` without
   classification by `manager`.
 - Never automatically resumes a task from `crew/PAUSED/`.
 - Does not tick unfinished actions, does not skip the lock/anti-collision.

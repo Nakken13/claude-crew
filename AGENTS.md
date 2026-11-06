@@ -37,7 +37,7 @@ Mod tests need bun and an import swap (`claude-code/testing` → `bun:test`); se
 
 - **Never edit a generated mirror** (`scripts/crew_hook.py`, `scripts/crew_update.py`, `skills/*` except `crew-init`, `agents/*`): edit the source, then run `sync_engine.py`.
 - Every `subprocess` call in the engine pins stdin/stdout/stderr (a test enforces it).
-- Do not rename or translate on-disk/parsed tokens (`Zone :`, `À classer`, `HISTORIQUE.md`, `Niveau :`, ...): existing projects depend on them.
+- On-disk names (`HISTORY.md`, `TASK_CHANGELOG.md`, `LIFECYCLE.md`, `## Unsorted`, `Level:`, `Zone :`, ...) are a data format: English is canonical, the former French names (`HISTORIQUE.md`, `CHANGELOG_TACHES.md`, `CYCLE_DE_VIE.md`, `## À classer`, `Niveau :`) must keep being read. Add an alias, never a replacement; `crew/crew_hook.py` `LEGACY_NAMES` and `crew/crew_update.py` `RENAMES` are the tables.
 - Test first; user-visible change → entry under `## [Unreleased]` in `CHANGELOG.md`.
 
 ## Secrets and boundaries
@@ -49,4 +49,4 @@ No secrets in this repo. Hooks run locally and make no network calls; see `SECUR
 - Product vision / scope: `PRODUCT.md`.
 - Contribution conventions: `CONTRIBUTING.md`.
 - Security: `SECURITY.md`.
-- Task lifecycle, batching and context rules: `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md`; team mode and claims: `crew/CLAUDE_CONTEXT/AGENTS.md`.
+- Task lifecycle, batching and context rules: `crew/CLAUDE_CONTEXT/LIFECYCLE.md`; team mode and claims: `crew/CLAUDE_CONTEXT/AGENTS.md`.
