@@ -18,6 +18,7 @@ graphify-out/*
 crew/CLAUDE_CONTEXT/.task_state.json
 crew/CLAUDE_CONTEXT/.hook_debug_dump.json
 crew/CLAUDE_CONTEXT/crew_lock.json
+crew/CLAUDE_CONTEXT/crew_ignored.json
 crew/CLAUDE_CONTEXT/.crew_lock.mutex
 crew/CLAUDE_CONTEXT/.gate_armed
 crew/CLAUDE_CONTEXT/BATCH_LOCKS.md

@@ -263,6 +263,7 @@ Claude Code build predates hook `modules`; update it.
 | `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees |
 | `/crew-count` | Count how many batches can be launched in parallel right now + ready terminal titles |
 | `/crew-dashboard` | Launch the optional local read/write web dashboard (`http://127.0.0.1:8943`) |
+| `/crew-collab` | Team mode switch (solo by default): asks your name, turns on remote claims under that name, sets aside the `TODO` tasks other devs already own, shows who has how many tasks (`on` / `off` / `status`) |
 | `/crew-update` | Pull upstream engine-file updates into an already-bootstrapped project without touching `crew/` task data |
 | `/crew-version` | Print the installed `crew-mates` version |
 
