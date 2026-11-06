@@ -67,7 +67,8 @@ class _Duo:
                           ("HISTORIQUE_ARCHIVE", ctx / "HISTORIQUE_ARCHIVE.md"),
                           ("BATCH_FILE", crew / "CLAUDE_BATCH.md"), ("CHANGELOG", ctx / "CHANGELOG_TACHES.md"),
                           ("BATCH_LOCKS_MD", ctx / "BATCH_LOCKS.md"), ("LOCKS_FILE", ctx / "crew_lock.json"),
-                          ("LOCKS_MUTEX", ctx / ".crew_lock.mutex"), ("MAIN_ROOT", root)):
+                          ("LOCKS_MUTEX", ctx / ".crew_lock.mutex"), ("MAIN_ROOT", root),
+                          ("IGNORED_FILE", ctx / "crew_ignored.json")):
             self.mp.setattr(h, attr, val)
 
     def remote_tasks(self):

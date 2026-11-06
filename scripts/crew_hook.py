@@ -86,6 +86,8 @@ def _shared_lock_paths(root):
 
 
 MAIN_ROOT, LOCKS_FILE, LOCKS_MUTEX = _shared_lock_paths(ROOT)
+# Taches TODO d'autres devs que /crew-start doit ignorer (local, non versionne).
+IGNORED_FILE = LOCKS_FILE.with_name("crew_ignored.json")
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
@@ -1536,6 +1538,138 @@ def _task_names(d):
             if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
 
 
+def _read_ignored():
+    """{slug: owner | None} from crew_ignored.json; missing/corrupt -> {}.
+    The older format (list + a single `owner`) is still read."""
+    try:
+        data = json.loads(IGNORED_FILE.read_text(encoding="utf-8"))
+        raw = data.get("ignored", {})
+        if isinstance(raw, list):
+            owner = data.get("owner") if isinstance(data.get("owner"), str) and data.get("owner") else None
+            return {x: owner for x in raw if isinstance(x, str)}
+        return {k: (v if isinstance(v, str) and v else None) for k, v in raw.items() if isinstance(k, str)}
+    except Exception:
+        return {}
+
+
+def load_ignored():
+    """`.md` slugs skipped by `next_task`."""
+    return set(_read_ignored())
+
+
+def _valid_person_name(name):
+    """Name safe for a config line, a claim and a shell argument: 1-60 chars
+    (letters, digits, space, `.` `@` `-` `_`), single line."""
+    return isinstance(name, str) and re.fullmatch(r"[\w .@-]{1,60}", name.strip()) is not None
+
+
+def _opts(argv, known):
+    """(known `--key value` options, positionals); an unknown option or one without a value -> ValueError."""
+    opts, pos, i = {}, [], 0
+    while i < len(argv):
+        if argv[i].startswith("--"):
+            if argv[i][2:] not in known or i + 1 >= len(argv):
+                raise ValueError(f"invalid option: {argv[i]}")
+            opts[argv[i][2:]], i = argv[i + 1], i + 2
+        else:
+            pos.append(argv[i])
+            i += 1
+    return opts, pos
+
+
+_OWNER_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?\**\s*(?:owner|assigned(?:\s+to)?|assign[ée]e?(?:\s+[àa])?|claimed?(?:\s+by)?|responsible|responsable)\s*\**\s*:\s*\**\s*(.+?)\s*\**\s*$",
+    re.IGNORECASE)
+_UNASSIGNED = "(unassigned)"
+
+
+def _todo_owner_mention(slug):
+    """Name written in the TODO file (`Owner: x`, `Assigned to: x`, `Claimed by: x`, `Responsible: x`,
+    French aliases `Assigné à` / `Responsable` accepted; first 40 lines); None if there is no mention."""
+    try:
+        with open(DIRS["TODO"] / slug, encoding="utf-8-sig") as fh:
+            for _ in range(40):
+                line = fh.readline()
+                if not line:
+                    break
+                m = _OWNER_LINE_RE.match(line)
+                if m and _valid_person_name(m.group(1)):
+                    return m.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
+def _collab_name():
+    return _claims_config().get("collab_name", "").strip() or None
+
+
+def _same_person(a, b):
+    return bool(a) and bool(b) and a.strip().casefold() == b.strip().casefold()
+
+
+def _by_owner(store):
+    out = {}
+    for who in store.values():
+        out[who or _UNASSIGNED] = out.get(who or _UNASSIGNED, 0) + 1
+    return out
+
+
+def ignore_cli(argv):
+    """`crew_hook.py ignore <snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off>`:
+    local list of TODO tasks that `/crew-start` must not start, with their owner (a teammate's tasks
+    brought in by a pull). `snapshot` assigns every TODO present: a mention in the file, else a remote
+    claim, else `--owner`; with none of the three it is set aside anyway as "unassigned" (listed in
+    `unmarked`). Tasks marked with your own name are never ignored. `off` deletes the list."""
+    usage = {"ok": False, "reason": "usage: ignore snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off"}
+    try:
+        opts, slugs = _opts(argv[1:], {"owner"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub not in ("snapshot", "add", "remove", "list", "off"):
+        return usage
+    if "owner" in opts and not _valid_person_name(opts["owner"]):
+        return {"ok": False, "reason": "invalid --owner (1-60 chars: letters, digits, space . @ - _)"}
+    if sub in ("add", "remove") and not slugs:
+        return {"ok": False, "reason": f"`ignore {sub}`: slug required"}
+    slugs = [x if x.endswith(".md") else x + ".md" for x in slugs]
+    if sub == "off":
+        try:
+            IGNORED_FILE.unlink()
+        except FileNotFoundError:
+            pass
+        return {"ok": True, "ignored": [], "by_owner": {}}
+    before = _read_ignored()
+    store, owner = dict(before), opts.get("owner", "").strip() or None
+    if sub == "snapshot":
+        me = _collab_name()
+        claims = _claims_local()[1] if claims_enabled() else {}
+        for slug in _task_names(DIRS["TODO"]):
+            if store.get(slug):
+                continue
+            c = claims.get(slug) or {}
+            who = _todo_owner_mention(slug) or c.get("owner") or c.get("author")
+            if _same_person(who, me):
+                continue  # it is mine
+            store[slug] = who or owner  # no known owner: still ignored ("unassigned"), never started
+    elif sub == "add":
+        for slug in slugs:
+            store[slug] = owner or store.get(slug)
+    elif sub == "remove":
+        for slug in slugs:
+            store.pop(slug, None)
+    if store != before:
+        IGNORED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = IGNORED_FILE.with_name(IGNORED_FILE.name + ".tmp")
+        tmp.write_text(json.dumps({"ignored": dict(sorted(store.items()))}, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, IGNORED_FILE)
+    out = {"ok": True, "ignored": sorted(store), "added": sorted(set(store) - set(before)), "by_owner": _by_owner(store)}
+    if sub == "snapshot":
+        out["unmarked"] = sorted(t for t, who in store.items() if not who)
+    return out
+
+
 def next_task(session_id):
     """Choix deterministe de la tache pour `/crew-start` (lecture seule : ni
     verrou, ni deplacement — le skill les pose ensuite via le marqueur
@@ -1552,8 +1686,12 @@ def next_task(session_id):
     rows = _digest_task_rows(DIRS["CURRENT_TASKS"])
     current = [r[0] for r in rows]
     paused = _task_names(DIRS["PAUSED"])
-    todo = _task_names(DIRS["TODO"])
-    skipped = []
+    ignored = _read_ignored()
+    todo_all = _task_names(DIRS["TODO"])
+    todo = [t for t in todo_all if t not in ignored]
+    skipped = [{"slug": t, "reason": f"ignored locally (task of {ignored[t]})" if ignored[t]
+                else "ignored locally (another dev's task)"}
+               for t in todo_all if t in ignored]
     out = {"action": "none", "paused": paused, "skipped": skipped,
            "unclassified": [t for t in todo if find_section_for(t, sections) is None]}
 
@@ -1793,7 +1931,11 @@ _CLAIMS_ID_CACHE = {}
 
 
 def _claims_identity():
-    """user.email du checkout courant (memoise par racine : un spawn git par processus)."""
+    """Name chosen via `/crew-collab` (config `collab_name`), else the checkout's
+    user.email (memoised per root: one git spawn per process)."""
+    name = _claims_config().get("collab_name", "").strip()
+    if name:
+        return name
     key = str(ROOT)
     if key not in _CLAIMS_ID_CACHE:
         rc, out, _ = _claims_git("config", "user.email")
@@ -2174,6 +2316,80 @@ def claims_cli(argv):
     return {"ok": False, "reason": f"sous-commande inconnue : {sub}"}
 
 
+def _config_set(key, value):
+    """Set `key : value` in CREW_CONFIG.md (a single line, the rest is kept);
+    value=None removes the key. Atomic write."""
+    path = CTX / CLAIMS_CONFIG
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    pat, out, done = re.compile(rf"^\s*{re.escape(key)}\s*[:=]"), [], False
+    for ln in lines:
+        if pat.match(ln):
+            if value is not None and not done:
+                out.append(f"{key} : {value}")
+                done = True
+            continue
+        out.append(ln)
+    if value is not None and not done:
+        out.append(f"{key} : {value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _collab_people():
+    """[{name, tasks, me}] sorted by task count: ignored TODO (per owner), other devs' remote claims
+    (local view, no network) and my own current / paused tasks."""
+    me, store = _collab_name(), _read_ignored()
+    slugs = {}
+    for slug, who in store.items():
+        slugs.setdefault(who or _UNASSIGNED, set()).add(slug)
+    if claims_enabled():
+        for slug, e in _claims_expire(_claims_local()[1], _claims_now()).items():
+            who = e.get("owner") or e.get("author")
+            if who and slug not in store:
+                slugs.setdefault(who, set()).add(slug)
+    if me:
+        mine = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+        key = next((k for k in slugs if _same_person(k, me)), me)
+        slugs[key] = slugs.get(key, set()) | mine
+    people = [{"name": k, "tasks": len(v), "me": _same_person(k, me)} for k, v in slugs.items() if v]
+    return sorted(people, key=lambda x: (-x["tasks"], x["name"]))
+
+
+def collab_cli(argv):
+    """`crew_hook.py collab <on --name <name>|off|status>`: team mode, switched by `/crew-collab`.
+    `on` sets `remote_claims : true` + `collab_name` (the name owning your claims);
+    `off` returns to the base form (claims off, name removed, ignore list deleted)."""
+    try:
+        opts, _ = _opts(argv[1:], {"name"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub == "on":
+        if not _valid_person_name(opts.get("name")):
+            return {"ok": False, "reason": "`collab on`: --name required (1-60 chars: letters, digits, space . @ - _)"}
+        name = opts["name"].strip()
+        _config_set("remote_claims", "true")
+        _config_set("collab_name", name)
+        out = {"ok": True, "collab": True, "name": name}
+        if _claims_git("remote", "get-url", _claims_remote())[0] != 0:
+            out["warning"] = f"git remote `{_claims_remote()}` not found: claims run in soft mode (nothing is published)"
+        return out
+    if sub == "off":
+        _config_set("remote_claims", "false")
+        _config_set("collab_name", None)
+        ignore_cli(["off"])
+        return {"ok": True, "collab": False}
+    if sub == "status":
+        return {"ok": True, "collab": claims_enabled(), "name": _collab_name(),
+                "ignored": len(_read_ignored()), "people": _collab_people()}
+    return {"ok": False, "reason": "usage: collab on --name <name>|off|status"}
+
+
 def _utf8_stdout():
     """JSON en UTF-8 quelle que soit la console (cp1252 sous Windows) : les titres viennent d'autres devs."""
     if hasattr(sys.stdout, "reconfigure"):
@@ -2185,6 +2401,10 @@ def main():
     if cmd == "claims":
         _utf8_stdout()
         print(json.dumps(claims_cli(sys.argv[2:]), ensure_ascii=False))
+        return
+    if cmd in ("ignore", "collab"):
+        _utf8_stdout()
+        print(json.dumps((ignore_cli if cmd == "ignore" else collab_cli)(sys.argv[2:]), ensure_ascii=False))
         return
     if cmd in ("count", "status"):
         print(json.dumps(count_batches() if cmd == "count" else crew_status(), ensure_ascii=False))

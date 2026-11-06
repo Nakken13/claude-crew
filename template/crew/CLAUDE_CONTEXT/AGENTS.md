@@ -6,6 +6,25 @@ fil du projet avec les invariants qui ne sont écrits nulle part ailleurs :
 décisions produit qui ne se déduisent pas du code, pièges déjà rencontrés,
 anti-patterns à ne pas réintroduire.
 
+## Team mode — `/crew-collab` (solo by default)
+
+A solo project needs no remote ref, no claims and no 👤 in the status bar. `/crew-collab on`
+(`crew_hook.py collab on --name <name>`) asks for your name, turns on `remote_claims` and saves `collab_name` in
+`crew/CLAUDE_CONTEXT/CREW_CONFIG.md`: that name owns all your claims. `/crew-collab off` returns everything to the
+base form (claims off, name removed, ignore list deleted; claims already published stay on the remote).
+`/crew-collab status` shows who has how many tasks (`Bob 12 | Alice 5 | you 1`).
+
+`TODO` tasks already owned by other devs (brought in by a pull, without them using crew): `ignore snapshot` assigns
+each `TODO` to its owner without asking whenever it is already indicated — a mention in the file (`Owner: <name>`,
+`Assigned to: <name>`, `Claimed by: <name>` or `Responsible: <name>`, French aliases `Assigné à` / `Responsable`,
+first 40 lines) or a published remote claim; tasks under your own name stay startable. `TODO` tasks with no mention at
+all are set aside anyway (filed as "unassigned", listed in `unmarked`): never run, no question asked;
+`ignore snapshot --owner <name>` gives them an owner. The result lives in `crew/CLAUDE_CONTEXT/crew_ignored.json`
+(local, untracked, nothing is published): `next-task` skips these tasks ("ignored locally (task of <name>)"), `TODO`
+tasks added afterwards stay startable, they remain visible in `/crew-status` and the dashboard, and the status bar
+shows `👤N` (only while team mode is on). Other subcommands: `ignore add <slug> [--owner <name>]` ·
+`ignore remove <slug>` · `ignore list` · `ignore off`.
+
 ## Claims distants (plusieurs devs sur le même repo)
 
 Opt-in : `remote_claims : true` dans `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (défaut
