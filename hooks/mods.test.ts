@@ -232,8 +232,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(warmStatus.line).toContain('cache_read: 140k');
     expect(warmStatus.line).toContain('cache_creation: 8k');
 
-    // Simulate 255s elapsed on 300s TTL -> 45s left (< 60s alert!)
-    const expiringStatus = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 255_000);
+    // Default TTL is 1h (5 min only via CLAUDE_CACHE_TTL=5m): 3555s elapsed -> 45s left (< 60s alert!)
+    const expiringStatus = computePromptCacheStatus((promptCacheState.lastRefreshAtMs || Date.now()) + 3_555_000);
     expect(expiringStatus.isExpiringSoon).toBe(true);
     expect(expiringStatus.line).toContain('<60s');
 

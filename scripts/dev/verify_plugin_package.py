@@ -193,6 +193,14 @@ def check_crew_scripts_copied(repo_root: Path) -> list[str]:
     return problems
 
 
+def check_plugin_hook_mirror(repo_root: Path) -> list[str]:
+    """scripts/crew_hook.py must be exactly crew/crew_hook.py with the plugin
+    ROOT line (the two used to be unguarded). Fix: python scripts/dev/sync_engine.py"""
+    import sync_engine
+    drift = [d for d in sync_engine.sync(repo_root, check=True) if d == "scripts/crew_hook.py"]
+    return [f"{d} drifted from crew/crew_hook.py (run: python scripts/dev/sync_engine.py)" for d in drift]
+
+
 EVENT_EXPECTED_SCRIPT = {
     "SessionStart": "scripts/crew_hook.py",
     "Stop": "scripts/crew_hook.py",
@@ -335,6 +343,7 @@ CHECKS = [
     check_template_matches_source,
     check_engine_files_copied,
     check_crew_scripts_copied,
+    check_plugin_hook_mirror,
     check_hooks_json,
     check_crew_init_is_plugin_native,
     check_readme_has_marketplace_install,
