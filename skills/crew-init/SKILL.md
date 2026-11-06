@@ -84,6 +84,13 @@ placeholder non résolu par oubli.
    `SECURITY.md` avec les réponses obtenues + la stack détectée. Repo map et
    commandes vérifiées : uniquement des commandes réellement exécutées avec
    succès pendant ce bootstrap, jamais une commande non testée.
+4bis. **Politique de tests (sans question supplémentaire)** : `crew/` copié
+   contient déjà `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`. À partir de la
+   description du projet (étape 3) et du code (étape 2), y renseigner le
+   niveau (`light` par défaut ; `none` seulement si le projet est
+   manifestement sans enjeu ; jamais `full`) et les zones risquées dans les
+   mots du projet. Description vague → `light` sans zones. Ne pas écraser un
+   fichier déjà personnalisé.
 5. **Adapter le routage skills** : dans la section "Routage des skills" de
    `CLAUDE.md`, retirer les lignes qui ne s'appliquent pas à la stack
    détectée (ex. lignes React Native/mobile si pas de RN, `dataviz` si pas de
@@ -96,7 +103,8 @@ placeholder non résolu par oubli.
    rester par défaut une fois le scaffold rempli).
 9. **Rapporter** : fichiers créés/remplis, décisions prises (fichiers
    supprimés type `PRODUCT.md`, lignes retirées du routage skills), statut
-   final de `check_placeholders.py`.
+   final de `check_placeholders.py`, et la **politique de tests déduite**
+   (niveau + zones risquées, éditables dans `TESTS_POLICY.md`).
 
 ## Ce que ce skill ne fait pas
 

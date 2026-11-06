@@ -24,9 +24,10 @@ Anti-collision obligatoire avant tout déplacement (`/crew-start`, cf. § Batchi
 Tâche déjà démarrée dont la suite dépend d'une action humaine (rendu visuel, device réel, réponse externe) : `git mv` vers `PAUSED/`, retour dans `CURRENT_TASKS/` une fois validée. Compte comme active pour l'anti-collision. Jamais reprise automatiquement par l'IA.
 
 ### 3. Code terminé
-Supprimer le fichier de `CURRENT_TASKS/`, historiser dans `HISTORIQUE.md`, sortir les tests (`/crew-close-task`). **Ne pas cocher** les tests à ce stade.
+Supprimer le fichier de `CURRENT_TASKS/`, historiser dans `HISTORIQUE.md`, sortir les tests **si la politique de tests le demande** (`/crew-close-task`). **Ne pas cocher** les tests à ce stade.
 
 ### 4. `TESTS/` — checklists IA / DEV
+**Politique** : `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` décide si une checklist est écrite. Absent (projet pas encore migré) → comportement historique (`full`) jusqu'à `/crew-update`.
 `IA/` : l'IA déroule seule (pytest, `playwright`, curl, DB, logs) ; `DEV/` : action humaine réelle (mobile réel, jugement visuel). Même chantier = un fichier de chaque côté ; chemin principal + cas limites.
 
 **Règle d'or :** pas commencée → `TODO/` ; commencée → `CURRENT_TASKS/` ; bloquée sur validation dev → `PAUSED/` ; finie → `HISTORIQUE.md` + `TESTS/`.

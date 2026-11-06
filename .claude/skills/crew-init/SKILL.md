@@ -4,24 +4,16 @@ description: Bootstrap le scaffold crew (CLAUDE.md, AGENTS.md, crew/…) sur un 
 ---
 
 Ce skill exécute le bootstrap déjà décrit en prose dans le `README.md` du
-scaffold (`~/.claude/templates/project-scaffold/`) — il ne remplace pas ce
+scaffold (`${CLAUDE_PLUGIN_ROOT}/template/`) — il ne remplace pas ce
 document, il évite de dérouler les étapes à la main et de laisser un
 placeholder non résolu par oubli.
-
-**Ancrage racine obligatoire** : tout chemin `crew/...` de ce skill se
-résout **depuis la racine du repo**, jamais depuis le cwd courant. En
-session mono-subtree (cf. `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § Guides AGENTS.md segmentés), le cwd
-peut être un sous-dossier — un chemin relatif `crew/...` écrit tel quel y
-créerait un `crew/` fantôme dupliqué au lieu de toucher la racine. Résoudre
-la racine une seule fois en début d'exécution (`git rev-parse
---show-toplevel` ou équivalent) si elle n'est pas déjà connue — pas besoin
-de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
 
 ## Détection de l'état actuel
 
 1. Le projet a déjà `CLAUDE.md` + `crew/` remplis (pas de `<...>` restant) →
    ne rien faire, dire à l'utilisateur que le scaffold est déjà initialisé et
-   proposer `/crew-status` à la place.
+   proposer `/crew-status` à la place, ou `/crew-update` si une version plus
+   récente du scaffold est disponible.
 2. Le projet a `CLAUDE.md` + `crew/` avec des placeholders `<...>` non
    résolus → reprendre directement à "Résolution des placeholders" ci-dessous
    (pas besoin de recopier les fichiers).
@@ -29,14 +21,23 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
 
 ## Étapes
 
+0. **Vérifier l'installation du plugin** : si `${CLAUDE_PLUGIN_ROOT}` n'est pas
+   défini ou ne résout vers aucun répertoire existant, ce skill tourne hors
+   contexte plugin — arrêter immédiatement et dire à l'utilisateur d'installer
+   d'abord le plugin (`/plugin marketplace add Nakken13/claude-crew` puis
+   `/plugin install crew-mates@crew-mates`) avant de relancer `/crew-init`.
+   Ne jamais tenter une copie partielle dans ce cas.
 1. **Copier** à la racine du projet (sans écraser un fichier déjà présent et
-   déjà rempli) : `CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`,
-   `SECURITY.md`, `check_placeholders.py`, le dossier `crew/` entier,
-   `.claude/agents/`, `.claude/skills/crew-*` (ces skills eux-mêmes, pour que
-   `/crew-new-task`, `/crew-close-task`, `/crew-status`,
-   `/crew-start` soient aussi disponibles sur le nouveau projet). Fusionner `.gitignore` et
-   `.claude/settings.json` avec l'existant s'il y en a déjà un — ne jamais
-   écraser des règles/hooks déjà en place, seulement ajouter ce qui manque.
+   déjà rempli), depuis `${CLAUDE_PLUGIN_ROOT}/template/` : `CLAUDE.md`,
+   `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+   `check_placeholders.py`, le dossier `crew/` entier (structure vide :
+   `README.md` + `INDEX.md` par sous-dossier, aucun fichier de tâche).
+   **Ne pas copier** les skills, les agents, ni les scripts de hooks — ils
+   tournent directement depuis le plugin installé (`${CLAUDE_PLUGIN_ROOT}`),
+   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` sont
+   déjà disponibles sans rien copier. Ne rien toucher à `.claude/settings.json`
+   pour les hooks crew — ils sont fournis par le plugin (`hooks/hooks.json`),
+   pas par une entrée locale.
    **Vérifier/installer les dépendances des skills routés dans `CLAUDE.md`** —
    `claude plugin list` ne les liste pas tous, certains manquent silencieusement
    si on ne les checke pas explicitement :
@@ -83,6 +84,13 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
    `SECURITY.md` avec les réponses obtenues + la stack détectée. Repo map et
    commandes vérifiées : uniquement des commandes réellement exécutées avec
    succès pendant ce bootstrap, jamais une commande non testée.
+4bis. **Politique de tests (sans question supplémentaire)** : `crew/` copié
+   contient déjà `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`. À partir de la
+   description du projet (étape 3) et du code (étape 2), y renseigner le
+   niveau (`light` par défaut ; `none` seulement si le projet est
+   manifestement sans enjeu ; jamais `full`) et les zones risquées dans les
+   mots du projet. Description vague → `light` sans zones. Ne pas écraser un
+   fichier déjà personnalisé.
 5. **Adapter le routage skills** : dans la section "Routage des skills" de
    `CLAUDE.md`, retirer les lignes qui ne s'appliquent pas à la stack
    détectée (ex. lignes React Native/mobile si pas de RN, `dataviz` si pas de
@@ -95,7 +103,8 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
    rester par défaut une fois le scaffold rempli).
 9. **Rapporter** : fichiers créés/remplis, décisions prises (fichiers
    supprimés type `PRODUCT.md`, lignes retirées du routage skills), statut
-   final de `check_placeholders.py`.
+   final de `check_placeholders.py`, et la **politique de tests déduite**
+   (niveau + zones risquées, éditables dans `TESTS_POLICY.md`).
 
 ## Ce que ce skill ne fait pas
 

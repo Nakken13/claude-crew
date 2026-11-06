@@ -28,6 +28,14 @@ CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" status
    - `bootstrap_pending` vrai : lancer `python check_placeholders.py` et
      inclure son résultat (placeholders `<...>` = scaffold non initialisé →
      `/crew-init`) ;
+   - **Garde-fou checklists jamais cochées** (suggestion seule) : lire la
+     ligne `Niveau :` de `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (`grep`, sans
+     lire le fichier). Uniquement si le niveau est `full`, ou si le fichier
+     est absent ou illisible (comportement historique `full`) : si les
+     `- [ ]` de `crew/TESTS/{IA,DEV}` (hors `TESTS_DONE`) dominent
+     nettement les `- [x]` (totaux via `grep -rhF … | wc -l`), proposer
+     « N cases jamais cochées : passer en `light` dans `TESTS_POLICY.md` ? ».
+     Jamais en `light`/`none`, jamais de modification du fichier.
    - `orphan_worktrees` : worktree `*-batch-*` sur disque sans session qui le
      porte (crash, ou `/crew-close-task` jamais lancé) — le signaler pour
      nettoyage manuel (`git worktree remove` / `git branch -d` par

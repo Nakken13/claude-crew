@@ -130,12 +130,25 @@ long reste valide (ces sections y sont aussi).
      avec `--remove-double-hook` (ne retire que ces entrées hook, le reste
      du settings est conservé, mais le fichier est reformaté en JSON indenté).
 
+## Politique de tests (projets existants)
+
+8bis. Si `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` est **absent**, proposer de le
+   créer — jamais en silence — via un `AskUserQuestion` dédié, distinct de la
+   confirmation de l'étape 5. Contenu : le modèle
+   `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/TESTS_POLICY.md`
+   (clone manuel : `<source>/template/...`), avec niveau et zones risquées
+   déduits de `CLAUDE.md`, `README`, des manifestes et de `grep` ciblés dans
+   `HISTORIQUE.md` (jamais lu en entier). Le fichier n'est **pas** dans
+   `ENGINE_FILES_*` : une fois créé il appartient à l'utilisateur. Refus →
+   rien n'est créé ; les skills gardent le comportement historique (`full`).
+
 ## Rapporter
 
 9. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
    conflit ou en `removed` (avec rappel qu'ils seront re-proposés au
    prochain `/crew-update` tant qu'ils ne sont pas résolus), nouvelle
-   version enregistrée.
+   version enregistrée, et si la politique de tests a été créée (niveau +
+   zones, modifiable dans `TESTS_POLICY.md`).
 
 ## Ce que ce skill ne fait pas
 
@@ -144,6 +157,8 @@ long reste valide (ces sections y sont aussi).
   `crew/CLAUDE_CONTEXT/TESTS_DONE/`, ni `crew/CLAUDE_BATCH.md` (devient
   donnée live dès le premier batch réel, jamais dans la liste blanche même
   si livré comme squelette au départ).
+- Ne modifie jamais un `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` existant (créé
+  une seule fois, sur confirmation, s'il est absent).
 - N'écrase jamais un fichier `conflict` sans confirmation explicite —
   préfère laisser un fichier périmé plutôt que perdre une personnalisation
   utilisateur.

@@ -12,7 +12,7 @@ Adapter/retirer les lignes hors stack.
 - Feature ou fix → `test-driven-development` (test avant code). Feature ambiguë → `brainstorming` d'abord.
 - 2+ tâches indépendantes → `dispatching-parallel-agents` ; isolation du workspace → `using-git-worktrees` ; plan avec tâches indépendantes en session → `subagent-driven-development`.
 - Auth/tokens/chiffrement/secrets → `security-review` avant merge (`security-guidance` en complément).
-- Frontend créé ou retouché : testé responsive (mobile/tablette/desktop) et validé visuellement (`run` puis `playwright` ou `claude-in-chrome`) avant de déclarer fini — un build qui passe ne suffit pas.
+- Frontend créé ou retouché : testé responsive (mobile/tablette/desktop) et validé visuellement (`run` puis `playwright` ou `claude-in-chrome`) avant de déclarer fini — un build qui passe ne suffit pas. Cette validation suit `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`.
 - Test navigateur scriptable avec `playwright` → `crew/TESTS/IA`, pas `DEV`.
 - Fin de tâche : `requesting-code-review` puis `simplify` avant de committer **si le diff dépasse ~50 lignes ou touche un fichier moteur/auth/hook** (docs seules, renommage, typo : `verification-before-completion` suffit) ; retour de review reçu → `receiving-code-review` ; branche prête → `finishing-a-development-branch`.
 - Avant d'affirmer « fait/testé/ça marche » → `verification-before-completion` (lancer réellement les tests). Les diagnostics LSP ne remplacent pas la suite de tests/le build.

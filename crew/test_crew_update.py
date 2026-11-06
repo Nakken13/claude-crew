@@ -490,3 +490,21 @@ def test_renamed_persona_old_file_is_reported_removed_and_never_deleted(project_
     agents = project_root / ".claude" / "agents"
     assert (agents / "growth.md").read_text(encoding="utf-8") == "v1\n"
     assert (agents / "social.md").read_text(encoding="utf-8") == "v2\n"
+
+
+# --- politique de tests : fichier utilisateur, jamais moteur ----------------
+
+def test_tests_policy_is_never_an_engine_file():
+    """TESTS_POLICY.md appartient au projet : /crew-update ne doit ni le
+    modifier ni le classer en conflict (sinon l'edition de `Niveau` serait
+    ecrasee a la mise a jour suivante)."""
+    for engine in (u.ENGINE_FILES_COMMON, u.ENGINE_FILES_LEGACY):
+        assert not any("TESTS_POLICY" in f for f in engine)
+
+
+def test_tests_policy_template_ships_with_light_default():
+    template = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "template" / "crew" / "CLAUDE_CONTEXT" / "TESTS_POLICY.md"
+    )
+    assert "Niveau : light" in template.read_text(encoding="utf-8")

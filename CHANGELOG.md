@@ -8,6 +8,7 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Adaptive test policy** — `/crew-close-task` no longer writes a TESTS checklist on every closure. A per-project `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (level `none | light | full` + risky zones, never touched by `/crew-update`) drives it: the default `light` writes a checklist (5 cases max) only for invisible, serious, untested failures, and asks once when genuinely unsure. Code review and `simplify` now follow the ~50-line / engine-auth-hook threshold at every level. `/crew-init` infers the policy with no extra question; `/crew-update` offers to create it (never silently — a project without the file keeps the historical `full` behaviour).
 - **`CLAUDE.md` slimmed ~10 KB → ~5 KB (≈4.5k → ≈2.2k tokens loaded every session).** Task lifecycle, batching/anti-collision, context-efficiency rules and detailed persona routing moved verbatim to the new on-demand engine file `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` (added to `crew_update.py` engine files and to the template); `CLAUDE.md` keeps skill/persona routing, `/crew-*` commands and a few always-on rules. Hook messages, skills, agents and `CLAUDE_BATCH.md` point to the new doc instead of `CLAUDE.md § ...`.
 - **Context-reset threshold unified at 150k tokens** for any window size (the Stop hook no longer uses 800k for 1M windows).
 

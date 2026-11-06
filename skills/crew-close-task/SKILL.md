@@ -1,11 +1,11 @@
 ---
 name: crew-close-task
-description: Clôture une tâche crew terminée — vérifie les cases, passes review + simplify, historise, sort les tests IA/DEV, barre la tâche du batch. Trigger — "/crew-close-task", "cette tâche est finie", "clôture la tâche".
+description: Clôture une tâche crew terminée — vérifie les cases, passes review + simplify (au-delà du seuil), historise, sort les tests IA/DEV selon la politique de tests du projet, barre la tâche du batch. Trigger — "/crew-close-task", "cette tâche est finie", "clôture la tâche".
 ---
 
 Exécute le protocole défini dans `crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md` § "Gestion des tâches" (point
-3) — ne pas clore une tâche en sautant ces étapes, même perçue comme petite
-(obligation de modularité, cf.
+3) — ne sauter aucune étape. Les passes de l'étape 3 et les tests de l'étape 5
+suivent leurs seuils ; la modularité reste toujours exigée (cf.
 `crew/CLAUDE_CONTEXT/AGENTS.md` si ce projet y documente des anti-patterns
 précis).
 
@@ -26,12 +26,16 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
 2. Vérifier que **toutes** les actions `- [ ]` du fichier sont cochées
    `- [x]`. Si non → **ne pas continuer** : lister les actions restantes et
    s'arrêter là.
-3. Passes obligatoires avant closing (pas optionnelles, pas de raccourci
-   même sur une tâche perçue comme petite) :
+3. Passes avant closing, **si le diff dépasse le seuil du routage de
+   `CLAUDE.md`** (« Fin de tâche » ; identique pour tous les niveaux de la
+   politique de tests) :
    - Skill `requesting-code-review` sur le code touché par la tâche.
    - Skill `simplify` sur le même périmètre — couvre réutilisation,
      simplification, efficacité **et** modularité (pas de fichier
      fourre-tout, pas de logique dupliquée à 2+ endroits sans extraction).
+
+   Sous ce seuil : `verification-before-completion` suffit ; la modularité
+   reste exigée.
 4. **Commit de l'implémentation**, une fois les passes du point 3 faites et
    les retours appliqués : `git status` pour identifier les fichiers
    réellement modifiés par **cette tâche** (celle en cours de clôture — pas
@@ -51,13 +55,22 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
    d'implémentation touché hors crew/) → no-op explicite : le dire (« rien
    à committer ici »).
 5. Une fois le commit d'implémentation fait (ou son no-op constaté) :
+   - **Décider des tests** (avant d'écrire l'entrée `HISTORIQUE`, qui en porte
+     le verdict) : lire `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` et appliquer son
+     niveau, sa grille, son protocole d'hésitation et son plafond de cases —
+     ce fichier est la seule source de ces règles. **Absent** → projet pas
+     encore migré : comportement historique (`full`), rien ne change en
+     silence ; ajouter au rapport final « Politique de tests absente :
+     `/crew-update` pour l'activer ».
+   - Si une checklist est décidée : créer `crew/TESTS/IA/<slug>.md` et/ou
+     `crew/TESTS/DEV/<slug>.md` selon le critère de tri de `CLAUDE.md`
+     (🤖/🔍 = l'IA peut dérouler seule ; 🖱️ = action humaine réellement
+     nécessaire). Ne pas cocher ces tests à la création — validation pour une
+     session ultérieure.
    - Supprimer `crew/CURRENT_TASKS/<slug>.md`.
    - Ajouter une entrée dans `crew/CLAUDE_CONTEXT/HISTORIQUE.md` : quoi,
-     quand, fichiers/commits clés.
-   - Créer `crew/TESTS/IA/<slug>.md` et/ou `crew/TESTS/DEV/<slug>.md` selon
-     le critère de tri de `CLAUDE.md` (🤖/🔍 = l'IA peut dérouler seule ;
-     🖱️ = action humaine réellement nécessaire). Ne pas cocher ces tests à
-     la création — validation pour une session ultérieure.
+     quand, fichiers/commits clés, et le verdict tests défini par la
+     politique (omis en `none`).
    - Barrer la ligne de la tâche dans `crew/CLAUDE_BATCH.md` (`~~`slug.md`~~`,
      batch ou section « À classer ») — **ne jamais supprimer la ligne** :
      `prune_closed_batches` (`crew/crew_hook.py`) ne retire un batch que
@@ -93,8 +106,9 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
 
 - Ne coche jamais des actions à la place de l'utilisateur pour pouvoir clore
   plus vite — si des actions restent non cochées, il s'arrête et le dit.
-- Ne saute jamais les passes `requesting-code-review`/`simplify`/modularité,
-  quelle que soit la taille perçue de la tâche.
+- Ne saute jamais `requesting-code-review`/`simplify` au-delà du seuil de
+  l'étape 3, ni l'exigence de modularité en dessous.
+- Ne génère pas de checklist « par réflexe » : `TESTS_POLICY.md` décide.
 - Ne décide pas qu'un test va en `IA/` par défaut — applique le vrai critère
   (l'IA a-t-elle de quoi l'exécuter elle-même ?), pas une facilité.
 - Ne supprime jamais un worktree/branche de batch tant qu'une autre tâche du
