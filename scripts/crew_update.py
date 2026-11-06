@@ -59,6 +59,7 @@ ENGINE_FILES_LEGACY = [
     ".claude/skills/crew-close-task/SKILL.md",
     ".claude/skills/crew-status/SKILL.md",
     ".claude/skills/crew-start/SKILL.md",
+    ".claude/skills/crew-collab/SKILL.md",
 ]
 
 def legacy_persona_files(project_root, source_root=None):

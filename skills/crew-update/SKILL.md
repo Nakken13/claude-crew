@@ -130,6 +130,15 @@ long reste valide (ces sections y sont aussi).
      avec `--remove-double-hook` (ne retire que ces entrées hook, le reste
      du settings est conservé, mais le fichier est reformaté en JSON indenté).
 
+## Claims distants (projets existants)
+
+8ter. Si `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` est **absent**, le créer depuis
+   `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (clone
+   manuel : `<source>/template/...`), avec `remote_claims : false` : le projet
+   solo garde exactement son comportement, rien n'est synchronisé tant que le
+   dev ne passe pas la ligne à `true`. Sans question (le défaut est inerte). Un
+   fichier existant n'est **jamais** modifié ; il n'est pas dans `ENGINE_FILES_*`.
+
 ## Rapporter
 
 9. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
@@ -144,6 +153,8 @@ long reste valide (ces sections y sont aussi).
   `crew/CLAUDE_CONTEXT/TESTS_DONE/`, ni `crew/CLAUDE_BATCH.md` (devient
   donnée live dès le premier batch réel, jamais dans la liste blanche même
   si livré comme squelette au départ).
+- Ne modifie jamais un `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` existant (créé une
+  seule fois, désactivé par défaut, s'il est absent).
 - N'écrase jamais un fichier `conflict` sans confirmation explicite —
   préfère laisser un fichier périmé plutôt que perdre une personnalisation
   utilisateur.

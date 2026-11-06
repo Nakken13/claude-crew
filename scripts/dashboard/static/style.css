@@ -97,3 +97,20 @@ button.danger { background: var(--danger); }
 button:hover { opacity: 0.85; }
 
 .muted { color: var(--muted); font-size: 0.75rem; }
+
+/* Kanban équipe (claims distants) */
+.team { grid-column: 1 / -1; }
+.team-columns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+.card.mine { border-color: var(--accent); }
+.card.expired { border-color: var(--warn); opacity: 0.75; }
+.card .muted { margin-top: 0.15rem; overflow-wrap: anywhere; }
+
+/* Responsive : tablette puis mobile (le layout d'origine est fixe 3 colonnes). */
+@media (max-width: 960px) {
+  .grid { grid-template-columns: 1fr; }
+  .task-columns { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  body { padding: 0.75rem; }
+  .task-columns, .team-columns { grid-template-columns: 1fr; }
+}
