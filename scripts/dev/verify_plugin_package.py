@@ -124,6 +124,7 @@ ENGINE_FILE_PAIRS = [
     # by design. check_crew_init_is_plugin_native covers its correctness now.
     (".claude/skills/crew-new-task/SKILL.md", "skills/crew-new-task/SKILL.md"),
     (".claude/skills/crew-start/SKILL.md", "skills/crew-start/SKILL.md"),
+    (".claude/skills/crew-collab/SKILL.md", "skills/crew-collab/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
     # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in

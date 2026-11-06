@@ -86,6 +86,8 @@ def _shared_lock_paths(root):
 
 
 MAIN_ROOT, LOCKS_FILE, LOCKS_MUTEX = _shared_lock_paths(ROOT)
+# Taches TODO d'autres devs que /crew-start doit ignorer (local, non versionne).
+IGNORED_FILE = LOCKS_FILE.with_name("crew_ignored.json")
 CREW = ROOT / "crew"
 DIRS = {
     "PROBLEMS": CREW / "PROBLEMS",
@@ -1386,7 +1388,7 @@ DIGEST_LINE_MAX = 160
 _CHECKBOX_RE = re.compile(r"^[ \t]*[-*]\s*\[( |x|X)\]", re.MULTILINE)
 
 
-def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP):
+def build_session_digest(current, paused, batches, other_locks, warnings, history, cap=DIGEST_CAP, remote=()):
     """Digest crew <= `cap` caracteres (fonction pure). Ordre fixe : CURRENT_TASKS,
     PAUSED, batchs actifs, verrous d'autres sessions, warnings, HISTORIQUE. Quand
     une ligne ne tient plus, tout le reste est remplace par « … (+N) » : les
@@ -1398,6 +1400,7 @@ def build_session_digest(current, paused, batches, other_locks, warnings, histor
     ]
     items += ["[batch actif] %s — Zone : %s" % (header, zone) for header, zone in batches]
     items += ["[verrou] %s" % lock for lock in other_locks]
+    items += ["[distant] %s" % r for r in remote]
     items += list(warnings)
     items += ["[historique] %s" % t for t in history]
     if not items:
@@ -1468,6 +1471,22 @@ def _digest_history(n=3):
     return titles
 
 
+def _digest_remote_claims():
+    """Une ligne par tache ouverte publiee par un dev (ref locale, SANS reseau),
+    hors taches deja presentes dans crew/ ici. Les textes ont deja ete ramenes a une
+    ligne par `_claims_clean`."""
+    if not claims_enabled():
+        return []
+    local = active_task_slugs()
+    rows = [(s, e) for s, e in sorted(_claims_expire(_claims_local()[1], _claims_now()).items()) if s not in local]
+    if not rows:
+        return []                                   # cas courant : aucun spawn git d'identite
+    me = _claims_identity()
+    return ["%s — %s (%s)" % (s, (e.get("title") or "?")[:80],
+                              "moi" if e.get("owner") == me else (e.get("owner") or e.get("author") or "?")[:40])
+            for s, e in rows]
+
+
 def session_digest(session_id):
     """Lit crew/ (lecture seule : aucune ecriture, aucun save_locks) et rend le
     digest ; None si le projet n'a pas de crew/ (rien a injecter)."""
@@ -1482,6 +1501,7 @@ def session_digest(session_id):
         _safe(lambda: _digest_locks(session_id), []),
         _safe(check_batches, []),
         _safe(_digest_history, []),
+        remote=_safe(_digest_remote_claims, []),
     )
 
 
@@ -1518,6 +1538,138 @@ def _task_names(d):
             if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
 
 
+def _read_ignored():
+    """{slug: owner | None} from crew_ignored.json; missing/corrupt -> {}.
+    The older format (list + a single `owner`) is still read."""
+    try:
+        data = json.loads(IGNORED_FILE.read_text(encoding="utf-8"))
+        raw = data.get("ignored", {})
+        if isinstance(raw, list):
+            owner = data.get("owner") if isinstance(data.get("owner"), str) and data.get("owner") else None
+            return {x: owner for x in raw if isinstance(x, str)}
+        return {k: (v if isinstance(v, str) and v else None) for k, v in raw.items() if isinstance(k, str)}
+    except Exception:
+        return {}
+
+
+def load_ignored():
+    """`.md` slugs skipped by `next_task`."""
+    return set(_read_ignored())
+
+
+def _valid_person_name(name):
+    """Name safe for a config line, a claim and a shell argument: 1-60 chars
+    (letters, digits, space, `.` `@` `-` `_`), single line."""
+    return isinstance(name, str) and re.fullmatch(r"[\w .@-]{1,60}", name.strip()) is not None
+
+
+def _opts(argv, known):
+    """(known `--key value` options, positionals); an unknown option or one without a value -> ValueError."""
+    opts, pos, i = {}, [], 0
+    while i < len(argv):
+        if argv[i].startswith("--"):
+            if argv[i][2:] not in known or i + 1 >= len(argv):
+                raise ValueError(f"invalid option: {argv[i]}")
+            opts[argv[i][2:]], i = argv[i + 1], i + 2
+        else:
+            pos.append(argv[i])
+            i += 1
+    return opts, pos
+
+
+_OWNER_LINE_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?\**\s*(?:owner|assigned(?:\s+to)?|assign[ée]e?(?:\s+[àa])?|claimed?(?:\s+by)?|responsible|responsable)\s*\**\s*:\s*\**\s*(.+?)\s*\**\s*$",
+    re.IGNORECASE)
+_UNASSIGNED = "(unassigned)"
+
+
+def _todo_owner_mention(slug):
+    """Name written in the TODO file (`Owner: x`, `Assigned to: x`, `Claimed by: x`, `Responsible: x`,
+    French aliases `Assigné à` / `Responsable` accepted; first 40 lines); None if there is no mention."""
+    try:
+        with open(DIRS["TODO"] / slug, encoding="utf-8-sig") as fh:
+            for _ in range(40):
+                line = fh.readline()
+                if not line:
+                    break
+                m = _OWNER_LINE_RE.match(line)
+                if m and _valid_person_name(m.group(1)):
+                    return m.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
+def _collab_name():
+    return _claims_config().get("collab_name", "").strip() or None
+
+
+def _same_person(a, b):
+    return bool(a) and bool(b) and a.strip().casefold() == b.strip().casefold()
+
+
+def _by_owner(store):
+    out = {}
+    for who in store.values():
+        out[who or _UNASSIGNED] = out.get(who or _UNASSIGNED, 0) + 1
+    return out
+
+
+def ignore_cli(argv):
+    """`crew_hook.py ignore <snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off>`:
+    local list of TODO tasks that `/crew-start` must not start, with their owner (a teammate's tasks
+    brought in by a pull). `snapshot` assigns every TODO present: a mention in the file, else a remote
+    claim, else `--owner`; with none of the three it is set aside anyway as "unassigned" (listed in
+    `unmarked`). Tasks marked with your own name are never ignored. `off` deletes the list."""
+    usage = {"ok": False, "reason": "usage: ignore snapshot [--owner <name>]|add <slug> [--owner <name>]|remove <slug>|list|off"}
+    try:
+        opts, slugs = _opts(argv[1:], {"owner"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub not in ("snapshot", "add", "remove", "list", "off"):
+        return usage
+    if "owner" in opts and not _valid_person_name(opts["owner"]):
+        return {"ok": False, "reason": "invalid --owner (1-60 chars: letters, digits, space . @ - _)"}
+    if sub in ("add", "remove") and not slugs:
+        return {"ok": False, "reason": f"`ignore {sub}`: slug required"}
+    slugs = [x if x.endswith(".md") else x + ".md" for x in slugs]
+    if sub == "off":
+        try:
+            IGNORED_FILE.unlink()
+        except FileNotFoundError:
+            pass
+        return {"ok": True, "ignored": [], "by_owner": {}}
+    before = _read_ignored()
+    store, owner = dict(before), opts.get("owner", "").strip() or None
+    if sub == "snapshot":
+        me = _collab_name()
+        claims = _claims_local()[1] if claims_enabled() else {}
+        for slug in _task_names(DIRS["TODO"]):
+            if store.get(slug):
+                continue
+            c = claims.get(slug) or {}
+            who = _todo_owner_mention(slug) or c.get("owner") or c.get("author")
+            if _same_person(who, me):
+                continue  # it is mine
+            store[slug] = who or owner  # no known owner: still ignored ("unassigned"), never started
+    elif sub == "add":
+        for slug in slugs:
+            store[slug] = owner or store.get(slug)
+    elif sub == "remove":
+        for slug in slugs:
+            store.pop(slug, None)
+    if store != before:
+        IGNORED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = IGNORED_FILE.with_name(IGNORED_FILE.name + ".tmp")
+        tmp.write_text(json.dumps({"ignored": dict(sorted(store.items()))}, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, IGNORED_FILE)
+    out = {"ok": True, "ignored": sorted(store), "added": sorted(set(store) - set(before)), "by_owner": _by_owner(store)}
+    if sub == "snapshot":
+        out["unmarked"] = sorted(t for t, who in store.items() if not who)
+    return out
+
+
 def next_task(session_id):
     """Choix deterministe de la tache pour `/crew-start` (lecture seule : ni
     verrou, ni deplacement — le skill les pose ensuite via le marqueur
@@ -1534,16 +1686,30 @@ def next_task(session_id):
     rows = _digest_task_rows(DIRS["CURRENT_TASKS"])
     current = [r[0] for r in rows]
     paused = _task_names(DIRS["PAUSED"])
-    todo = _task_names(DIRS["TODO"])
-    skipped = []
+    ignored = _read_ignored()
+    todo_all = _task_names(DIRS["TODO"])
+    todo = [t for t in todo_all if t not in ignored]
+    skipped = [{"slug": t, "reason": f"ignored locally (task of {ignored[t]})" if ignored[t]
+                else "ignored locally (another dev's task)"}
+               for t in todo_all if t in ignored]
     out = {"action": "none", "paused": paused, "skipped": skipped,
            "unclassified": [t for t in todo if find_section_for(t, sections) is None]}
+
+    remote = {}  # claims actifs d'AUTRES devs (opt-in remote_claims) ; vide sinon
+    if claims_enabled():
+        warning, remote, remote_todo = claims_remote_view()
+        if warning:
+            out["claims_warning"] = warning
+        if remote_todo:
+            out["remote_todo"] = remote_todo
 
     mine = []
     for name, _title, done, _total in rows:
         owner = owners.get(name)
         if owner and owner != session_id:
             skipped.append({"slug": name, "reason": f"verrou : repris par la session {str(owner)[:8]}"})
+        elif name in remote:
+            skipped.append({"slug": name, "reason": f"claim distant : {remote[name]['owner']}"})
         else:
             mine.append((done, name))
     if mine:
@@ -1555,6 +1721,7 @@ def next_task(session_id):
         sec = find_section_for(tied[0], sections)
         if sec:
             out["batch"] = _batch_key(sec["header"])
+            out["zone"] = sorted(sec["zone_paths"])
             out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
         return out
 
@@ -1570,11 +1737,23 @@ def next_task(session_id):
         if not sec["zone_paths"]:
             skipped += [{"slug": t, "reason": f"zone inconnue : {_batch_key(sec['header'])}"} for t in cands]
             continue
+        sec_claims = sec["slugs"] & set(remote)
+        if sec_claims:
+            first_owner = remote[sorted(sec_claims)[0]]["owner"]
+            skipped += [{"slug": t, "reason": f"claim distant : {remote[t]['owner']}" if t in remote
+                         else f"batch actif (claim distant : {first_owner})"} for t in cands]
+            continue
+        rclash = next(((s, e) for s, e in remote.items()
+                       if _claims_zone_clash(sec["zone_paths"], e.get("zone"))), None)
+        if rclash:
+            skipped += [{"slug": t, "reason": f"claim distant : zone chevauche {rclash[0]} ({rclash[1]['owner']})"}
+                        for t in cands]
+            continue
         clash = next((a for a in active if any(_path_overlaps(x, y) for x in sec["zone_paths"] for y in a["zone_paths"])), None)
         if clash:
             skipped += [{"slug": t, "reason": f"zone chevauche le batch actif {_batch_key(clash['header'])}"} for t in cands]
             continue
-        out.update(action="start", task=cands[0], batch=_batch_key(sec["header"]))
+        out.update(action="start", task=cands[0], batch=_batch_key(sec["header"]), zone=sorted(sec["zone_paths"]))
         out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
         return out
     if out["unclassified"]:
@@ -1695,12 +1874,543 @@ def crew_status():
     }
 
 
+# --- Claims distants : ref git `refs/crew/claims` (synchro multi-devs) -------
+# Couche partagee « qui fait quoi + taches ouvertes », poussee SEULE (jamais sur
+# main). Les dossiers crew/ restent la verite de l'etat des taches. Le claim est
+# un compare-and-swap : `push --force-with-lease=<ref>:<tip>` n'ecrase la ref que
+# si elle vaut encore le tip sur lequel on s'est base. Opt-in via CREW_CONFIG.md
+# (`remote_claims : true`). Jamais appele depuis un hook (pas de reseau en
+# PreToolUse) : uniquement `claims ...` et `next-task`, lances par les skills.
+CLAIMS_REF = "refs/crew/claims"
+CLAIMS_FILE = "claims.json"
+CLAIMS_CONFIG = "CREW_CONFIG.md"
+CLAIMS_TTL = datetime.timedelta(hours=8)
+CLAIMS_RETRIES = 3
+CLAIMS_GIT_TIMEOUT_SEC = 20
+_CLAIMS_GIT_ENV = {"LC_ALL": "C", "LANGUAGE": "C", "GIT_TERMINAL_PROMPT": "0"}  # messages git stables, jamais de prompt
+_CLAIMS_SLUG_RE = re.compile(r"[A-Za-z0-9][\w.-]*\.md")
+_CLAIMS_REF_RE = re.compile(r"refs/crew/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*|refs/heads/crew-[A-Za-z0-9_-]+")
+_CLAIMS_REMOTE_RE = re.compile(r"[A-Za-z0-9_][\w.@:/~-]*")
+_CLAIMS_STOPWORDS = {"des", "les", "une", "pour", "avec", "dans", "sur", "the", "and", "for", "ajouter",
+                     "creer", "faire", "tache", "task", "mise", "jour"}
+
+
+def _claims_now():
+    """Heure courante en UTC (aware) : un TTL doit rester juste entre devs de fuseaux differents."""
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _claims_config():
+    out = {}
+    try:
+        for line in (CTX / CLAIMS_CONFIG).read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\s*([A-Za-z_][\w-]*)\s*[:=]\s*(.*?)\s*$", line)
+            if m:
+                out[m.group(1)] = m.group(2)
+    except Exception:
+        pass
+    return out
+
+
+def claims_enabled():
+    return _claims_config().get("remote_claims", "").strip().lower() in ("true", "1", "yes", "oui", "on")
+
+
+def _claims_git(*args, input_bytes=None, env=None):
+    """(returncode, stdout, stderr) ; ne leve jamais (git absent, timeout...)."""
+    try:
+        r = subprocess.run(["git", *args], cwd=str(ROOT), input=input_bytes, capture_output=True,
+                           stdin=None if input_bytes is not None else subprocess.DEVNULL,
+                           timeout=CLAIMS_GIT_TIMEOUT_SEC, env={**os.environ, **_CLAIMS_GIT_ENV, **(env or {})})
+        return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+    except Exception as e:
+        return 1, "", str(e)
+
+
+_CLAIMS_ID_CACHE = {}
+
+
+def _claims_identity():
+    """Name chosen via `/crew-collab` (config `collab_name`), else the checkout's
+    user.email (memoised per root: one git spawn per process)."""
+    name = _claims_config().get("collab_name", "").strip()
+    if name:
+        return name
+    key = str(ROOT)
+    if key not in _CLAIMS_ID_CACHE:
+        rc, out, _ = _claims_git("config", "user.email")
+        _CLAIMS_ID_CACHE[key] = out.strip() if rc == 0 and out.strip() else \
+            (os.environ.get("USERNAME") or os.environ.get("USER") or "unknown") + "@local"
+    return _CLAIMS_ID_CACHE[key]
+
+
+def _claims_valid_slug(slug):
+    return isinstance(slug, str) and ".." not in slug and _CLAIMS_SLUG_RE.fullmatch(slug) is not None
+
+
+_CLAIMS_STR_FIELDS = (("owner", 200), ("author", 200), ("session", 200), ("batch", 200), ("branch", 200), ("title", 300))
+
+
+def _claims_str(value, cap=500):
+    """Texte d'autrui : une seule ligne (pas de fausse consigne multi-lignes) et plafonne."""
+    return re.sub(r"\s+", " ", value).strip()[:cap] if isinstance(value, str) else None
+
+
+def _claims_clean(data):
+    """Normalise la ref distante : ce sont des donnees d'AUTRES devs, donc non fiables.
+    Cles invalides (traversee de chemin...) et entrees non-dict ecartees ; types forces ;
+    `ts` illisible -> None (le claim n'expire alors jamais : visible, a liberer a la main)."""
+    out = {}
+    for slug, e in (data or {}).items():
+        if not _claims_valid_slug(slug) or not isinstance(e, dict):
+            continue
+        zone = e.get("zone")
+        ts = _claims_parse_ts(e.get("ts")) if isinstance(e.get("ts"), str) else None
+        out[slug] = {
+            "status": "current" if e.get("status") == "current" else "todo",
+            **{k: _claims_str(e.get(k), cap) for k, cap in _CLAIMS_STR_FIELDS},
+            "body": e.get("body") if isinstance(e.get("body"), str) else None,
+            "zone": [z[:300] for z in zone if isinstance(z, str)] if isinstance(zone, list) else [],
+            "ts": ts.isoformat(timespec="seconds") if ts else None}
+    return out
+
+
+def _claims_local():
+    """(tip, tasks) lus dans la ref locale — sans reseau."""
+    rc, out, _ = _claims_git("rev-parse", "--verify", "-q", _claims_ref())
+    if rc != 0 or not out.strip():
+        return None, {}
+    tip = out.strip()
+    rc, blob, _ = _claims_git("show", f"{tip}:{CLAIMS_FILE}")
+    try:
+        data = json.loads(blob) if rc == 0 else {}
+    except Exception:
+        data = {}
+    return tip, _claims_clean(data if isinstance(data, dict) else {})
+
+
+def claims_fetch():
+    """Recupere la ref distante. {ok, offline, tasks, tip}. Hors ligne : ok False,
+    tasks/tip = derniere vue locale (information perimee, jamais bloquante)."""
+    ref = _claims_ref()
+    rc, _, err = _claims_git("fetch", "--quiet", _claims_remote(), f"+{ref}:{ref}")
+    if rc != 0:
+        if "couldn't find remote ref" in err or "could not find remote ref" in err:
+            return {"ok": True, "offline": False, "tasks": {}, "tip": None}  # personne n'a encore rien publie
+        tip, tasks = _claims_local()
+        return {"ok": False, "offline": True, "tasks": tasks, "tip": tip}
+    tip, tasks = _claims_local()
+    return {"ok": True, "offline": False, "tasks": tasks, "tip": tip}
+
+
+def _claims_ref():
+    """Ref portant les claims. `claims_ref` (CREW_CONFIG.md) permet le repli sur une branche
+    `refs/heads/crew-*` si le serveur refuse les refs custom. Confinee a `refs/crew/*` ou
+    `refs/heads/crew-*` : jamais `main` (le fichier de config est versionne). Invalide = defaut."""
+    ref = _claims_config().get("claims_ref", "")
+    return ref if _CLAIMS_REF_RE.fullmatch(ref) else CLAIMS_REF
+
+
+def _claims_remote():
+    remote = _claims_config().get("claims_remote", "")
+    return remote if _CLAIMS_REMOTE_RE.fullmatch(remote) else "origin"  # jamais une valeur lue comme option git
+
+
+def _claims_parse_ts(value):
+    try:
+        ts = datetime.datetime.fromisoformat(value)
+    except Exception:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=datetime.timezone.utc)
+
+
+def _claims_to_todo(e):
+    """Entree rendue a la file `todo` (liberee ou perimee), corps et titre conserves."""
+    return {**e, "status": "todo", "owner": None, "session": None, "batch": None, "branch": None}
+
+
+def _claims_expire(tasks, now):
+    """Copie de `tasks` ou les claims plus vieux que CLAIMS_TTL sont liberes :
+    retour en `todo` si l'entree porte un corps, supprimee sinon."""
+    out = {}
+    for slug, e in tasks.items():
+        ts = _claims_parse_ts(e.get("ts")) if e.get("status") == "current" else None
+        if ts is not None and now - ts > CLAIMS_TTL:
+            if not e.get("body"):
+                continue
+            e = _claims_to_todo(e)
+        out[slug] = e
+    return out
+
+
+def _claims_commit(tasks, parent, message):
+    blob = json.dumps(tasks, ensure_ascii=False, indent=1, sort_keys=True).encode("utf-8")
+    rc, sha, _ = _claims_git("hash-object", "-w", "--stdin", input_bytes=blob)
+    if rc != 0:
+        return None
+    rc, tree, _ = _claims_git("mktree", input_bytes=f"100644 blob {sha.strip()}\t{CLAIMS_FILE}\n".encode())
+    if rc != 0:
+        return None
+    me = _claims_identity()
+    env = {**os.environ, "GIT_AUTHOR_NAME": me, "GIT_AUTHOR_EMAIL": me,
+           "GIT_COMMITTER_NAME": me, "GIT_COMMITTER_EMAIL": me}
+    args = ["commit-tree", tree.strip(), "-m", message] + (["-p", parent] if parent else [])
+    rc, commit, _ = _claims_git(*args, env=env)
+    return commit.strip() if rc == 0 and commit.strip() else None
+
+
+_CLAIMS_NOOP = object()
+
+
+def _claims_mutate(fn, message):
+    """Boucle CAS : fetch -> `fn(tasks)` (muta ; renvoie None = ecrire, str = refus,
+    _CLAIMS_NOOP = rien a ecrire) -> commit -> push avec lease sur le tip lu.
+    Push refuse (quelqu'un a ecrit entre-temps) : on refetch et on revalide.
+    Hors ligne : `ok True` + `offline True` + `warning` (mode souple, RIEN n'est publie :
+    les appelants lisent `offline`, jamais seulement `ok`)."""
+    ref, remote = _claims_ref(), _claims_remote()
+    for _ in range(CLAIMS_RETRIES):
+        f = claims_fetch()
+        if not f["ok"]:
+            return {"ok": True, "offline": True, "warning": "hors ligne : claims distants non verifies, "
+                    "action non publiee (best-effort)"}
+        tasks = _claims_expire(f["tasks"], _claims_now())
+        verdict = fn(tasks)
+        if verdict is _CLAIMS_NOOP:
+            return {"ok": True}
+        if verdict is not None:
+            return {"ok": False, "reason": verdict}
+        commit = _claims_commit(tasks, f["tip"], message)
+        if not commit:
+            return {"ok": False, "reason": "ecriture de la ref impossible (git)"}
+        rc, _, _ = _claims_git("push", "--quiet", f"--force-with-lease={ref}:{f['tip'] or ''}",
+                               remote, f"{commit}:{ref}")
+        if rc == 0:
+            _claims_git("update-ref", ref, commit)
+            return {"ok": True}
+    return {"ok": False, "reason": f"conflit : push refuse apres {CLAIMS_RETRIES} essais (reessayer)"}
+
+
+def _claims_zone_clash(zone_a, zone_b):
+    return any(_path_overlaps(a, b) for a in zone_a or [] for b in zone_b or [])
+
+
+def _claims_op(slug, message, fn):
+    """Point d'entree unique des ecritures : valide le slug une fois, puis boucle CAS."""
+    if not _claims_valid_slug(slug):
+        return {"ok": False, "reason": "slug invalide"}
+    return _claims_mutate(fn, message)
+
+
+def claims_claim(slug, session, batch, zone, branch):
+    me, zone = _claims_identity(), list(zone or [])
+
+    def fn(tasks):
+        e = tasks.get(slug) or {}
+        if e.get("status") == "current" and e.get("owner") not in (None, me):
+            return f"deja pris par {e['owner']} ({e.get('batch') or 'batch inconnu'})"
+        for other, oe in tasks.items():
+            if other != slug and oe.get("status") == "current" and oe.get("owner") not in (None, me) \
+                    and _claims_zone_clash(zone, oe.get("zone")):
+                return f"zone chevauche le claim de {oe['owner']} sur {other}"
+        tasks[slug] = {**e, "status": "current", "owner": me, "session": session, "batch": batch,
+                       "zone": zone or e.get("zone") or [], "branch": branch,
+                       "ts": _claims_now().isoformat(timespec="seconds")}
+        return None
+
+    return _claims_op(slug, f"claim {slug}", fn)
+
+
+def claims_release(slug, done=False):
+    me = _claims_identity()
+
+    def fn(tasks):
+        e = tasks.get(slug)
+        if e is None:
+            return _CLAIMS_NOOP
+        if e.get("owner") not in (None, me):
+            return f"claim de {e['owner']} : liberation refusee"
+        if done or not e.get("body"):
+            del tasks[slug]
+        else:
+            tasks[slug] = _claims_to_todo(e)
+        return None
+
+    return _claims_op(slug, f"{'close' if done else 'release'} {slug}", fn)
+
+
+def claims_publish(slug, title, zone, body):
+    me, zone = _claims_identity(), list(zone or [])
+
+    def fn(tasks):
+        e = tasks.get(slug)
+        if e is not None:
+            if e.get("author") not in (None, me):
+                return _CLAIMS_NOOP if e.get("body") == body else \
+                    f"entree existante de {e['author']} : modification par un autre dev refusee"
+            if e.get("status") == "current" and e.get("owner") not in (None, me):
+                return f"deja pris par {e['owner']} : modification refusee"
+        base = e or {"status": "todo", "owner": None}
+        tasks[slug] = {**base, "title": title, "zone": zone, "body": body, "author": me,
+                       "ts": base.get("ts") or _claims_now().isoformat(timespec="seconds")}
+        return None
+
+    return _claims_op(slug, f"publish {slug}", fn)
+
+
+def _claims_tokens(title):
+    s = re.sub(r"[^a-z0-9 ]+", " ", (title or "").lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")))
+    return {t for t in s.split() if len(t) >= 3 and t not in _CLAIMS_STOPWORDS}
+
+
+def claims_check_dup(title, zone):
+    """Entrees ouvertes proches (zone qui se chevauche OU >= 2 mots significatifs
+    en commun, >= 60 % du plus court titre). Lit la ref locale : pas de reseau."""
+    mine = _claims_tokens(title)
+    out = []
+    for slug, e in sorted(_claims_local()[1].items()):
+        theirs = _claims_tokens(e.get("title"))
+        common = mine & theirs
+        by_title = len(common) >= 2 and len(common) / max(1, min(len(mine), len(theirs))) >= 0.6
+        by_zone = _claims_zone_clash(list(zone or []), e.get("zone"))
+        if by_title or by_zone:
+            out.append({"slug": slug, "title": e.get("title"), "owner": e.get("owner") or e.get("author"),
+                        "reason": "titre proche" if by_title else "zone qui se chevauche"})
+    return out
+
+
+def _claims_local_path(slug):
+    """Chemin local de la tache (TODO / CURRENT_TASKS / PAUSED) ou None."""
+    return next((DIRS[d] / slug for d in ("TODO", "CURRENT_TASKS", "PAUSED") if (DIRS[d] / slug).exists()), None)
+
+
+def claims_materialize(slug):
+    if not _claims_valid_slug(slug):
+        return {"ok": False, "reason": "slug invalide"}
+    existing = _claims_local_path(slug)
+    if existing:
+        return {"ok": True, "path": str(existing), "exists": True}
+    e = _claims_local()[1].get(slug)
+    if e is None or not e.get("body"):
+        e = claims_fetch()["tasks"].get(slug)       # absente de la vue locale : un seul fetch, pas systematique
+    if e is None or not e.get("body"):
+        return {"ok": False, "reason": f"`{slug}` absent des claims distants"}
+    target = DIRS["TODO"] / slug
+    if target.resolve().parent != DIRS["TODO"].resolve():
+        return {"ok": False, "reason": "chemin hors de crew/TODO refuse"}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(target, "x", encoding="utf-8", newline="\n") as fh:  # "x" : jamais d'ecrasement
+            fh.write(e["body"])
+    except FileExistsError:
+        return {"ok": True, "path": str(target), "exists": True}
+    return {"ok": True, "path": str(target), "exists": False}
+
+
+def _claims_ref_on_disk():
+    """La ref des claims existe-t-elle ici ? Lecture du systeme de fichiers uniquement
+    (aucun sous-processus) : appelee par le hook Stop sur CHAQUE projet, y compris solo."""
+    try:
+        ref = _claims_ref()
+        git = MAIN_ROOT / ".git"
+        if git.joinpath(*ref.split("/")).is_file():
+            return True
+        packed = git / "packed-refs"
+        return packed.is_file() and ref.encode() in packed.read_bytes()
+    except Exception:
+        return False
+
+
+def check_claims_optin():
+    """Avertit (non bloquant) si des claims existent dans le depot mais que
+    `remote_claims` n'est pas active : ce dev n'est alors pas protege des doublons."""
+    if claims_enabled() or not _claims_ref_on_disk():
+        return []
+    return ["[claims] `refs/crew/claims` existe dans ce depot mais `remote_claims : true` est absent de "
+            "crew/CLAUDE_CONTEXT/CREW_CONFIG.md : tu n'es pas protege des taches prises par les autres devs."]
+
+
+def claims_board(refresh=False):
+    """Vue Kanban LECTURE SEULE des claims pour le dashboard : colonnes `todo` /
+    `current`. `refresh=True` fait un fetch (reseau) ; sinon lit la ref locale.
+    Les claims perimes (> TTL) restent affiches mais marques `expired`."""
+    empty = {"enabled": False, "offline": False, "me": None, "columns": {"todo": [], "current": []}}
+    if not claims_enabled():
+        return empty
+    offline = False
+    if refresh:
+        f = claims_fetch()
+        tasks, offline = f["tasks"], not f["ok"]
+    else:
+        tasks = _claims_local()[1]
+    now, me = _claims_now(), _claims_identity()
+    cols = {"todo": [], "current": []}
+    for slug, e in sorted(tasks.items()):
+        current = e.get("status") == "current"
+        ts = _claims_parse_ts(e.get("ts")) if current else None
+        age = max(0, int((now - ts).total_seconds() // 60)) if ts else None
+        cols["current" if current else "todo"].append({
+            "slug": slug, "title": e.get("title") or slug, "owner": e.get("owner") or e.get("author"),
+            "mine": e.get("owner") == me, "batch": e.get("batch"), "zone": e.get("zone") or [],
+            "branch": e.get("branch"), "age_minutes": age,
+            "expired": age is not None and age > CLAIMS_TTL.total_seconds() // 60})
+    return {**empty, "enabled": True, "offline": offline, "me": me, "columns": cols}
+
+
+def claims_remote_view():
+    """Vue des claims pour next-task : (warning, claims_des_autres, todo_distants).
+    `claims_des_autres` = {slug: entree} pour les claims actifs d'AUTRES devs."""
+    me = _claims_identity()
+    f = claims_fetch()
+    tasks = _claims_expire(f["tasks"], _claims_now())
+    warning = None if f["ok"] else "claims distants non verifies (hors ligne ou remote inaccessible)"
+    others = {s: e for s, e in tasks.items() if e.get("status") == "current" and e.get("owner") not in (None, me)}
+    local = active_task_slugs()
+    todo = [{"slug": s, "title": e.get("title"), "zone": e.get("zone")} for s, e in sorted(tasks.items())
+            if e.get("status") == "todo" and s not in local]
+    return warning, others, todo
+
+
+def claims_cli(argv):
+    """`crew_hook.py claims <fetch|claim|release|publish|check-dup|materialize|list> ...`"""
+    if not argv:
+        return {"ok": False, "reason": "usage : claims fetch|claim|release|publish|check-dup|materialize|list"}
+    if not claims_enabled():
+        return {"ok": False, "disabled": True, "reason": "remote_claims desactive (crew/CLAUDE_CONTEXT/CREW_CONFIG.md)"}
+    sub, rest = argv[0], argv[1:]
+    opts, pos, i = {}, [], 0
+    while i < len(rest):
+        if rest[i].startswith("--"):
+            key = rest[i][2:]
+            if key == "done":
+                opts[key], i = True, i + 1
+            else:
+                opts[key], i = (rest[i + 1] if i + 1 < len(rest) else ""), i + 2
+        else:
+            pos.append(rest[i])
+            i += 1
+    zone = [z for z in (opts.get("zone") or "").split(",") if z]
+    slug = pos[0] if pos else ""
+    if sub == "fetch":
+        f = claims_fetch()
+        return {"ok": f["ok"], "offline": f["offline"], "tasks": f["tasks"]}
+    if sub == "list":
+        return {"ok": True, "tasks": _claims_expire(_claims_local()[1], _claims_now())}
+    if sub == "check-dup":
+        return {"ok": True, "duplicates": claims_check_dup(opts.get("title", ""), zone)}
+    if not slug:
+        return {"ok": False, "reason": f"`claims {sub}` : slug requis"}
+    if sub == "claim":
+        return claims_claim(slug, opts.get("session") or os.environ.get("CLAUDE_CODE_SESSION_ID"),
+                            opts.get("batch"), zone, opts.get("branch"))
+    if sub == "release":
+        return claims_release(slug, done=bool(opts.get("done")))
+    if sub == "publish":
+        try:
+            body = pathlib.Path(opts["body-file"]).read_text(encoding="utf-8-sig")  # sans BOM éventuel
+        except Exception:
+            return {"ok": False, "reason": "--body-file illisible"}
+        return claims_publish(slug, opts.get("title", slug), zone, body)
+    if sub == "materialize":
+        return claims_materialize(slug)
+    return {"ok": False, "reason": f"sous-commande inconnue : {sub}"}
+
+
+def _config_set(key, value):
+    """Set `key : value` in CREW_CONFIG.md (a single line, the rest is kept);
+    value=None removes the key. Atomic write."""
+    path = CTX / CLAIMS_CONFIG
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        lines = []
+    pat, out, done = re.compile(rf"^\s*{re.escape(key)}\s*[:=]"), [], False
+    for ln in lines:
+        if pat.match(ln):
+            if value is not None and not done:
+                out.append(f"{key} : {value}")
+                done = True
+            continue
+        out.append(ln)
+    if value is not None and not done:
+        out.append(f"{key} : {value}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _collab_people():
+    """[{name, tasks, me}] sorted by task count: ignored TODO (per owner), other devs' remote claims
+    (local view, no network) and my own current / paused tasks."""
+    me, store = _collab_name(), _read_ignored()
+    slugs = {}
+    for slug, who in store.items():
+        slugs.setdefault(who or _UNASSIGNED, set()).add(slug)
+    if claims_enabled():
+        for slug, e in _claims_expire(_claims_local()[1], _claims_now()).items():
+            who = e.get("owner") or e.get("author")
+            if who and slug not in store:
+                slugs.setdefault(who, set()).add(slug)
+    if me:
+        mine = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+        key = next((k for k in slugs if _same_person(k, me)), me)
+        slugs[key] = slugs.get(key, set()) | mine
+    people = [{"name": k, "tasks": len(v), "me": _same_person(k, me)} for k, v in slugs.items() if v]
+    return sorted(people, key=lambda x: (-x["tasks"], x["name"]))
+
+
+def collab_cli(argv):
+    """`crew_hook.py collab <on --name <name>|off|status>`: team mode, switched by `/crew-collab`.
+    `on` sets `remote_claims : true` + `collab_name` (the name owning your claims);
+    `off` returns to the base form (claims off, name removed, ignore list deleted)."""
+    try:
+        opts, _ = _opts(argv[1:], {"name"}) if argv else ({}, [])
+    except ValueError as e:
+        return {"ok": False, "reason": str(e)}
+    sub = argv[0] if argv else None
+    if sub == "on":
+        if not _valid_person_name(opts.get("name")):
+            return {"ok": False, "reason": "`collab on`: --name required (1-60 chars: letters, digits, space . @ - _)"}
+        name = opts["name"].strip()
+        _config_set("remote_claims", "true")
+        _config_set("collab_name", name)
+        out = {"ok": True, "collab": True, "name": name}
+        if _claims_git("remote", "get-url", _claims_remote())[0] != 0:
+            out["warning"] = f"git remote `{_claims_remote()}` not found: claims run in soft mode (nothing is published)"
+        return out
+    if sub == "off":
+        _config_set("remote_claims", "false")
+        _config_set("collab_name", None)
+        ignore_cli(["off"])
+        return {"ok": True, "collab": False}
+    if sub == "status":
+        return {"ok": True, "collab": claims_enabled(), "name": _collab_name(),
+                "ignored": len(_read_ignored()), "people": _collab_people()}
+    return {"ok": False, "reason": "usage: collab on --name <name>|off|status"}
+
+
+def _utf8_stdout():
+    """JSON en UTF-8 quelle que soit la console (cp1252 sous Windows) : les titres viennent d'autres devs."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else None
+    if cmd == "claims":
+        _utf8_stdout()
+        print(json.dumps(claims_cli(sys.argv[2:]), ensure_ascii=False))
+        return
+    if cmd in ("ignore", "collab"):
+        _utf8_stdout()
+        print(json.dumps((ignore_cli if cmd == "ignore" else collab_cli)(sys.argv[2:]), ensure_ascii=False))
+        return
     if cmd in ("count", "status"):
         print(json.dumps(count_batches() if cmd == "count" else crew_status(), ensure_ascii=False))
         return
     if len(sys.argv) > 1 and sys.argv[1] == "next-task":
+        _utf8_stdout()
         print(json.dumps(next_task(os.environ.get("CLAUDE_CODE_SESSION_ID")), ensure_ascii=False))
         return
     try:
@@ -1904,6 +2614,7 @@ def main():
     # longtemps pour ca.
     due_batch_warnings = _throttle_warnings("batch", check_batches(), locks, now_dt)
     due_zone_warnings = _throttle_warnings("zone", zone_warnings, locks, now_dt)
+    due_claims_warnings = _throttle_warnings("claims", _safe(check_claims_optin, []), locks, now_dt)
     # Alerte contexte : palier par session dans locks["warned"]["context"]
     # (persiste avec le reste de `warned` ci-dessous, pas de nouveau fichier).
     # Sans session_id : pas de memoire (cle partagee entre sessions sinon).
@@ -1953,6 +2664,8 @@ def main():
     for w in due_batch_warnings:
         sys.stderr.write(w + "\n")
     for w in due_zone_warnings:
+        sys.stderr.write(w + "\n")
+    for w in due_claims_warnings:
         sys.stderr.write(w + "\n")
 
     # Invariants bloquants (combinés en une seule décision si plusieurs se déclenchent)

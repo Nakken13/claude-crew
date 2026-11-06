@@ -142,6 +142,15 @@ long reste valide (ces sections y sont aussi).
    `ENGINE_FILES_*` : une fois créé il appartient à l'utilisateur. Refus →
    rien n'est créé ; les skills gardent le comportement historique (`full`).
 
+## Claims distants (projets existants)
+
+8ter. Si `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` est **absent**, le créer depuis
+   `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (clone
+   manuel : `<source>/template/...`), avec `remote_claims : false` : le projet
+   solo garde exactement son comportement, rien n'est synchronisé tant que le
+   dev ne passe pas la ligne à `true`. Sans question (le défaut est inerte). Un
+   fichier existant n'est **jamais** modifié ; il n'est pas dans `ENGINE_FILES_*`.
+
 ## Rapporter
 
 9. Résumé final : fichiers créés, fichiers mis à jour, fichiers laissés en
@@ -159,6 +168,8 @@ long reste valide (ces sections y sont aussi).
   si livré comme squelette au départ).
 - Ne modifie jamais un `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` existant (créé
   une seule fois, sur confirmation, s'il est absent).
+- Ne modifie jamais un `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` existant (créé une
+  seule fois, désactivé par défaut, s'il est absent).
 - N'écrase jamais un fichier `conflict` sans confirmation explicite —
   préfère laisser un fichier périmé plutôt que perdre une personnalisation
   utilisateur.

@@ -150,6 +150,13 @@ def get_state():
     }
 
 
+@app.get("/api/claims")
+def get_claims(refresh: bool = False):
+    """Kanban multi-devs (lecture seule, aucune ecriture depuis le dashboard).
+    Sans `refresh` : ref locale, aucun reseau ; `refresh=1` : fetch du remote."""
+    return h.claims_board(refresh=refresh)
+
+
 class MoveRequest(BaseModel):
     to: str
 

@@ -19,7 +19,7 @@ import crew_hook as h  # noqa: E402
 
 
 def _git(root, *args):
-    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, stdin=subprocess.DEVNULL)
 
 
 @pytest.fixture
@@ -204,3 +204,27 @@ def test_purge_unknown_session_404(repo):
     client = TestClient(repo["srv"].app)
     res = client.post("/api/sessions/nope/purge")
     assert res.status_code == 404
+
+
+def test_claims_endpoint_disabled_without_opt_in(repo):
+    from fastapi.testclient import TestClient
+    r = TestClient(repo["srv"].app).get("/api/claims")
+    assert r.status_code == 200 and r.json()["enabled"] is False
+
+
+def test_claims_endpoint_returns_board_from_local_ref_without_network(repo, monkeypatch):
+    from fastapi.testclient import TestClient
+    (repo["ctx"] / "CREW_CONFIG.md").write_text("remote_claims : true\n", encoding="utf-8")
+    tasks = {"a.md": {"status": "current", "owner": "x@t.local", "title": "A", "zone": ["src/a/"],
+                      "batch": "Batch A", "branch": "crew/a", "ts": h._claims_now().isoformat(timespec="seconds")},
+             "b.md": {"status": "todo", "owner": None, "author": "y@t.local", "title": "B", "zone": []}}
+    monkeypatch.setattr(h, "_claims_local", lambda: ("tip", tasks))
+
+    def no_fetch():
+        raise AssertionError("pas de reseau sans refresh=1")
+
+    monkeypatch.setattr(h, "claims_fetch", no_fetch)
+    j = TestClient(repo["srv"].app).get("/api/claims").json()
+    assert j["enabled"] is True
+    assert [c["slug"] for c in j["columns"]["current"]] == ["a.md"]
+    assert [c["owner"] for c in j["columns"]["todo"]] == ["y@t.local"]

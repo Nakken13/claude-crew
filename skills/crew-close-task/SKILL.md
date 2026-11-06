@@ -77,6 +77,13 @@ de revérifier à chaque `Read`/`Write`/`Edit`/`Bash` suivant.
      lorsque toutes ses tâches référencées sont barrées ; une ligne
      supprimée au lieu d'être barrée laisse un header de batch orphelin
      que la purge automatique ne détecte jamais.
+5bis. **Libérer le claim distant** (opt-in : seulement si `crew/CLAUDE_CONTEXT/CREW_CONFIG.md`
+   contient `remote_claims : true`, sinon sauter) :
+   `python "$HOOK" claims release <slug>.md --done` (`$HOOK` : voir `/crew-start`
+   étape 1 ; retire l'entrée de la ref :
+   la tâche est terminée). Hors ligne ou échec → non bloquant : signaler que le
+   claim expirera tout seul (TTL 8 h) ou à relancer plus tard.
+
 6. **Intégration du worktree de batch**, si la session travaille depuis un
    worktree `../<nom-repo>-batch-<slug>/` sur la branche `crew/batch-<slug>`
    (isolation physique posée par `/crew-start`, cf.
