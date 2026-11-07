@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "[ \"$CREW_HOOK_PROFILE\" = minimal ] && exit 0; [ -e \"${CLAUDE_PROJECT_DIR:-.}/crew/CLAUDE_CONTEXT/.gate_armed\" ] || exit 0; PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS + zone verrouillee par une autre session)",
+            "statusMessage": "Batch guard (git mv TODO->CURRENT_TASKS + zone locked by another session)",
             "timeout": 10
           }
         ]
@@ -19,7 +19,7 @@
           {
             "type": "command",
             "command": "IN=$(cat); [ \"$CREW_HOOK_PROFILE\" = minimal ] && exit 0; [ -e \"${CLAUDE_PROJECT_DIR:-.}/crew/CLAUDE_CONTEXT/.gate_armed\" ] || case \"$IN\" in *crew-resume:*|*mv*CURRENT_TASKS*) ;; *) exit 0;; esac; printf '%s' \"$IN\" | { PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"; }",
-            "statusMessage": "Garde batch (git mv TODO->CURRENT_TASKS + zone verrouillee par une autre session)",
+            "statusMessage": "Batch guard (git mv TODO->CURRENT_TASKS + zone locked by another session)",
             "timeout": 10
           }
         ]
@@ -70,7 +70,7 @@
           {
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Libère les verrous batch de la session",
+            "statusMessage": "Releases the session's batch locks",
             "timeout": 30
           }
         ]

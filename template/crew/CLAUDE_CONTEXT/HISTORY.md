@@ -1,11 +1,11 @@
-# Historique des tâches terminées
+# History of completed tasks
 
-Une entrée par tâche finie (code terminé) : quoi, quand, fichiers/commits
-clés. Mémoire de contexte du projet — ne pas résumer, garder les détails qui
-aideraient une session future à comprendre pourquoi une décision a été prise.
+One entry per finished task (code complete): what, when, key files/commits.
+Project context memory — do not summarize, keep the details that would help a
+future session understand why a decision was made.
 
-<!-- Exemple :
-## <slug de la tâche> — AAAA-MM-JJ
-Quoi : ...
-Fichiers/commits clés : ...
+<!-- Example:
+## <task slug> — YYYY-MM-DD
+What: ...
+Key files/commits: ...
 -->

@@ -34,7 +34,7 @@ Delete the file from `CURRENT_TASKS/`, record it in `HISTORY.md`, produce the te
 
 ## Batching — parallelization (`crew/CLAUDE_BATCH.md`)
 
-**One batch = one Claude**; several batches run in parallel. Every new task is also added to `CLAUDE_BATCH.md`: known impact zone → existing batch if overlap/dependency, otherwise new batch (`Zone :` line, i.e. the impact zone); unknown zone → the « À classer » section ("to be classified"). Task done → strike its line (`~~`slug.md`~~`), never delete it; a fully struck batch is removed automatically by the hook.
+**One batch = one Claude**; several batches run in parallel. Every new task is also added to `CLAUDE_BATCH.md`: known impact zone → existing batch if overlap/dependency, otherwise new batch (`Zone :` line, i.e. the impact zone); unknown zone → the `Unsorted` section. Task done → strike its line (`~~`slug.md`~~`), never delete it; a fully struck batch is removed automatically by the hook.
 
 **Invariant: the zones of two active batches (≥1 task in `CURRENT_TASKS/` or `PAUSED/`) are disjoint**; shared files → same batch.
 

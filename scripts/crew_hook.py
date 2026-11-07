@@ -602,7 +602,7 @@ def _slug_session_map(locks):
 
 def _batch_key(header):
     """Stable identity of a batch: header truncated at the first ' · ' (the suffix
-    is a displayed status — 'pas demarre', 'en cours (prochaine : 04)' — that
+    is a displayed status — 'not started', 'in progress (next: 04)' — that
     changes without the batch changing)."""
     return (header or "").split(" · ", 1)[0].strip()
 

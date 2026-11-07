@@ -1,4 +1,4 @@
-# Dépendances / envs
+# Dependencies / envs
 node_modules/
 .venv/
 venv/
@@ -10,11 +10,11 @@ __pycache__/
 .env.local
 .env.*.local
 
-# Graphify (régénérable via `graphify update .` / `graphify init`)
+# Graphify (regenerable via `graphify update .` / `graphify init`)
 graphify-out/*
 !graphify-out/.gitkeep
 
-# État interne des hooks crew (régénéré, pas de valeur à versionner)
+# Internal state of the crew hooks (regenerated, no value in versioning it)
 crew/CLAUDE_CONTEXT/.task_state.json
 crew/CLAUDE_CONTEXT/crew_lock.json
 crew/CLAUDE_CONTEXT/crew_ignored.json
@@ -26,11 +26,11 @@ build/
 .next/
 *.tsbuildinfo
 
-# OS / éditeurs
+# OS / editors
 .DS_Store
 Thumbs.db
 
-# Claude Code — état local/perso, jamais partagé entre postes
+# Claude Code — local/personal state, never shared between machines
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/crew-sessions.lock

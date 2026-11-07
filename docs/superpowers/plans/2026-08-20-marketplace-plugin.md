@@ -436,7 +436,7 @@ Mirror this repo's own `.claude/settings.json` Stop/SessionEnd/PostToolUse block
           {
             "type": "command",
             "command": "PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python); \"$PY\" \"${CLAUDE_PLUGIN_ROOT}/scripts/crew_hook.py\"",
-            "statusMessage": "Libère les verrous batch de la session",
+            "statusMessage": "Releases the session's batch locks",
             "timeout": 30
           }
         ]
@@ -512,55 +512,55 @@ Expected: `FAIL` — `skills/crew-init/SKILL.md` still has the old `~/.claude/te
 
 - [ ] **Step 3: Edit `skills/crew-init/SKILL.md`**
 
-Replace the "Étapes" step 1 block (originally lines 21-58 in the source `.claude/skills/crew-init/SKILL.md`) with:
+Replace the "Steps" step 1 block (originally lines 21-58 in the source `.claude/skills/crew-init/SKILL.md`) with:
 
 ```markdown
-## Étapes
+## Steps
 
-0. **Vérifier l'installation du plugin** : si `${CLAUDE_PLUGIN_ROOT}` n'est pas
-   défini ou ne résout vers aucun répertoire existant, ce skill tourne hors
-   contexte plugin — arrêter immédiatement et dire à l'utilisateur d'installer
-   d'abord le plugin (`/plugin marketplace add Nakken13/claude-crew` puis
-   `/plugin install claude-crew@claude-crew`) avant de relancer `/crew-init`.
-   Ne jamais tenter une copie partielle dans ce cas.
-1. **Copier** à la racine du projet (sans écraser un fichier déjà présent et
-   déjà rempli), depuis `${CLAUDE_PLUGIN_ROOT}/template/` : `CLAUDE.md`,
+0. **Check the plugin installation**: if `${CLAUDE_PLUGIN_ROOT}` is not
+   set or does not resolve to an existing directory, this skill is running
+   outside a plugin context — stop immediately and tell the user to install
+   the plugin first (`/plugin marketplace add Nakken13/claude-crew` then
+   `/plugin install claude-crew@claude-crew`) before re-running `/crew-init`.
+   Never attempt a partial copy in that case.
+1. **Copy** into the project root (without overwriting a file that is already
+   present and filled in), from `${CLAUDE_PLUGIN_ROOT}/template/`: `CLAUDE.md`,
    `AGENTS.md`, `PRODUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`,
-   `check_placeholders.py`, le dossier `crew/` entier (structure vide :
-   `README.md` + `INDEX.md` par sous-dossier, aucun fichier de tâche).
-   **Ne pas copier** les skills, les agents, ni les scripts de hooks — ils
-   tournent directement depuis le plugin installé (`${CLAUDE_PLUGIN_ROOT}`),
-   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` sont
-   déjà disponibles sans rien copier. Ne rien toucher à `.claude/settings.json`
-   pour les hooks crew — ils sont fournis par le plugin (`hooks/hooks.json`),
-   pas par une entrée locale.
-   **Vérifier/installer les dépendances des skills routés dans `CLAUDE.md`** —
-   `claude plugin list` ne les liste pas tous, certains manquent silencieusement
-   si on ne les checke pas explicitement :
-   - Plugins officiels (`claude plugin list | grep -E
-     "superpowers|security-guidance|playwright|claude-md-management|frontend-design"`) :
-     pour chaque manquant, `claude plugin marketplace add
-     anthropics/claude-plugins-official` (idempotent si déjà ajoutée) puis
-     `claude plugin install <nom>@claude-plugins-official`.
-   - `taste-skill` (skill `design-taste-frontend`) — uniquement si le projet a
-     une stack front (détectée à l'étape suivante) : `claude plugin list | grep
-     taste-skill` ; sinon `claude plugin marketplace add
-     https://github.com/Leonxlnx/taste-skill` puis `claude plugin install
+   `check_placeholders.py`, the whole `crew/` folder (empty structure:
+   `README.md` + `INDEX.md` per subfolder, no task file).
+   **Do not copy** the skills, the agents, or the hook scripts — they
+   run directly from the installed plugin (`${CLAUDE_PLUGIN_ROOT}`);
+   `/crew-new-task`, `/crew-close-task`, `/crew-status`, `/crew-start` are
+   already available without copying anything. Do not touch `.claude/settings.json`
+   for the crew hooks — they are provided by the plugin (`hooks/hooks.json`),
+   not by a local entry.
+   **Check/install the dependencies of the skills routed in `CLAUDE.md`** —
+   `claude plugin list` does not list them all, and some are silently missing
+   unless checked explicitly:
+   - Official plugins (`claude plugin list | grep -E
+     "superpowers|security-guidance|playwright|claude-md-management|frontend-design"`):
+     for each missing one, `claude plugin marketplace add
+     anthropics/claude-plugins-official` (idempotent if already added) then
+     `claude plugin install <name>@claude-plugins-official`.
+   - `taste-skill` (skill `design-taste-frontend`) — only if the project has
+     a front-end stack (detected in the next step): `claude plugin list | grep
+     taste-skill`; otherwise `claude plugin marketplace add
+     https://github.com/Leonxlnx/taste-skill` then `claude plugin install
      taste-skill@taste-skill`.
-   - `graphify` CLI (nécessaire à `graphify init/update/query`, cf. § graphify
-     de `CLAUDE.md`) — vérifier `graphify` sur le PATH ; sinon `pipx install
-     graphifyy` (nom du package pip réel, pas `graphify`).
-   - `impeccable` et `ui-ux-pro-max` (skills, pas des plugins — utilisés par le
-     routage design) — vérifier `~/.claude/skills/impeccable` et
-     `~/.claude/skills/ui-ux-pro-max` ; sinon `git clone
-     https://github.com/pbakaus/impeccable.git ~/.claude/skills/impeccable` et
+   - `graphify` CLI (needed by `graphify init/update/query`, see the graphify
+     section of `CLAUDE.md`) — check `graphify` is on the PATH; otherwise `pipx install
+     graphifyy` (the real pip package name, not `graphify`).
+   - `impeccable` and `ui-ux-pro-max` (skills, not plugins — used by the
+     design routing) — check `~/.claude/skills/impeccable` and
+     `~/.claude/skills/ui-ux-pro-max`; otherwise `git clone
+     https://github.com/pbakaus/impeccable.git ~/.claude/skills/impeccable` and
      `git clone https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
      ~/.claude/skills/ui-ux-pro-max`.
    - `motion-design-rn`, `accessibility-motion`, `haptics`, `sound-design-ui`
-     (uniquement si le projet a une stack React Native/mobile) — source non
-     identifiée à ce jour. Vérifier `~/.claude/skills/<nom>` ; si absent,
-     avertir l'utilisateur ("skill non trouvé, source inconnue — le fournir ou
-     retirer la ligne RN/mobile du routage") plutôt que d'inventer une
+     (only if the project has a React Native/mobile stack) — source not
+     identified to date. Check `~/.claude/skills/<name>`; if absent,
+     warn the user ("skill not found, unknown source — provide it or
+     remove the RN/mobile line from the routing") rather than inventing an
      installation.
 ```
 

@@ -70,7 +70,7 @@ latency is invisible and the implementation stays dependency-free
 - `GET /api/state` — aggregates:
   - tasks per folder (TODO/CURRENT_TASKS/PAUSED/ICEBOX), parsed from
     filenames + frontmatter/content
-  - batches from `CLAUDE_BATCH.md`: zone, task list, active vs "à classer"
+  - batches from `CLAUDE_BATCH.md`: zone, task list, active vs "Unsorted"
   - sessions from `crew_lock.json`: session_id → batch/tasks/worktree/
     branch/since, with a stale flag when `since` exceeds the hook's
     `LOCK_TTL`

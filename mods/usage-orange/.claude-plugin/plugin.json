@@ -1,6 +1,6 @@
 {
   "name": "usage-orange",
   "version": "0.1.0",
-  "description": "Bande orange au-dessus du prompt avec les stats /usage (5h, 7j, contexte, coût).",
+  "description": "Orange band above the prompt showing /usage stats (5h, 7d, context, cost).",
   "types": "./types/index.d.ts"
 }

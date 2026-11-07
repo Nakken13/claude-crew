@@ -26,11 +26,11 @@ version numbers match the `version` field in
   - **Visibility & Context (Mods 1–5):** `prompt-cache-control` (5m/1h TTL countdown, `cache_read` / `cache_creation` counters, `<60s` expiry alert), `token-weather` (1-line `☀️ Clear` → `⛅ Cloudy` → `⛈️ Storm` → `🚨 Compact soon` gauge), `turn-inspector` (`/crew-turns` side pane), `stack-viewer` (`/crew-stack` loaded session tree with source & priority), and `agent-flow` (`/crew-agents` live subagent execution tree).
   - **Tasks, Batches & Multi-Session (Mods 6–10):** `crew-radar` (`🟢 X Sessions en ligne | ⚡ Y Current Tasks | 📋 Z Todo` via `.claude/crew-sessions.lock` + `crew_lock.json`), `batch-progress` (live task checkbox `[████░░]` & global batch `[██████░░]` progress bars), `batch-dependency-graph` (`/crew-board` Kanban `Todo | In Progress | Done | Blocked` linked to active sessions), `file-lock-monitor` (instant UI collision alert on `Edit`/`Write`/`MultiEdit`), and `batch-eta-cost` (real-time remaining duration & tokens estimator from completed batch tasks).
   - **Unified `/crew-ui` command** — `/crew-ui [all|radar|progress|board|turns|stack|agents]` intercepted locally with zero token cost.
-- **`seo` persona** — new « Référentiel Google » section (AEO/GEO = SEO, no `llms.txt`/chunking/AI schema for Google, Generative AI performance report, preferred sources, spam policies on AI responses, FAQ rich result deprecated, CWV thresholds) plus agent commerce (UCP spec 2026-08-25) and agent-ready sites (web.dev, 2026-04-01), each point sourced and dated; GEO and structured-data steps corrected accordingly.
+- **`seo` persona** — new “Google reference” section (AEO/GEO = SEO, no `llms.txt`/chunking/AI schema for Google, Generative AI performance report, preferred sources, spam policies on AI responses, FAQ rich result deprecated, CWV thresholds) plus agent commerce (UCP spec 2026-08-25) and agent-ready sites (web.dev, 2026-04-01), each point sourced and dated; GEO and structured-data steps corrected accordingly.
 
 ## [0.5.1] - 2026-10-24
 
-- Fix: `ROOT` des hooks (`crew_hook.py`, `spec_to_task_hook.py`) remonte à la racine git quand `CLAUDE_PROJECT_DIR` est un sous-dossier — plus de `crew/` fantôme créé dans `backend/`, `frontend/`, etc.
+- Fix: the hooks' `ROOT` (`crew_hook.py`, `spec_to_task_hook.py`) walks up to the git root when `CLAUDE_PROJECT_DIR` is a subfolder — no more phantom `crew/` created in `backend/`, `frontend/`, etc.
 
 ## [0.5.0] - 2026-10-22
 

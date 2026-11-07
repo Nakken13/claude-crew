@@ -331,12 +331,12 @@ def check_scripts_resolve_project_dir(repo_root: Path) -> list[str]:
 
 
 def check_crew_hook_stays_in_sync(repo_root: Path) -> list[str]:
-    """crew/crew_hook.py et scripts/crew_hook.py divergent volontairement sur
-    UNE seule ligne (resolution de ROOT via CLAUDE_PROJECT_DIR, cf.
-    check_scripts_resolve_project_dir / ENGINE_FILE_PAIRS ci-dessus). Le
-    reste doit rester identique — sinon un correctif applique a une seule
-    copie (ex. check_context_budget, tache alerte-contexte-150k) peut
-    silencieusement ne jamais atteindre l'autre copie."""
+    """crew/crew_hook.py and scripts/crew_hook.py intentionally differ on ONE
+    line only (ROOT resolution via CLAUDE_PROJECT_DIR, see
+    check_scripts_resolve_project_dir / ENGINE_FILE_PAIRS above). The rest
+    must stay identical — otherwise a fix applied to a single copy (e.g.
+    check_context_budget, task alerte-contexte-150k) could silently never
+    reach the other copy."""
     problems = []
     source = repo_root / "crew" / "crew_hook.py"
     target = repo_root / "scripts" / "crew_hook.py"

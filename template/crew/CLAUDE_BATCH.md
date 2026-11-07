@@ -1,14 +1,14 @@
-# Batching — workstreams parallèles
+# Batching — parallel workstreams
 
-Un batch = un Claude. Voir § Batching dans `crew/CLAUDE_CONTEXT/LIFECYCLE.md` pour les règles
-(zone d'impact, invariant de disjonction entre batchs actifs).
+One batch = one Claude. See § Batching in `crew/CLAUDE_CONTEXT/LIFECYCLE.md` for the rules
+(impact zone, disjointness invariant between active batches).
 
 ## Unsorted
 
-<Tâches dont la zone d'impact n'est pas encore connue.>
+<Tasks whose impact zone is not known yet.>
 
 ## Batch A
 
-Zone : <fichiers/modules>
+Zone: <files/modules>
 
 - `<slug>.md`

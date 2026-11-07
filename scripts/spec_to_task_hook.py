@@ -11,9 +11,9 @@ import sys
 from pathlib import Path
 
 def _git_root(start):
-    """Premiere racine git (dossier ou fichier `.git` de worktree) en remontant
-    depuis `start`. Une session lancee dans un sous-dossier (backend/, frontend/)
-    ne doit pas y creer un `crew/` fantome : sans `.git` trouve, `start` tel quel."""
+    """First git root (folder or worktree `.git` file) walking up from `start`.
+    A session launched in a subfolder (backend/, frontend/) must not create a
+    phantom `crew/` there: if no `.git` is found, `start` is returned as is."""
     for candidate in (start, *start.parents):
         if (candidate / ".git").exists():
             return candidate
