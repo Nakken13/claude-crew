@@ -2,40 +2,108 @@
 
 <img src="./media/crew-mates-logo.png" alt="crew-mates logo" width="260" />
 
-# 🗂️ crew-mates
+# crew-mates
 
-**File-based task lifecycle, multi-agent collision prevention & 10 Zero-Token UI mods for Claude Code.**
+**Run several Claude Code sessions on one repo without them stepping on each other.**
+
+Tasks live as Markdown files, every new session knows what is in progress, and a hook refuses writes that would collide.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FNakken13/claude-crew%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FNakken13%2Fclaude-crew%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
 [![CI](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml)
-[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#-whats-in-the-box)
-[![Zero-Token Mods: 10](https://img.shields.io/badge/zero--token%20mods-10-00C4B4.svg)](#-10-zero-token-mods-in-process-ui)
+[![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#3-what-is-in-the-box)
+[![Zero-Token Mods: 10](https://img.shields.io/badge/zero--token%20mods-10-00C4B4.svg)](#-zero-token-mods)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
 
-**[Quick start](#-quick-start)** · **[How it works](#-how-it-works)** ·
-**[Batching](#-the-actual-differentiator-batching)** ·
-**[Zero-Token Mods](#-10-zero-token-mods-in-process-ui)** ·
-**[Commands](#-commands-reference)** ·
-**[What's in the box](#-whats-in-the-box)** · **[Is this for you?](#-not-for-you-if)** · **[FAQ](#-faq)**
+**[Quick start](#-quick-start)** · **[How it works](#-how-it-works)** · **[Commands](#-commands)** · **[Zero-Token Mods](#-zero-token-mods)** · **[Team mode](#-optional-several-devs-on-one-repo)** · **[Troubleshooting](#-troubleshooting)** · **[FAQ](#-faq)**
 
 </div>
 
 ---
 
-> [!TIP]
-> Claude Code forgets everything between sessions. Run two instances on the
-> same repo and they'll happily edit the same files at the same time, with no
-> warning. `crew-mates` fixes both — with plain Markdown files, two stdlib-only
-> Python hooks, and **10 native Zero-Token Claude Code Mods** rendering live
-> multi-session, cache, and batch telemetry directly inside the Claude Code UI.
-> No server, no DB (the local web dashboard is optional).
->
-> **Install in one command, working in five minutes, nothing to host.**
+crew-mates is a plugin for [Claude Code](https://github.com/anthropics/claude-code). It gives your project a small, plain-text task system (a `crew/` folder of Markdown files) and the guard rails you need once you run more than one Claude Code session at a time.
+
+- **No server, no database, no account.** Tasks are files you can `diff` and review in a pull request.
+- **Install in one command, working in five minutes.**
+- **Free and MIT licensed.**
 
 <br>
 
-## 👀 See it run
+## 🧩 Why
+
+| Problem | What crew-mates does about it |
+|---|---|
+| 🧠 **Session amnesia.** Every new Claude Code session starts blind: what is done, what is half done, why a decision was made. | Tasks and decisions live in `crew/`. A hook injects a short digest at session start, so Claude already knows what is going on. |
+| 💥 **Silent collisions.** Two sessions on the same repo will happily edit the same file at the same time. | Each batch of work gets its own git worktree, and a hook refuses a write into a zone another session has locked. |
+| 🕶️ **Flying blind.** You do not see your prompt cache about to expire, your context filling up, or how far a batch is. | 10 zero-token mods draw live status bands and side panes right in the Claude Code UI, without spending an LLM token. |
+
+<br>
+
+## 👥 Who it's for
+
+| Use it if | Skip it if |
+|---|---|
+| You run **more than one Claude Code session** on the same repo, one per workstream. | You work alone with **one session on a small script**: this is overhead you do not need yet. |
+| You want tasks, decisions and test checklists to live in the repo as files you can **diff and review**. | You want a **hosted task board** with a UI: crew-mates is local-first and files-only. |
+| You want a new session to **start knowing what is in progress**, without pasting context. | You never use git: worktrees and claims need it. |
+
+<br>
+
+## 🚀 Quick start
+
+**1. Install the plugin** (in Claude Code):
+
+```text
+/plugin marketplace add Nakken13/claude-crew
+/plugin install crew-mates@crew-mates
+```
+
+Restart Claude Code if the `/crew-*` commands do not appear.
+
+**2. Set up your project** (once per project, from the project folder):
+
+```text
+/crew-init
+```
+
+It creates the `crew/` folder, detects your stack, fills every `<placeholder>` with real repo info and fails loudly until none is left.
+
+**3. Plan and start your first tasks:**
+
+```text
+/crew-new-task Two tasks. 1) Show the cart items as a numbered list in frontend/checkout/cart.html. 2) Retry failed card charges with backoff in backend/payments/retry.py. Don't start them.
+```
+
+Commit the plan (`git add -A && git commit -m "Plan the two tasks"`), then run `/crew-start` in two terminals. Each session takes a different batch and works in its own worktree.
+
+> [!TIP]
+> Prefer not to type the install commands? Paste this into Claude Code: *"Install the crew-mates plugin (marketplace add Nakken13/claude-crew, then install crew-mates@crew-mates), then run /crew-init here."*
+
+<details>
+<summary><b>Other ways to install, and what the two names mean</b></summary>
+
+<br>
+
+**Manual clone ("Option C", no plugin system).** The marketplace install above is Option A and the paste-a-prompt tip is Option B. Skills, agents and Python hooks are copied straight into the project. The 10 in-process mods need the plugin (above).
+
+```bash
+git clone https://github.com/Nakken13/claude-crew.git
+cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+```
+
+Open `your-project` in Claude Code and run `/crew-init`.
+
+**Try a local clone without installing:**
+
+```bash
+claude --plugin-dir /path/to/claude-crew     # one-off session, no install
+```
+
+**Why `crew-mates@crew-mates`?** The first is the plugin, the second the marketplace that serves it (`name` in `.claude-plugin/marketplace.json`). A plugin can only be installed through a marketplace.
+
+</details>
+
+### 👀 See it run
 
 Two Claude Code sessions in the same repo. Session A plans two tasks and starts one batch; session B starts the other batch, in a different zone.
 
@@ -43,94 +111,34 @@ Two Claude Code sessions in the same repo. Session A plans two tasks and starts 
 <p align="center"><img src="./media/demo-flow.png" alt="Two terminals side by side. Session A plans two tasks with /crew-new-task, then starts the checkout batch with /crew-start. Session B starts the payments batch. A final git worktree list shows main, crew/batch-a and crew/batch-b." width="890"></p>
 -->
 
-Session A plans two tasks with `/crew-new-task` and starts one batch with `/crew-start`. Session B runs `/crew-start` and takes the other batch, in its own git worktree. Your output will differ.
-
-<br>
-
-## 🧩 The problem
-
-| | |
-|---|---|
-| 🧠 **Session amnesia** | Every new Claude Code session starts blind: what's done, what's half-done, why a decision was made — gone unless you paste it back in yourself. |
-| 💥 **Multi-agent collisions** | Parallelizing Claude Code (one instance per workstream) is the obvious way to go faster. It's also the fastest way to get two agents editing the same file at the same time, silently. |
-| 🕶️ **Flying blind on cache, context & batches** | You don't see your prompt cache about to expire (`5 min` / `1h` TTL), your context approaching forced compaction, which subagent is running, or your batch ETA — unless you burn tokens asking Claude. |
-
-> [!TIP]
-> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
+| # | You do | What happens |
+|---|---|---|
+| 1 | `/crew-init` | `crew/` is created, your stack is detected, placeholders are filled. |
+| 2 | `/crew-new-task …` | The `manager` persona writes one task file per item, with `- [ ]` actions, and files each one in a batch with its **zone** (`crew/CLAUDE_BATCH.md`). |
+| 3 | `git commit` | The plan is committed, so worktrees (created from `main`) contain it. |
+| 4 | `/crew-start` (terminal 1) | Picks a free batch, opens `../repo-batch-a` on branch `crew/batch-a`, locks its zone. |
+| 5 | `/crew-start` (terminal 2) | Picks the other batch, opens a second worktree. The two sessions never share a working tree. |
+| 6 | *(a session writes into the other's zone)* | The write is refused before it runs (`exit 2`). |
+| 7 | `/crew-close-task` | Checks the boxes, reviews the diff, logs the work in `HISTORY.md`, writes the test checklists. |
 
 <br>
 
 ## ⚙️ How it works
 
-A task is a file. Its state *is* which folder it's in — no status field to
-forget to update, `git mv` is the state transition:
+### 1. A task is a file, its folder is its state
 
-```mermaid
-flowchart LR
-    A["📋 PROBLEMS/&lt;slug&gt;.md
-    raw bug / friction report"] --> B["📥 TODO/&lt;slug&gt;.md
-    not started"]
-    B --> C["🚧 CURRENT_TASKS/&lt;slug&gt;.md
-    in progress"]
-    C <--> P["⏸️ PAUSED/&lt;slug&gt;.md
-    awaiting human/dev check"]
-    C --> D["📖 HISTORY.md
-    done — long-term memory"]
-    C --> E["✅ TESTS/IA/ + /DEV/
-    validation checklist"]
-```
+<p align="center"><img src="./media/task-lifecycle.png" alt="Task lifecycle: PROBLEMS to TODO to CURRENT_TASKS, with PAUSED and ICEBOX on the side, then HISTORY.md and TESTS/IA + TESTS/DEV when done. /crew-start moves a task into progress and /crew-close-task finishes it." width="900"></p>
 
-A file is never in two folders at once. `git log --follow` on a task file is
-its entire history.
+There is no status field to forget to update: moving the file (`git mv`) *is* the state change. A file is never in two folders at once, and `git log --follow` on a task file is its whole history.
 
-<br>
+### 2. Batching keeps parallel sessions apart
 
-## 🎯 The actual differentiator: batching
+<p align="center"><img src="./media/parallel-sessions.png" alt="Two Claude Code sessions each work in their own worktree and zone. A PreToolUse hook rejects a write from session B into session A's zone before it runs." width="900"></p>
 
-Plenty of scaffolds give you a prompt template and a folder layout. What
-`crew-mates` adds is tracking *which files each task touches* (its "zone"),
-grouping tasks that share a zone into the same batch, and **preventing** —
-not just flagging — a collision when a batch's zone overlaps an **active**
-batch it doesn't belong to. Two layers, not one:
+Plenty of scaffolds give you a prompt template and a folder layout. crew-mates tracks *which files each task touches* (its **zone**), groups tasks that share a zone into the same batch, and **prevents** a collision when a batch overlaps an active one it does not belong to. Two layers:
 
-- **Layer 1 — physical isolation.** Each active batch runs in its own `git
-  worktree` (`../<repo>-batch-<slug>/`, sibling of the main checkout) on its
-  own branch (`crew/batch-<slug>`). Two Claude Code instances on two
-  different batches are never pointed at the same working tree, so a raw
-  filesystem collision between them is structurally impossible, not just
-  discouraged.
-- **Layer 2 — a blocking gate.** A `PreToolUse` hook intercepts every
-  `Edit`/`Write`/`MultiEdit` call and every mutating `Bash` command
-  (`rm`/`mv`/`cp`/output redirection/`git mv`) and **rejects it (`exit 2`)
-  before it runs** if the path it touches falls under a `Zone:` already
-  locked by a *different* session. The lock itself is registered
-  preventively at the moment a task moves `TODO → CURRENT_TASKS` — including
-  when that `git mv` is run from inside a batch worktree rather than the
-  main checkout — written under a mutex with an atomic file replace, so two
-  sessions racing to claim the same batch can't both win.
-
-The `PreToolUse` hook only spawns Python when it can matter: a shell pre-filter
-skips it unless `crew/CLAUDE_CONTEXT/.gate_armed` exists (maintained by the lock
-writer, present only while ≥ 2 sessions hold locks) or the `Bash` call is a claim
-(`git mv` into `CURRENT_TASKS/`, `crew-resume:`). Solo sessions pay ~40 ms instead
-of ~270 ms per `Edit`/`Write`. Set `CREW_HOOK_PROFILE=minimal` to disable the
-`PreToolUse` gate entirely (`Stop`/`SessionEnd` keep syncing indexes and locks).
-
-A `SessionStart` hook (`startup|resume|clear|compact`) injects a read-only crew digest (≤ 2000 chars:
-active/paused tasks with `n/m` checkboxes, active batches, other sessions' locks, last 3
-`HISTORY.md` entries) so a resume or compaction doesn't re-read `crew/` by hand. Set
-`CREW_SESSION_DIGEST=off` to disable it.
-
-A `Stop` hook still regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks
-zone overlaps every turn, but now purely as a retroactive fallback (a
-`git mv` run outside a tracked `Bash` call, or the `PreToolUse` gate getting
-bypassed) — it's no longer the only thing standing between two agents and
-the same file.
-
-> [!IMPORTANT]
-> You catch the collision **before** you point a second Claude Code instance
-> at the same code — and if you somehow don't, the write itself gets
-> refused instead of silently landing.
+- **Layer 1 – physical isolation.** Each active batch runs in its own `git worktree` (`../<repo>-batch-<slug>/`) on its own branch (`crew/batch-<slug>`). Two sessions on two batches never point at the same working tree.
+- **Layer 2 – a blocking gate.** A `PreToolUse` hook intercepts every `Edit`/`Write`/`MultiEdit` and every mutating `Bash` command (`rm`, `mv`, `cp`, redirections, `git mv`) and **rejects it (`exit 2`) before it runs** if the path falls under a `Zone:` locked by a *different* session. The lock is registered the moment a task moves `TODO → CURRENT_TASKS`, under a mutex with an atomic replace, so two sessions racing for the same batch cannot both win.
 
 ```text
 🟢 Batch A — Zone: frontend/checkout/**   [worktree ../repo-batch-a/, branch crew/batch-a]
@@ -138,25 +146,110 @@ the same file.
 🔴 Batch C — Zone: frontend/checkout/**   <-- overlaps Batch A, write blocked (exit 2) before it happens
 ```
 
-This is the part that matters once you're running more than one agent — the
-folder lifecycle alone is a nice-to-have, the worktree isolation + blocking
-gate is what actually keeps parallel Claude Code instances from stepping on
-each other's files.
+<details>
+<summary><b>Details: hooks, cost, and session digest</b></summary>
 
 <br>
 
-## 🎛️ 10 Zero-Token Mods (in-process UI)
+- The `PreToolUse` hook only spawns Python when it can matter: a shell pre-filter skips it unless `crew/CLAUDE_CONTEXT/.gate_armed` exists (present only while 2 or more sessions hold locks) or the `Bash` call is a claim. Solo sessions pay about 40 ms instead of 270 ms per `Edit`/`Write`. `CREW_HOOK_PROFILE=minimal` disables the gate.
+- A `SessionStart` hook (`startup|resume|clear|compact`) injects a read-only digest of up to 2000 characters: active and paused tasks with `n/m` checkboxes, active batches, other sessions' locks and the last 3 `HISTORY.md` entries. `CREW_SESSION_DIGEST=off` disables it.
+- A `Stop` hook regenerates `INDEX.md` / `BATCH_LOCKS.md` and re-checks zone overlaps every turn, as a retroactive fallback.
 
-Requires a Claude Code build that supports hook `modules` (validated on
-`v2.1.314`; check with `claude plugin validate .`). `crew-mates` includes **10 native TypeScript Mods** loaded in-process via
-`hooks/hooks.json` (`"modules": ["./register.ts"]`). They draw live status bands
-above your prompt and interactive side panes — **without spending a single LLM token**.
+</details>
+
+### 3. What is in the box
+
+<p align="center"><img src="./media/how-it-works.png" alt="You type slash commands. Inside Claude Code, the crew-mates plugin adds 10 skills, 8 personas, Python hooks and 10 zero-token mods. Skills create, move and close tasks in your repo; hooks block and lock writes; mods read the repo to draw status bands." width="900"></p>
+
+| Piece | What it does |
+|---|---|
+| 🗂️ `crew/` | The task folders: `PROBLEMS`, `TODO`, `CURRENT_TASKS`, `PAUSED`, `ICEBOX`, `TESTS`, `CLAUDE_CONTEXT`. |
+| 🌳 Per-batch `git worktree` | Physical isolation: each active batch gets its own checkout and branch. |
+| ⚡ 10 `/crew-*` skills | Drive the whole lifecycle deterministically (see [Commands](#-commands)). |
+| 🎭 8 personas in `agents/` | Specialist subagents for decisions: `ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`. |
+| 🪝 `crew_hook.py` | One file, three hooks: the `PreToolUse` gate, the `SessionStart` digest, the `Stop` sync. |
+| 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes, keeping specs and tasks in sync. |
+| 🎛️ `hooks/register.ts` + `hooks/mods/*` | The 10 zero-token UI mods. |
+| 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing and context-efficiency rules, wired into Claude Code from day one. |
+
+Everything is plain Markdown, JSON state and dependency-free code: readable, greppable, diffable in a normal PR review.
+
+<br>
+
+## ⌨️ Commands
+
+### Everyday commands
+
+| Command | What it does | Use it when | Example |
+|---|---|---|---|
+| `/crew-init` | Creates the `crew/` scaffold and project docs (`CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `SECURITY.md`, `CONTRIBUTING.md`), detects your stack and checks that no `<placeholder>` is left. | Once per project. | `/crew-init` |
+| `/crew-new-task` | Turns a request into task files with concrete `- [ ]` actions and files them in a batch with their `Zone:`. | You have work to plan. | `/crew-new-task Add retry with backoff in backend/payments/retry.py` |
+| `/crew-start` | Picks the next collision-free task (`crew_hook.py next-task`), opens its batch in a dedicated worktree. Resumes unfinished work first. | You start or resume a session. | `/crew-start` |
+| `/crew-close-task` | Closes a finished task: review and simplify pass, entry in `HISTORY.md`, test checklists in `crew/TESTS/{IA,DEV}/`, local commit of `crew/`. | The code is done. | `/crew-close-task` |
+| `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees. | You wonder what is going on, or why a write was refused. | `/crew-status` |
+| `/crew-count` | Counts how many batches can run in parallel right now, with ready-to-use terminal titles. | You decide how many sessions to open. | `/crew-count` |
+| `/crew-dashboard` | Starts the optional local web dashboard (default `http://127.0.0.1:8943`). | You prefer clicking to typing. | `/crew-dashboard` |
+| `/crew-collab` | Team-mode switch (solo by default): asks your name, turns on remote claims, sets aside tasks other devs own, shows who has what. `on` / `off` / `status`. | Several people share the repo. | `/crew-collab on` |
+| `/crew-update` | Pulls engine-file updates into an already set-up project without touching `crew/` task data. | You updated the plugin. | `/crew-update` |
+| `/crew-version` | Prints the installed crew-mates version. | You report a bug. | `/crew-version` |
+
+### Which command should I use?
+
+| Situation | Run |
+|---|---|
+| New project, first time | `/crew-init` |
+| I have a feature or bug to plan | `/crew-new-task` |
+| I am ready to code, or coming back to a session | `/crew-start` |
+| I just finished a task | `/crew-close-task` |
+| I am not sure what is happening, or a write was blocked | `/crew-status` |
+| How many terminals can I open in parallel? | `/crew-count` |
+| A teammate uses crew-mates too | `/crew-collab on` |
+| I updated the plugin | `/crew-update` |
+
+### Instant UI commands (0 LLM tokens)
+
+These are handled in-process by the mods, so they cost nothing and answer immediately.
+
+| Command | What it shows |
+|---|---|
+| `/crew-ui` | Overview of all 10 mods and their ON/OFF state. |
+| `/crew-ui all [on\|off]` | Opens or closes every pane and status band at once. |
+| `/crew-ui radar [on\|off]` | Global counter: sessions online, current tasks, todo. |
+| `/crew-ui progress [on\|off]` | Task, batch and ETA progress bars. |
+| `/crew-board` (or `/crew-ui board`) | Kanban of the active batch: Todo, In Progress, Done, Blocked. |
+| `/crew-turns` (or `/crew-ui turns`) | Side pane logging every turn: tokens in and out, cache read and write, tool calls, duration. |
+| `/crew-stack` (or `/crew-ui stack`) | Tree of everything active in the session (`CLAUDE.md`, MCP servers, skills, personas, mods, hooks) with source and priority. |
+| `/crew-agents` (or `/crew-ui agents`) | Live tree of running subagents. |
+| `/crew-ui cache` | Prompt-cache countdown pane. |
+| `/crew-ui weather [on\|off]` | One-line context-window gauge. |
+| `/crew-ui usage [on\|off]` | Orange band with your `/usage` stats (5 h, 7 d, context, cost). |
+
+### Personas
+
+Claude calls these subagents when a decision has at least two real options in their domain (or when you ask). They give advice; they do not implement.
+
+| Persona | Ask it when | You get |
+|---|---|---|
+| `ceo` | Prioritising, cutting scope, "is this worth building?" | A recommendation framed in ROI and risk. |
+| `manager` | A request must be broken into trackable work. | Task files and batches (writes only under `crew/`). |
+| `architect` | Choosing a library or pattern, refactor now or later. | The trade-offs and a pick. |
+| `designer` | A UX decision with real ambiguity: flows, onboarding, specs. | Concrete specs and a critique. |
+| `legal` | A feature changes legal exposure: personal data, payments, minors, AI, licences. | Go, go-with-conditions or no-go, and when a real lawyer is needed. This is risk framing, not legal advice. |
+| `comms` | Landing copy, emails, posts, brand voice. | Ready-to-use copy. |
+| `social` | Organic social distribution. | Platform, format, cadence and a test plan. |
+| `seo` | Search, store or AI-answer visibility. | Keywords, indexability, listing and a test plan with thresholds. |
+
+<br>
+
+## 🎛️ Zero-Token Mods
+
+crew-mates ships **10 native TypeScript mods** loaded in-process. They draw live status bands above your prompt and interactive side panes **without spending a single LLM token**. They need a Claude Code build that supports hook `modules` (validated on `v2.1.314`; check with `claude plugin validate .`).
 
 ```text
 ┌─ AbovePrompt (live 0-token status bands) ─────────────────────────────────────────────┐
 │ 🟢 2 Sessions online | ⚡ 2 Current Tasks | 📋 3 Todo                                │
 │ Task : [████░░] 4/6 (66%)  │  Batch : [██████░░] 3/4 tasks (75%)  │  ⏱️ ETA: ~8 min (~45k tokens left) │
-│ 🎭 Agent Flow (1 actif / 2 total)                                                     │
+│ 🎭 Agent Flow (1 active / 2 total)                                                    │
 │   ├── ✅ architect [Read, Glob, Grep] · 8s                                            │
 │   └── 🔄 manager [Read, Glob, Grep, Write, Edit] · 12s                                │
 │ ☀️ Clear [██░░░░░░] 42k/200k (21%)                                                    │
@@ -165,148 +258,82 @@ above your prompt and interactive side panes — **without spending a single LLM
 > _
 ```
 
-If another session holds a lock on a file or batch zone you try to edit, or your
-prompt cache drops below `60s`, an immediate visual alert appears above the prompt:
+If another session holds a lock on a file you try to edit, or your prompt cache drops below 60 s, an alert shows above the prompt:
 
 ```text
 🚨 ZONE COLLISION: `backend/payments/stripe.ts` (Edit) falls under the Zone `backend/payments/` locked by @9f5944ac (Batch B)!
 ⚠️ CACHE EXPIRE <60s (5 min) 00:42 | cache_read: 140k · cache_creation: 8k (hit 94%)
 ```
 
-### Golden Rules (architectural invariants)
+<details>
+<summary><b>The 10 mods, one by one</b></summary>
 
-1. **0 Extra Tokens:** Strict ban on `$.model.complete`, `$.model.fork`, `$.prompt.submit`, `prompt.compose` text injection, and LLM tool registration. Everything relies exclusively on local session telemetry, `crew/` Markdown/JSON files, and `$.ui` rendering.
-2. **Zero External Dependencies:** Pure native TypeScript using Claude Code's sandboxed `$` API (`$.fs`, `$.ui`, `$.command`, `$.env`). No `node_modules`, no bundler, no build step.
-3. **Modular Entrypoint:** `hooks/register.ts` multiplexes lifecycle events across 10 focused modules in `hooks/mods/`.
+<br>
 
-### Step-by-step inventory of the 10 Mods
+**Visibility and context (1–5)**
 
-#### 👁️ Visibility & Context (Mods 1–5)
-
-| # | Mod (`hooks/mods/`) | UI Surface | What it does (100% local) |
+| # | Mod (`hooks/mods/`) | Surface | What it does (100% local) |
 |---|---|---|---|
-| **1** | `prompt-cache-control.ts` | `Pane` (`/crew-ui cache`) + Toast | Tracks prompt cache TTL (`1h` default, `5 min` only via `CLAUDE_CACHE_TTL=5m`), live `MM:SS` countdown, `cache_read_input_tokens` / `cache_creation_input_tokens` counters, hit-rate %, and `< 60s` expiry warning. |
-| **2** | `token-weather.ts` | `AbovePrompt` + Toast | Compact 1-line context window gauge: `☀️ Clear` (`<50%`) → `⛅ Cloudy` (`50–74%`) → `⛈️ Storm` (`75–89%`, aligned with `crew-mates`'s 150k rule) → `🚨 Compact soon` (`≥90%`). |
-| **3** | `turn-inspector.ts` | `Pane` (`/crew-turns`) | Side panel logging every turn: `in`/`out` tokens, cache `R`/`W`, deduplicated tool calls (`Read×3, Edit`), turn duration, and context bar. |
-| **4** | `stack-viewer.ts` | `Pane` (`/crew-stack`) | Hierarchical tree of everything active in the session (`CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`, MCP servers, skills, agent personas, 0-token mods & shell hooks) annotated with **source** and **priority** (`P1` local override → `P3` plugin/docs). |
-| **5** | `agent-flow.ts` | `Pane` (`/crew-agents`) + `AbovePrompt` | Intercepts `tool.call` subagent launches (`Agent`, `Task`, and `crew-mates` personas `ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) and renders a live execution tree (`🔄` / `✅` / `🚫` / `❌`, tools, elapsed time). |
+| 1 | `prompt-cache-control.ts` | Pane (`/crew-ui cache`) + toast | Tracks prompt-cache TTL (`1h` default, `5 min` only via `CLAUDE_CACHE_TTL=5m`), a live countdown, read/write token counters, hit rate and a `< 60s` expiry warning. |
+| 2 | `token-weather.ts` | Band + toast | One-line context gauge: `☀️ Clear` (<50%), `⛅ Cloudy` (50–74%), `⛈️ Storm` (75–89%), `🚨 Compact soon` (≥90%). |
+| 3 | `turn-inspector.ts` | Pane (`/crew-turns`) | Per-turn log: tokens, cache, deduplicated tool calls, duration, context bar. |
+| 4 | `stack-viewer.ts` | Pane (`/crew-stack`) | Tree of everything active in the session, annotated with source and priority (`P1` local override to `P3` plugin or docs). |
+| 5 | `agent-flow.ts` | Pane (`/crew-agents`) + band | Live execution tree of subagents and personas (running, done, blocked, failed, tools, elapsed time). |
 
-#### ⚡ Tasks, Batches & Multi-Session (Mods 6–10)
+**Tasks, batches and multi-session (6–10)**
 
-| # | Mod (`hooks/mods/`) | UI Surface | What it does (100% local) |
+| # | Mod (`hooks/mods/`) | Surface | What it does (100% local) |
 |---|---|---|---|
-| **6** | `crew-radar.ts` | `AbovePrompt` | Global status bar: `🟢 X Sessions online \| ⚡ Y Current Tasks \| 📋 Z Todo` (plus `⏸️ Paused`). Maintains `.claude/crew-sessions.lock` on `session.start`/`session.end` and merges worktree-aware `crew_lock.json` sessions. |
-| **7** | `batch-progress.ts` | `AbovePrompt` | Parses active task checkboxes (`- [x]` vs `- [s]`/`- [ ]`) → `Task : [████░░] 4/6 (66%)` (updates mid-turn on `Write`/`Edit`) and `crew/CLAUDE_BATCH.md` → `Batch : [██████░░] 3/4 tasks (75%)`. |
-| **8** | `batch-dependency-graph.ts` | `Pane` (`/crew-board`) | Kanban & dependency board (`Todo \| In Progress \| Done \| Blocked`) for the active batch. Links tasks to `@sess:<id>` locks and flags `PAUSED/` tasks, sequential prerequisites, and cross-session `Zone:` blocks. |
-| **9** | `file-lock-monitor.ts` | `AbovePrompt` + Toast | Monitors `tool.call` (`Edit`, `Write`, `MultiEdit`). Fires an instant red UI banner & toast if the target path is actively edited in `.claude/crew-sessions.lock` or falls inside a batch `Zone:` locked in `crew_lock.json` by another session. |
-| **10** | `batch-eta-cost.ts` | `AbovePrompt` | Tracks completed task duration & token velocity per batch in `.claude/crew-batch-metrics.json` to display a live estimate: `⏱️ ETA: ~8 min (~45k tokens left)`. |
+| 6 | `crew-radar.ts` | Band | `🟢 X Sessions online \| ⚡ Y Current Tasks \| 📋 Z Todo` (plus `⏸️ Paused`), worktree-aware. |
+| 7 | `batch-progress.ts` | Band | Task and batch progress bars from the checkboxes of the active task and `CLAUDE_BATCH.md`; updates mid-turn. |
+| 8 | `batch-dependency-graph.ts` | Pane (`/crew-board`) | Kanban and dependency board; flags `PAUSED/` tasks, prerequisites and cross-session zone blocks. |
+| 9 | `file-lock-monitor.ts` | Band + toast | Instant red banner if the file you edit is held by another session or falls in a zone it locked. |
+| 10 | `batch-eta-cost.ts` | Band | Learns task duration and token velocity per batch to show `⏱️ ETA: ~8 min (~45k tokens left)`. |
 
-### Architecture under `hooks/`
+**Golden rules.** (1) **0 extra tokens**: no `$.model.complete`, no prompt injection, no LLM tool registration; everything relies on local telemetry, `crew/` files and `$.ui`. (2) **No dependencies**: pure TypeScript on Claude Code's sandboxed `$` API, no `node_modules`, no bundler. (3) **One entrypoint**: `hooks/register.ts` multiplexes lifecycle events across the 10 modules in `hooks/mods/`.
+
+**Layout of `hooks/`**
 
 ```text
 hooks/
-├── hooks.json                        # Declares "modules": ["./register.ts"] + Python PreToolUse/Stop/Session* hooks
-├── register.ts                       # Single Mod entrypoint, onion-middleware bus & unified /crew-ui command
-├── mods.test.ts                      # Automated test suite executed via `claude plugin test .`
+├── hooks.json                 # Declares "modules": ["./register.ts"] + Python PreToolUse/Stop/Session* hooks
+├── register.ts                # Single mod entrypoint and the unified /crew-ui command
+├── mods.test.ts               # Test suite run by `claude plugin test .`
 └── mods/
-    ├── shared.ts                     # Sandbox-safe types, Markdown/batch/lock parsers, worktree & zone matchers
-    ├── prompt-cache-control.ts       # Mod 1 — Cache TTL countdown & read/write counters
-    ├── token-weather.ts              # Mod 2 — 1-line context window weather gauge
-    ├── turn-inspector.ts             # Mod 3 — /crew-turns per-turn telemetry side pane
-    ├── stack-viewer.ts               # Mod 4 — /crew-stack loaded context/MCP/skills/agents/mods tree
-    ├── agent-flow.ts                 # Mod 5 — /crew-agents live subagent execution tree
-    ├── crew-radar.ts                 # Mod 6 — Global online sessions & task counters (.claude/crew-sessions.lock)
-    ├── batch-progress.ts             # Mod 7 — Live Task [████░░] & Batch [██████░░] progress bars
-    ├── batch-dependency-graph.ts     # Mod 8 — /crew-board Kanban (Todo | In Progress | Done | Blocked)
-    ├── file-lock-monitor.ts          # Mod 9 — Multi-session Edit/Write anti-collision UI alert
-    └── batch-eta-cost.ts             # Mod 10 — Real-time batch ETA & remaining tokens estimator
+    ├── shared.ts              # Sandbox-safe types, Markdown/batch/lock parsers, worktree and zone matchers
+    └── <one file per mod>     # The 10 mods above
 ```
+
+</details>
+
+**Bands do not show up?** Run `claude plugin validate .`: the output must include `hooks/hooks.json names a hooks module`. If not, your Claude Code build predates hook modules; update it. Without mod support the skills, personas and Python hooks still work.
 
 <br>
 
-## ⌨️ Commands reference
+## 📊 Optional: local web dashboard
 
-### Instant local UI commands (0 LLM tokens — handled in-process by Mods)
+A read/write web UI over your `crew/` folders (tasks, batches, tests). Local only (`127.0.0.1`), optional.
 
-```text
-/crew-ui                        # Overview of all 10 Zero-Token Mods & their current ON/OFF state
-/crew-ui all [on|off]           # Open or close all 4 interactive panes & status bands at once
-/crew-ui radar [on|off]         # Toggle global sessions / tasks counter band (crew-radar)
-/crew-ui progress [on|off]      # Toggle Task, Batch & ETA progress band (batch-progress + batch-eta-cost)
-/crew-ui board   (or /crew-board)   # Toggle Kanban & Dependencies pane (Todo | In Progress | Done | Blocked)
-/crew-ui turns   (or /crew-turns)   # Toggle Turn Inspector side pane
-/crew-ui stack   (or /crew-stack)   # Toggle Session Stack Viewer tree pane
-/crew-ui agents  (or /crew-agents)  # Toggle live Subagent Flow execution tree pane
-/crew-ui cache                # Toggle prompt cache TTL side pane (prompt-cache-control)
-/crew-ui weather [on|off]     # Toggle token weather gauge band (token-weather)
-/crew-ui usage [on|off]       # Toggle orange /usage band: 5h, 7d, context, cost (usage-band)
-```
+- **From Claude Code:** run `/crew-dashboard`.
+- **Standalone on Windows:** double-click `crew/dashboard.bat` (copied into every project by `/crew-init`). It finds the server in `%CREW_DASHBOARD_DIR%`, then `scripts/dashboard/` in the repo, then the newest installed plugin under `%USERPROFILE%\.claude\plugins\cache\crew-mates\`.
 
-### Try it locally
-
-Mods load with the plugin — nothing to enable. From a clone:
-
-```bash
-claude --plugin-dir /path/to/claude-crew     # one-off session, no install
-# or
-/plugin marketplace add /path/to/claude-crew
-/plugin install crew-mates@crew-mates
-```
-
-`/path/to/claude-crew` is a placeholder: use your real clone path (e.g.
-`C:\dev\claude-crew`). Local paths are for testing a clone; to install on any
-other machine, use the GitHub marketplace in [Option A](#-option-a--install-via-marketplace-recommended).
-
-Then run `/crew-ui` in a session: it lists every band and pane with its
-ON/OFF state. Already installed from GitHub? Update from a terminal (see
-[Tutorial: update crew-mates](#-tutorial-update-crew-mates)) once the mods are published.
-
-**Bands don't show up?** Run `claude plugin validate .` — the output must
-include a line `hooks/hooks.json names a hooks module`. If it doesn't, your
-Claude Code build predates hook `modules`; update it.
-
-### Workflow & lifecycle skills (`/crew-*`)
-
-| Command | Role |
-|---|---|
-| `/crew-init` | Bootstrap the `crew/` scaffold & project docs (`CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `SECURITY.md`, `CONTRIBUTING.md`) and verify zero `<placeholder>` remains |
-| `/crew-new-task` | Create a task (`crew/TODO/` or `crew/CURRENT_TASKS/`) with concrete `- [ ]` actions and categorize its `Zone:` in `crew/CLAUDE_BATCH.md` |
-| `/crew-start` | Deterministically pick & start the next collision-free task (`crew_hook.py next-task`), isolating the batch in its own `git worktree` |
-| `/crew-close-task` | Close a completed task: code review / simplify check, append to `HISTORY.md`, generate `crew/TESTS/{IA,DEV}/` checklists, local `crew/` git commit |
-| `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees |
-| `/crew-count` | Count how many batches can be launched in parallel right now + ready terminal titles |
-| `/crew-dashboard` | Launch the optional local read/write web dashboard (`http://127.0.0.1:8943`) |
-| `/crew-collab` | Team mode switch (solo by default): asks your name, turns on remote claims under that name, sets aside the `TODO` tasks other devs already own, shows who has how many tasks (`on` / `off` / `status`) |
-| `/crew-update` | Pull upstream engine-file updates into an already-bootstrapped project without touching `crew/` task data |
-| `/crew-version` | Print the installed `crew-mates` version |
-
-### Optional environment variables
-
-| Variable | Values | Effect |
-|---|---|---|
-| `CLAUDE_CACHE_TTL` | `5m` (default) \| `1h` | Forces the prompt cache countdown window in `prompt-cache-control` when not auto-detected from `ephemeral_1h_input_tokens` |
-| `CREW_HOOK_PROFILE` | `minimal` | Skips the `PreToolUse` Python subprocess gate (`Stop` and `SessionEnd` keep syncing indexes & locks) |
-| `CREW_SESSION_DIGEST` | `off` | Disables the read-only `SessionStart` crew digest injection |
-| `CREW_DASHBOARD_DIR` | `<path>` | Overrides where `crew/dashboard.bat` locates `scripts/dashboard/server.py` |
+The first run creates an isolated venv (`.dashboard-venv/`) and installs the dashboard requirements. Python 3 must be on the `PATH`. Open the URL printed in the terminal (default `http://127.0.0.1:8943`; a free port is picked if it is taken). `Ctrl+C` stops the server.
 
 <br>
 
-## 📦 What's in the box
+## 👥 Optional: several devs on one repo
 
-| Piece | What it does |
+By default a project is **solo**: nothing is shared beyond git, so two devs can start the same task before either pushes. Run **`/crew-collab on`** to change that.
+
+| Command | Effect |
 |---|---|
-| 🗂️ `crew/` | The task lifecycle folders (`PROBLEMS`/`TODO`/`CURRENT_TASKS`/`PAUSED`/`TESTS`/`CLAUDE_CONTEXT`/`ICEBOX`) |
-| 🌳 Per-batch `git worktree` | Physical isolation — each active batch gets its own checkout (`../<repo>-batch-<slug>/`) and branch (`crew/batch-<slug>`), so parallel Claude Code instances never share a working tree |
-| 🎛️ `hooks/register.ts` + `hooks/mods/*` | **10 Zero-Token TypeScript Mods** — live cache TTL, token weather, turn inspector, stack viewer, subagent tree, multi-session radar, task/batch progress bars, Kanban board, file collision monitor, and batch ETA |
-| ⚡ `/crew-ui` `/crew-board` `/crew-turns` `/crew-stack` `/crew-agents` | Instant local UI commands (0 LLM tokens) to toggle interactive panes and status bands |
-| 🪝 `crew_hook.py` | Two hooks in one file: `PreToolUse` blocks (`exit 2`) any `Edit`/`Write`/`MultiEdit`/mutating `Bash` into a zone locked by another session, and registers that lock preventively on `git mv`; `Stop` regenerates `INDEX.md`/`BATCH_LOCKS.md` and re-checks overlaps as a fallback |
-| 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes — keeps specs and tasks in sync |
-| ⚡ `/crew-init` `/crew-new-task` `/crew-start` `/crew-close-task` `/crew-status` `/crew-count` `/crew-update` `/crew-collab` `/crew-dashboard` `/crew-version` | Out-of-the-box skills driving the full task & batch lifecycle deterministically |
-| 🎭 `agents/` (`ceo`, `manager`, `comms`, `architect`, `designer`, `legal`, `social`, `seo`) | Specialized subagent personas routed by decision type — business/priority calls, task breakdown, user-facing copy, structural tech choices, UX/retention specs, legal exposure, organic social distribution, and search/store/AI-answer discoverability |
-| 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing + context-efficiency rules (no reading >100-line files whole, 150k session reset budget) wired into Claude Code from day one |
+| `/crew-collab on` | Asks your name (the owner of your claims), turns team mode on, and sets aside the `TODO` tasks that belong to somebody else (an `Owner:` line in the task file or a published claim). Tasks with no owner stay "unassigned" and are never started by `/crew-start`. |
+| `/crew-collab status` | Shows who has how many tasks. |
+| `/crew-collab off` | Goes back to solo. |
 
-Everything is plain markdown + JSON state + native zero-dependency TypeScript mods —
-readable, greppable, diffable in a normal PR review. No hosted board, no account, nothing to sync (unless you opt in to remote claims, below).
+Under the hood it sets `remote_claims : true` in `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (off by default; each dev opts in). `/crew-start`, `/crew-new-task` and `/crew-close-task` then share "who is on what" and the `TODO` tasks through a dedicated git ref, `refs/crew/claims`, pushed on its own (never on `main`). A claim is an atomic compare-and-swap, so two devs cannot take the same task or two overlapping zones, and the dashboard shows a read-only team Kanban. It costs zero tokens: a script does the work, not Claude.
+
+**Limits:** only devs who opted in are protected; semantic duplicates (different title and zone) rely on Claude reading the title list; a crashed session's claim expires after 8 h; push rights on the remote are required; it does not prevent code merge conflicts. Details in `crew/CLAUDE_CONTEXT/AGENTS.md`.
 
 <br>
 
@@ -314,178 +341,59 @@ readable, greppable, diffable in a normal PR review. No hosted board, no account
 
 | | |
 |---|---|
-| **Claude Code** | A build that supports plugins and `hooks/hooks.json` `modules` (the Zero-Token mods). Check with `claude plugin validate .` — it must print `hooks/hooks.json names a hooks module`. Without mod support the skills, agents and Python hooks still work; only the in-UI bands/panes are missing. |
+| **Claude Code** | A build that supports plugins. For the in-UI mods, also `hooks/hooks.json` `modules` (check with `claude plugin validate .`). |
 | **Python** | 3.11+ (CI runs 3.11 and 3.13). Standard library only for the hooks; the optional dashboard needs `scripts/dashboard/requirements.txt`. |
 | **git** | Required (worktrees, claims). |
 | **OS** | Linux and Windows are covered by CI; macOS is expected to work but is not tested. |
 
 <br>
 
-## 🚀 Quick start
+## 🔧 Configuration
 
-Pick one — all three end up in the same place: `/crew-init` running against
-your project.
+All optional.
 
-### 🔌 Option A — Install via marketplace (recommended)
+| Variable | Values | Effect |
+|---|---|---|
+| `CLAUDE_CACHE_TTL` | `5m` \| `1h` | Forces the prompt-cache countdown window when it is not auto-detected from `ephemeral_1h_input_tokens`. |
+| `CREW_HOOK_PROFILE` | `minimal` | Skips the `PreToolUse` gate (`Stop` and `SessionEnd` keep syncing indexes and locks). |
+| `CREW_SESSION_DIGEST` | `off` | Disables the read-only `SessionStart` digest. |
+| `CREW_DASHBOARD_DIR` | `<path>` | Overrides where `crew/dashboard.bat` looks for `scripts/dashboard/server.py`. |
 
-```text
-/plugin marketplace add Nakken13/claude-crew
-/plugin install crew-mates@crew-mates
-/crew-init
-```
+<br>
 
-No cloning, no manual file copying — skills, agents, Python hooks, and all 10
-Zero-Token Mods run straight from the installed plugin.
+## 🔄 Updating
 
-Both names are `crew-mates`: the first is the marketplace (`name` in
-`.claude-plugin/marketplace.json`), the second the plugin, hence
-`crew-mates@crew-mates`. A plugin can only be installed through a marketplace;
-restart Claude Code after install if the `/crew-*` commands don't appear.
-
-### 🤖 Option B — Ask Claude to install it
-
-Paste this into Claude Code, in the project you want to set up:
-
-```text
-Install the crew-mates plugin (marketplace add Nakken13/claude-crew, then
-install crew-mates@crew-mates), then run /crew-init here.
-```
-
-Claude runs the marketplace add + install for you, then bootstraps the
-project the same way as Option A.
-
-### 📋 Option C — Manual clone (no plugin system)
+**Plugin install.** From a regular terminal (outside Claude Code):
 
 ```bash
-git clone https://github.com/Nakken13/claude-crew.git
-cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+claude plugin marketplace update crew-mates
+claude plugin update crew-mates@crew-mates
 ```
 
-Open `your-project` in Claude Code and run `/crew-init`. Use this if you
-don't want a marketplace dependency — skills, agents, and Python hooks get
-copied straight into the project (note: the 10 in-process TypeScript Mods in
-`hooks/` require loading `crew-mates` as a Claude Code plugin via Option A/B).
+Then restart Claude Code and run `/crew-update` in each project. `/crew-update` pulls engine-file changes into a set-up project and **never touches your task data** (`crew/TODO`, `CURRENT_TASKS`, `PAUSED`, `PROBLEMS`, `ICEBOX`, `TESTS`, `HISTORY.md`). Every engine file gets one of four statuses before anything is written:
+
+| Status | Meaning |
+|---|---|
+| `up_to_date` | Nothing to do. |
+| `new` | Added upstream, missing locally: created. |
+| `apply` | Unchanged locally since the last update: safe to refresh. |
+| `conflict` | You edited it: shown as a diff, never overwritten without your say-so. |
+
+> [!NOTE]
+> Updates are detected by the `version` field of `.claude-plugin/plugin.json`. If it was not bumped, the command answers "already at the latest version" even though new commits exist. The in-session `/plugin update crew-mates` may only open the plugin list; the terminal commands are the reliable way.
+
+**Manual clone.** Run `git pull` in your clone, then `/crew-update` in each project (it also refreshes `crew_hook.py`, `spec_to_task_hook.py` and the local `.claude/skills/crew-*` and `.claude/agents/*` copies).
+
+<details>
+<summary><b>English file names (older projects)</b></summary>
 
 <br>
 
-Whichever option you pick, `/crew-init` detects your stack, resolves every
-`<placeholder>` with the real repo info, and fails loud
-(`check_placeholders.py`) until nothing is left unfilled. Full step-by-step
-in [`CLAUDE.md`](./CLAUDE.md).
-
-<br>
-
-### 🧪 Your first task
-
-After `/crew-init`, describe your tasks in plain language and say where they go:
-
-```text
-/crew-new-task Two tasks for the backlog. 1) Show the cart items as a numbered list in frontend/checkout/cart.html. 2) Retry failed card charges with backoff in backend/payments/retry.py. Don't start them.
-```
-
-crew-mates hands this to the `manager` agent, which writes one task file per item with checkable actions and files each one in a batch with its zone (`crew/CLAUDE_BATCH.md`). Commit the plan: each batch runs in a worktree created from `main`, which only contains committed files.
-
-```bash
-git add -A && git commit -m "Plan the two tasks"
-```
-
-Then run this in two terminals:
-
-```text
-/crew-start
-```
-
-Each session picks a batch no other session holds and works in that batch's worktree. When the code is done, `/crew-close-task` checks the boxes, logs the work in `HISTORY.md` and moves the test checklists out.
-
-<br>
-
-## 📊 Optional: local web dashboard
-
-A read/write web UI over your `crew/` folders (tasks, batches, tests). Local
-only (`127.0.0.1`), optional — the hooks and terminal mods work fine without it.
-
-**From Claude Code:** run `/crew-dashboard`.
-
-**Standalone (Windows, no Claude session):** double-click `crew/dashboard.bat`,
-or from the repo root:
-
-```bat
-crew\dashboard.bat
-```
-
-`crew/dashboard.bat` is copied into every project by `/crew-init` (and kept
-current by `/crew-update`). It finds the server in this order: `%CREW_DASHBOARD_DIR%`
-(manual override), `scripts/dashboard/` in the repo (crew-mates itself), then the
-newest installed plugin under `%USERPROFILE%\.claude\plugins\cache\crew-mates\`.
-So the plugin must be installed for it to work in other projects.
-
-First run creates an isolated venv (`.dashboard-venv/`) and installs the
-dashboard requirements; later runs reuse it. Needs Python 3 on the `PATH`
-(`py` or `python`).
-
-Then open the URL printed in the terminal — default `http://127.0.0.1:8943`;
-if that port is taken, a free one is picked and printed instead. `Ctrl+C` in
-the terminal stops the server.
-
-<br>
-
-## 👥 Optional: several devs on one repo
-
-By default a project is **solo**: nothing is shared beyond git, so two devs can start (or
-re-create) the same task before either pushes. Run **`/crew-collab on`**: it asks for your
-name (the owner of all your claims), turns team mode on, and sets aside the `TODO` tasks that
-belong to somebody else (an `Owner:` line in the task file or a published claim; tasks with no
-mention are kept as "unassigned" and never started by `/crew-start`). `/crew-collab status`
-shows who has how many tasks, `/crew-collab off` goes back to solo, and the status bar shows
-`👤N` only while team mode is on. Under the hood it sets `remote_claims : true` in
-`crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (off by default; each dev opts in) and
-`/crew-start`, `/crew-new-task` and `/crew-close-task` share «who is on what» plus
-the `TODO` tasks through a dedicated git ref, `refs/crew/claims`, pushed on its own
-(never on `main`). The claim is an atomic compare-and-swap, so two devs cannot take
-the same task or two overlapping zones; the dashboard shows a read-only team Kanban.
-Zero tokens: the script does the work, not Claude. Limits: only devs who opted in are
-protected, semantic duplicates (different title and zone) rely on Claude reading the
-title list, a crashed session's claim expires after 8 h, push rights on the remote
-are required, and it does not prevent code merge conflicts. Details in
-`crew/CLAUDE_CONTEXT/AGENTS.md`.
-
-<br>
-
-## 🔄 Updating an existing project
-
-Already bootstrapped? `/crew-update` pulls in engine-file changes (fixes,
-new rules, new skills) without ever touching your `crew/` task data.
-
-- **Plugin install (Option A/B)** — skills, agents, hooks, and Zero-Token Mods
-  already run from `${CLAUDE_PLUGIN_ROOT}`, so updating the plugin (see the tutorial below) covers those;
-  `/crew-update` only checks `CLAUDE.md`/`AGENTS.md`/`PRODUCT.md`/
-  `CONTRIBUTING.md`/`SECURITY.md`/`check_placeholders.py`/`crew/dashboard.bat`.
-- **Manual clone (Option C)** — `/crew-update` also checks `crew_hook.py`,
-  `spec_to_task_hook.py`, and the local `.claude/skills/crew-*`/
-  `.claude/agents/*` copies.
-
-It never touches `crew/TODO/`, `crew/CURRENT_TASKS/`, `crew/PAUSED/`, `crew/PROBLEMS/`,
-`crew/ICEBOX/`, `crew/TESTS/`, or `crew/CLAUDE_CONTEXT/HISTORY.md`, and it
-never silently overwrites a file you've personalized. Each engine file gets
-one of four statuses before anything is written:
-
-- `up_to_date` — nothing to do.
-- `new` — added upstream, missing locally → created.
-- `apply` — unchanged locally since the last update → safe to refresh.
-- `conflict` — you've edited it since → shown as a diff, never overwritten
-  without you saying so.
-
-### English file names (older projects)
-
-Early versions used French names. They are all still **read**, so nothing breaks, but new projects get
-`HISTORY.md`, `HISTORY_ARCHIVE.md`, `TASK_CHANGELOG.md`, `LIFECYCLE.md`, a `## Unsorted` section in
-`CLAUDE_BATCH.md`, and `Level:` / `Risky zones:` in `TESTS_POLICY.md`. To move an existing project over
-(optional, per project):
+Early versions used French names. They are all still **read**, so nothing breaks, but new projects get `HISTORY.md`, `HISTORY_ARCHIVE.md`, `TASK_CHANGELOG.md`, `LIFECYCLE.md`, a `## Unsorted` section in `CLAUDE_BATCH.md`, and `Level:` / `Risky zones:` in `TESTS_POLICY.md`. To move an existing project over (optional, per project):
 
 ```bash
 # plugin install: use ${CLAUDE_PLUGIN_ROOT}/scripts/crew_update.py instead of crew/crew_update.py
-# plugin install: use ${CLAUDE_PLUGIN_ROOT}/scripts/crew_update.py instead of crew/crew_update.py
-python crew/crew_update.py --project . --migrate-names           # dry-run: lists renames/rewrites/conflicts
+python crew/crew_update.py --project . --migrate-names           # dry run: lists renames, rewrites, conflicts
 python crew/crew_update.py --project . --migrate-names --apply   # uses `git mv`; never overwrites
 ```
 
@@ -497,15 +405,16 @@ python crew/crew_update.py --project . --migrate-names --apply   # uses `git mv`
 | `## À classer` | `## Unsorted` |
 | `Niveau :` / `Zones risquées :` | `Level:` / `Risky zones:` |
 
-Do it only once **every collaborator** has updated the plugin: an older version does not know the English
-names and would recreate the French files next to yours.
+Do it only once **every collaborator** has updated the plugin: an older version does not know the English names and would recreate the French files next to yours.
+
+</details>
+
+<details>
+<summary><b>Migrating from <code>claude-crew</code> (before 1.0.0)</b></summary>
 
 <br>
 
-## 🔁 Migrating from `claude-crew` (< 1.0.0)
-
-The plugin was renamed `crew-mates` (the `claude-` prefix is reserved). The GitHub repo
-and every `/crew-*` command are unchanged. Once per machine:
+The plugin was renamed `crew-mates` (the `claude-` prefix is reserved). The GitHub repo and every `/crew-*` command are unchanged. Once per machine:
 
 ```text
 /plugin uninstall claude-crew
@@ -514,120 +423,80 @@ and every `/crew-*` command are unchanged. Once per machine:
 /plugin install crew-mates@crew-mates
 ```
 
-Then run `/crew-update` in each project. **Your project files are safe:**
+Then run `/crew-update` in each project. **Your project files are safe:** the `/plugin` commands only touch the plugin cache, `/crew-update` never writes your data, and customized engine files (`PRODUCT.md`, `CLAUDE.md`, `AGENTS.md`…) are reported as `conflict` and never overwritten without your confirmation. Read the dry-run plan before confirming, keep your version for every `conflict`, and answer **no** if asked to "seed" the baseline on a project whose files you edited by hand.
 
-- The `/plugin` commands never touch a project, only the plugin cache.
-- `/crew-update` never writes your data: `crew/TODO`, `CURRENT_TASKS`, `PROBLEMS`, `ICEBOX`,
-  `PAUSED`, `TESTS`, `HISTORY.md`, `TESTS_DONE`, `CLAUDE_BATCH.md`.
-- Engine files you customized (`PRODUCT.md`, `CLAUDE.md`, `AGENTS.md`...) are reported as
-  `conflict` and never overwritten without your confirmation.
-- **Recommended:** read the dry-run plan before confirming, keep your version for every
-  `conflict`, and answer **no** if asked to "seed" the baseline on a project whose files you
-  edited by hand.
-
-## 🎓 Tutorial: update crew-mates
-
-**Plugin install (Option A/B)**
-
-1. Update the plugin itself (skills, agents, hooks, Zero-Token Mods) from a
-   regular terminal (outside Claude Code):
-   ```bash
-   claude plugin marketplace update crew-mates
-   claude plugin update crew-mates@crew-mates
-   ```
-   The first command refreshes the marketplace cache, the second installs the
-   new version. The in-session `/plugin update crew-mates` may only open the
-   plugin list; the terminal commands are the reliable way.
-   > Updates are detected by the `version` field of `.claude-plugin/plugin.json`:
-   > if it was not bumped, the command answers "already at the latest version"
-   > even though new commits exist.
-2. Restart Claude Code so the new version and `hooks/register.ts` are loaded.
-3. In each bootstrapped project, sync the project-level files:
-   ```text
-   /crew-update
-   ```
-4. Review the report: `new` and `apply` are written for you; for every
-   `conflict`, check the diff and say whether to overwrite or keep your version.
-
-**Manual clone (Option C)**
-
-1. Pull the latest scaffold in your clone of crew-mates:
-   ```bash
-   git pull
-   ```
-2. In each bootstrapped project, run `/crew-update` — it also refreshes
-   `crew_hook.py`, `spec_to_task_hook.py`, and the local `.claude/skills/crew-*`/
-   `.claude/agents/*` copies.
-3. Review the report as above.
-
-Your `crew/` task data is never modified. See
-[Updating an existing project](#-updating-an-existing-project) for what each
-status means.
+</details>
 
 <br>
 
-## 🧪 Testing & verification
+## 🩺 Troubleshooting
 
-If you're developing or auditing `crew-mates` locally:
-
-```bash
-# Run the 10 Zero-Token Mods test suite inside Claude Code's native mod harness
-claude plugin test .
-
-# Audit mod hooks, commands, and sandboxed $-API calls (verifies 0 LLM calls)
-claude plugin validate .
-
-# Run Python hooks, updater, and web dashboard test suites
-pytest -q
-
-# Verify plugin manifests, hooks/hooks.json, mod inventory, and script sync
-python scripts/dev/verify_plugin_package.py
-
-# Regenerate the packaged copies (scripts/, skills/, agents/) after editing their sources
-python scripts/dev/sync_engine.py        # --check to only report drift
-```
-
-<br>
-
-## 🙅 Not for you if
-
-> [!TIP]
-> **Use it if:**
-> - you run more than one Claude Code session on the same repo, one per workstream;
-> - you want tasks, decisions and test checklists to live in the repo as files you can diff and review in a PR;
-> - you want a new session to start knowing what is in progress, without pasting context.
-
-> [!NOTE]
-> - You're solo, one Claude Code session, small script — this is overhead you
->   don't need yet.
-> - You want a hosted task board with a UI — this is deliberately local-first,
->   files-only, no service to run.
+| Symptom | Fix |
+|---|---|
+| The `/crew-*` commands do not appear. | Restart Claude Code after installing. Check with `claude plugin list`. |
+| No status bands or panes. | Run `claude plugin validate .` and look for `hooks/hooks.json names a hooks module`. If it is missing, update Claude Code. |
+| A write was refused with `exit 2`. | Another session holds a lock on that zone. Run `/crew-status` to see who, finish or pause that batch, or pick another one with `/crew-start`. `CREW_HOOK_PROFILE=minimal` turns the gate off. |
+| `plugin update` says "already at the latest version". | The `version` in `.claude-plugin/plugin.json` was not bumped; see [Updating](#-updating). |
+| The dashboard does not start on Windows. | Python 3 must be on the `PATH` (`py` or `python`), and the plugin must be installed for `crew/dashboard.bat` to find the server. |
+| `/crew-init` stops on a placeholder. | That is intended: it fails loudly until every `<placeholder>` is filled (`check_placeholders.py`). |
 
 <br>
 
 ## ❓ FAQ
 
-### How do I stop two Claude Code sessions from editing the same file?
+**How do I stop two Claude Code sessions from editing the same file?**
+Run each batch in its own worktree and let the gate do its job: when a task moves from `TODO` to `CURRENT_TASKS`, the session locks the batch's `Zone:`, and the `PreToolUse` hook refuses writes from another session that touch it. See [How it works](#-how-it-works).
 
-Run each batch in its own git worktree (`crew/batch-<slug>` branch). When a task moves from `TODO` to `CURRENT_TASKS`, the session locks the batch's `Zone:`, and the `PreToolUse` hook rejects (`exit 2`) `Edit`, `Write`, `MultiEdit` and mutating `Bash` commands (`rm`, `mv`, `cp`, redirections, `git mv`) from another session that touch it. The gate is armed only while at least two sessions hold locks, and `CREW_HOOK_PROFILE=minimal` turns it off.
+**How do I keep task state between Claude Code sessions?**
+A task is a Markdown file and its state is the folder it is in. Finished work goes to `crew/CLAUDE_CONTEXT/HISTORY.md`, and a `SessionStart` hook injects a digest of what is in progress.
 
-### How do I keep task state between Claude Code sessions?
+**Does it need a server or a database?**
+No. The hooks are stdlib-only Python scripts and the state is Markdown and JSON in your repo. The web dashboard is optional and listens on `127.0.0.1` only.
 
-A task is a markdown file and its state is the folder it is in (`TODO`, `CURRENT_TASKS`). Finished work goes to `crew/CLAUDE_CONTEXT/HISTORY.md`. A `SessionStart` hook injects a digest of up to 2000 characters: active and paused tasks, active batches, other sessions' locks, the last 3 history entries. `CREW_SESSION_DIGEST=off` disables it.
+**Does it send my code anywhere?**
+No. The hooks and mods only read local files and session telemetry, and the mods spend zero LLM tokens. The one network action is optional team mode, which pushes a git ref to your own remote.
 
-### Does it need a server or a database?
+**Can I use it with a tool other than Claude Code?**
+No, it is built on Claude Code hooks, skills and plugins.
 
-No. The hooks are stdlib-only Python scripts and the state is markdown and JSON files in your repo. The local web dashboard is optional: it listens on `127.0.0.1` only and runs in its own venv.
+<br>
+
+## 📚 Docs
+
+| Doc | What it covers |
+|---|---|
+| [`CLAUDE.md`](./CLAUDE.md) | The project rules and skill routing, and the `/crew-init` step by step. |
+| [`AGENTS.md`](./AGENTS.md) | Guide for agents working in this repo. |
+| [`crew/CLAUDE_CONTEXT/LIFECYCLE.md`](./template/crew/CLAUDE_CONTEXT/LIFECYCLE.md) | Task lifecycle and batching rules in full (template copy). |
+| [`CHANGELOG.md`](./CHANGELOG.md) | What changed in every version. |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Dev setup and how to send a PR. |
+| [`SECURITY.md`](./SECURITY.md) | How to report a vulnerability. |
+| [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) | Community rules. |
+
+<br>
+
+## 🧪 Testing and verification
+
+If you are developing or auditing crew-mates:
+
+```bash
+claude plugin test .                         # the 10 zero-token mods, in Claude Code's mod harness
+claude plugin validate .                     # audits mod hooks, commands and sandboxed $-API calls (0 LLM calls)
+pytest -q                                    # Python hooks, updater and dashboard
+python scripts/dev/verify_plugin_package.py  # manifests, hooks.json, mod inventory, script sync
+python scripts/dev/sync_engine.py            # regenerate packaged copies (scripts/, skills/, agents/); --check reports drift
+```
+
+The diagrams in [`media/`](./media) are Excalidraw scenes (`*.excalidraw`): open them on [excalidraw.com](https://excalidraw.com) to edit, then export the PNG.
 
 <br>
 
 ## 🤝 Contributing
 
-Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
-`crew-mates` saves you a merge conflict, a ⭐ helps other people find it.
+Issues and PRs welcome, see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If crew-mates saves you a merge conflict, a ⭐ helps other people find it.
 
 [![GitHub stars](https://img.shields.io/github/stars/Nakken13/claude-crew?style=social)](https://github.com/Nakken13/claude-crew)
 
 ## 📄 License
 
-MIT — see [`LICENSE`](./LICENSE).
+MIT, see [`LICENSE`](./LICENSE).
