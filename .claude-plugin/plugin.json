@@ -7,8 +7,8 @@
     "url": "https://github.com/Nakken13"
   },
   "license": "MIT",
-  "homepage": "https://github.com/fiaaaansoo/crewmates-fork",
-  "icon": "media/Claude-crew-logo.png",
+  "homepage": "https://github.com/Nakken13/claude-crew",
+  "icon": "media/crew-mates-logo.png",
   "keywords": [
     "claude-code",
     "task-management",
@@ -17,5 +17,5 @@
     "workflow",
     "productivity"
   ],
-  "repository": "https://github.com/fiaaaansoo/crewmates-fork"
+  "repository": "https://github.com/Nakken13/claude-crew"
 }

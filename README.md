@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="./media/Claude-crew-logo.png" alt="crew-mates logo" width="260" />
+<img src="./media/crew-mates-logo.png" alt="crew-mates logo" width="260" />
 
 # 🗂️ crew-mates
 
 **File-based task lifecycle, multi-agent collision prevention & 10 Zero-Token UI mods for Claude Code.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffiaaaansoo/crewmates-fork%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
-[![CI](https://github.com/fiaaaansoo/crewmates-fork/actions/workflows/ci.yml/badge.svg)](https://github.com/fiaaaansoo/crewmates-fork/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FNakken13/claude-crew%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
+[![CI](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml)
 [![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#-whats-in-the-box)
 [![Zero-Token Mods: 10](https://img.shields.io/badge/zero--token%20mods-10-00C4B4.svg)](#-10-zero-token-mods-in-process-ui)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
@@ -33,12 +33,6 @@
 >
 > **Install in one command, working in five minutes, nothing to host.**
 
-> [!NOTE]
-> This repository is a community fork of [`Nakken13/claude-crew`](https://github.com/Nakken13/claude-crew) (MIT, original
-> author Nakken13). It tracks upstream and adds the opt-in team mode (`/crew-collab`), the adaptive
-> test policy, English-only docs/skills, CI and robustness fixes. Upstream-compatible: nothing here
-> changes the on-disk task format.
-
 <br>
 
 ## 👀 See it run
@@ -62,7 +56,7 @@ Session A plans two tasks with `/crew-new-task` and starts one batch with `/crew
 | 🕶️ **Flying blind on cache, context & batches** | You don't see your prompt cache about to expire (`5 min` / `1h` TTL), your context approaching forced compaction, which subagent is running, or your batch ETA — unless you burn tokens asking Claude. |
 
 > [!TIP]
-> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/fiaaaansoo/crewmates-fork) helps other people hitting the same wall find it.
+> Recognize any of these? A ⭐ on [`crew-mates`](https://github.com/Nakken13/claude-crew) helps other people hitting the same wall find it.
 
 <br>
 
@@ -335,7 +329,7 @@ your project.
 ### 🔌 Option A — Install via marketplace (recommended)
 
 ```text
-/plugin marketplace add fiaaaansoo/crewmates-fork
+/plugin marketplace add Nakken13/claude-crew
 /plugin install crew-mates@crew-mates
 /crew-init
 ```
@@ -353,7 +347,7 @@ restart Claude Code after install if the `/crew-*` commands don't appear.
 Paste this into Claude Code, in the project you want to set up:
 
 ```text
-Install the crew-mates plugin (marketplace add fiaaaansoo/crewmates-fork, then
+Install the crew-mates plugin (marketplace add Nakken13/claude-crew, then
 install crew-mates@crew-mates), then run /crew-init here.
 ```
 
@@ -363,8 +357,8 @@ project the same way as Option A.
 ### 📋 Option C — Manual clone (no plugin system)
 
 ```bash
-git clone https://github.com/fiaaaansoo/crewmates-fork.git
-cp -r crewmates-fork/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
+git clone https://github.com/Nakken13/claude-crew.git
+cp -r claude-crew/{CLAUDE.md,AGENTS.md,PRODUCT.md,CONTRIBUTING.md,SECURITY.md,crew,.claude} your-project/
 ```
 
 Open `your-project` in Claude Code and run `/crew-init`. Use this if you
@@ -516,7 +510,7 @@ and every `/crew-*` command are unchanged. Once per machine:
 ```text
 /plugin uninstall claude-crew
 /plugin marketplace remove claude-crew
-/plugin marketplace add fiaaaansoo/crewmates-fork
+/plugin marketplace add Nakken13/claude-crew
 /plugin install crew-mates@crew-mates
 ```
 
@@ -632,7 +626,7 @@ No. The hooks are stdlib-only Python scripts and the state is markdown and JSON 
 Issues and PRs welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). If
 `crew-mates` saves you a merge conflict, a ⭐ helps other people find it.
 
-[![GitHub stars](https://img.shields.io/github/stars/fiaaaansoo/crewmates-fork?style=social)](https://github.com/fiaaaansoo/crewmates-fork)
+[![GitHub stars](https://img.shields.io/github/stars/Nakken13/claude-crew?style=social)](https://github.com/Nakken13/claude-crew)
 
 ## 📄 License
 
