@@ -17,7 +17,7 @@
 **[Batching](#-the-actual-differentiator-batching)** ·
 **[Zero-Token Mods](#-10-zero-token-mods-in-process-ui)** ·
 **[Commands](#-commands-reference)** ·
-**[What's in the box](#-whats-in-the-box)** · **[Is this for you?](#-not-for-you-if)**
+**[What's in the box](#-whats-in-the-box)** · **[Is this for you?](#-not-for-you-if)** · **[FAQ](#-faq)**
 
 </div>
 
@@ -38,6 +38,18 @@
 > author Nakken13). It tracks upstream and adds the opt-in team mode (`/crew-collab`), the adaptive
 > test policy, English-only docs/skills, CI and robustness fixes. Upstream-compatible: nothing here
 > changes the on-disk task format.
+
+<br>
+
+## 👀 See it run
+
+Two Claude Code sessions in the same repo. Session A plans two tasks and starts one batch; session B starts the other batch, in a different zone.
+
+<!-- TODO: add the new recording as media/demo-flow.png, then uncomment:
+<p align="center"><img src="./media/demo-flow.png" alt="Two terminals side by side. Session A plans two tasks with /crew-new-task, then starts the checkout batch with /crew-start. Session B starts the payments batch. A final git worktree list shows main, crew/batch-a and crew/batch-b." width="890"></p>
+-->
+
+Session A plans two tasks with `/crew-new-task` and starts one batch with `/crew-start`. Session B runs `/crew-start` and takes the other batch, in its own git worktree. Your output will differ.
 
 <br>
 
@@ -369,6 +381,30 @@ in [`CLAUDE.md`](./CLAUDE.md).
 
 <br>
 
+### 🧪 Your first task
+
+After `/crew-init`, describe your tasks in plain language and say where they go:
+
+```text
+/crew-new-task Two tasks for the backlog. 1) Show the cart items as a numbered list in frontend/checkout/cart.html. 2) Retry failed card charges with backoff in backend/payments/retry.py. Don't start them.
+```
+
+crew-mates hands this to the `manager` agent, which writes one task file per item with checkable actions and files each one in a batch with its zone (`crew/CLAUDE_BATCH.md`). Commit the plan: each batch runs in a worktree created from `main`, which only contains committed files.
+
+```bash
+git add -A && git commit -m "Plan the two tasks"
+```
+
+Then run this in two terminals:
+
+```text
+/crew-start
+```
+
+Each session picks a batch no other session holds and works in that batch's worktree. When the code is done, `/crew-close-task` checks the boxes, logs the work in `HISTORY.md` and moves the test checklists out.
+
+<br>
+
 ## 📊 Optional: local web dashboard
 
 A read/write web UI over your `crew/` folders (tasks, batches, tests). Local
@@ -561,11 +597,33 @@ python scripts/dev/sync_engine.py        # --check to only report drift
 
 ## 🙅 Not for you if
 
+> [!TIP]
+> **Use it if:**
+> - you run more than one Claude Code session on the same repo, one per workstream;
+> - you want tasks, decisions and test checklists to live in the repo as files you can diff and review in a PR;
+> - you want a new session to start knowing what is in progress, without pasting context.
+
 > [!NOTE]
 > - You're solo, one Claude Code session, small script — this is overhead you
 >   don't need yet.
 > - You want a hosted task board with a UI — this is deliberately local-first,
 >   files-only, no service to run.
+
+<br>
+
+## ❓ FAQ
+
+### How do I stop two Claude Code sessions from editing the same file?
+
+Run each batch in its own git worktree (`crew/batch-<slug>` branch). When a task moves from `TODO` to `CURRENT_TASKS`, the session locks the batch's `Zone:`, and the `PreToolUse` hook rejects (`exit 2`) `Edit`, `Write`, `MultiEdit` and mutating `Bash` commands (`rm`, `mv`, `cp`, redirections, `git mv`) from another session that touch it. The gate is armed only while at least two sessions hold locks, and `CREW_HOOK_PROFILE=minimal` turns it off.
+
+### How do I keep task state between Claude Code sessions?
+
+A task is a markdown file and its state is the folder it is in (`TODO`, `CURRENT_TASKS`). Finished work goes to `crew/CLAUDE_CONTEXT/HISTORY.md`. A `SessionStart` hook injects a digest of up to 2000 characters: active and paused tasks, active batches, other sessions' locks, the last 3 history entries. `CREW_SESSION_DIGEST=off` disables it.
+
+### Does it need a server or a database?
+
+No. The hooks are stdlib-only Python scripts and the state is markdown and JSON files in your repo. The local web dashboard is optional: it listens on `127.0.0.1` only and runs in its own venv.
 
 <br>
 
