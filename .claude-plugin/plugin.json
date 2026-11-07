@@ -1,6 +1,6 @@
 {
   "name": "crew-mates",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "File-based task lifecycle, multi-agent collision prevention, and 10 Zero-Token UI/batch supervision mods for Claude Code.",
   "author": {
     "name": "Nakken13",
