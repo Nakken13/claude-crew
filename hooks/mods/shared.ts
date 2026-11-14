@@ -101,7 +101,7 @@ export interface ModRegistrar {
 }
 
 export type CrewPaneId = 'crew-turns' | 'crew-stack' | 'crew-board' | 'crew-agents' | 'crew-cache';
-export type CrewBandId = 'usage' | 'weather' | 'radar' | 'progress' | 'agents' | 'locks';
+export type CrewBandId = 'usage' | 'weather' | 'radar' | 'progress' | 'agents' | 'locks' | 'count';
 
 export const PANE_META: Record<CrewPaneId, { id: CrewPaneId; title: string; command: string }> = {
   'crew-turns': {
@@ -172,6 +172,7 @@ export const crewUiState: CrewUiVisibilityState = {
     progress: true,
     agents: true,
     locks: true,
+    count: true,
   },
   panes: {
     'crew-turns': false,

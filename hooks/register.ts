@@ -65,6 +65,8 @@ import {
   registerUsageBand,
 } from './mods/usage-band.ts';
 
+import { registerCrewCountBand } from './mods/crew-count-band.ts';
+
 interface ModBusBuckets {
   sessionStart: Array<HookHandler<any, any>>;
   sessionEnd: Array<HookHandler<any, any>>;
@@ -210,6 +212,7 @@ export function register(on: ModRegistrar): void {
   registerTokenWeather(registrar);
   registerPromptCacheControl(registrar);
   registerUsageBand(registrar);
+  registerCrewCountBand(registrar);
 
   on('session.start', async ($, e, next) => {
     await refreshEnvCache($, (e as { cwd?: string }).cwd);
@@ -286,6 +289,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
 
     return composeMiddlewareChain(buckets.sessionStart, api, e, next);
@@ -309,6 +313,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     return composeMiddlewareChain(buckets.turnStart, api, e, next);
   });
@@ -331,6 +336,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     return composeMiddlewareChain(buckets.toolCall, api, e, next).catch(() => next(e));
   });
@@ -354,6 +360,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     // e.usage sums the turn's requests; the real context size comes from the session.
     let enriched: unknown = e;
@@ -389,6 +396,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     return composeMiddlewareChain(buckets.sessionEnd, api, e, next);
   });
@@ -411,6 +419,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     // Single line: crew on the left, weather on the right (segments contributed by each mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
@@ -447,6 +456,7 @@ export function register(on: ModRegistrar): void {
       },
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
+      process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
     };
     return composeMiddlewareChain(buckets.pane, api, e, next).catch(() => next(e));
   });
@@ -474,6 +484,7 @@ export function register(on: ModRegistrar): void {
           },
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
+          process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
         };
         return handler(api, e, async () => undefined);
       })
@@ -502,6 +513,7 @@ export function register(on: ModRegistrar): void {
           },
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
+          process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
         };
         return handler(api, e, async () => undefined);
       })
@@ -530,6 +542,7 @@ export function register(on: ModRegistrar): void {
           },
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
+          process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
         };
         return handler(api, e, async () => undefined);
       })
@@ -558,6 +571,7 @@ export function register(on: ModRegistrar): void {
           },
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
+          process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
         };
         return handler(api, e, async () => undefined);
       })
