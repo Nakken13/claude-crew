@@ -520,21 +520,21 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-vel-1' });
   });
 
-  test('Crew N: launchable sessions in red, same line, after the crew radar and before the weather', async () => {
+  test('Crew x/n: active/(active+launchable) in red, same line, after the crew radar and before the weather', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
       usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
     };
     (h.api as unknown as Record<string, unknown>).process = {
-      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [] }), stderr: '' }),
+      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [{}, {}] }), stderr: '' }),
     };
     (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
     crewRuntimeState.projectRoot = '/repo';
     await h.emit('session.start', { sessionId: 'sess-count-1', cwd: '/repo' });
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const text = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
-    expect(text).toContain('Crew 3');
-    expect(text.indexOf('Crew 3')).toBeLessThan(text.indexOf('80%'));
+    expect(text).toContain('Crew 2/5');
+    expect(text.indexOf('Crew 2/5')).toBeLessThan(text.indexOf('80%'));
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 
@@ -561,7 +561,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
       usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
     };
     (h.api as unknown as Record<string, unknown>).process = {
-      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [] }), stderr: '' }),
+      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [{}, {}] }), stderr: '' }),
     };
     (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
     crewRuntimeState.projectRoot = '/repo';
@@ -569,8 +569,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const narrow = collectTexts(await h.emit('ui.render', { viewport: { columns: 30, rows: 20 } }, 'component=AbovePrompt'));
     const wide = collectTexts(await h.emit('ui.render', { viewport: { columns: 200, rows: 20 } }, 'component=AbovePrompt'));
-    expect(narrow).toContain('Crew 3');
-    expect(wide).toContain('Crew 3');
+    expect(narrow).toContain('Crew 2/5');
+    expect(wide).toContain('Crew 2/5');
     await h.emit('session.end', { sessionId: 'sess-narrow-1' });
   });
 

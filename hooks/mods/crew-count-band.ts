@@ -1,8 +1,8 @@
 /**
  * Mod 12 — crew-count-band.ts
  *
- * `Crew N` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
- * N = nombre de sessions lançables en parallèle (même calcul que `/crew-count`,
+ * `Crew x/n` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
+ * x = batchs actifs, n = actifs + lançables en parallèle (même calcul que `/crew-count`,
  * via `crew_hook.py count`). 0 appel LLM.
  */
 
@@ -16,10 +16,16 @@ import {
 const RED = '#ff3b30';
 const AFTER_CREW = 40; // à gauche, après radar (10), progression (20) et agents (30)
 
-export const crewCountState: { launchable: number | null; error: string | null } = { launchable: null, error: null };
+// active = batchs ayant une tâche en CURRENT_TASKS/PAUSED ; launchable = lançables en plus maintenant.
+export const crewCountState: { launchable: number | null; active: number; error: string | null } = {
+  launchable: null,
+  active: 0,
+  error: null,
+};
 
-export function formatCrewCount(n: number | null = crewCountState.launchable): string {
-  if (n !== null) return `Crew ${n}`;
+// `Crew x/n` : x = batchs actifs, n = actifs + lançables (max en parallèle avec les zones actuelles).
+export function formatCrewCount(n: number | null = crewCountState.launchable, x: number = crewCountState.active): string {
+  if (n !== null) return `Crew ${x}/${x + n}`;
   // Échec du comptage : `Crew ?` seul (le détail reste dans crewCountState.error).
   return crewCountState.error ? 'Crew ?' : '';
 }
@@ -60,12 +66,14 @@ async function doRefresh($: unknown, project: string): Promise<void> {
           last = `${py} exit ${r?.exitCode} ${String(r?.stderr ?? '')}`;
           continue;
         }
-        const n = JSON.parse(String(r.stdout)).launchable_count;
+        const parsed = JSON.parse(String(r.stdout));
+        const n = parsed.launchable_count;
         if (typeof n !== 'number') {
           last = `${py} bad json`;
           continue;
         }
         crewCountState.launchable = n;
+        crewCountState.active = Array.isArray(parsed.active) ? parsed.active.length : 0;
         crewCountState.error = null;
         return;
       } catch (err) {
