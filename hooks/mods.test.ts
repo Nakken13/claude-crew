@@ -527,6 +527,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     (h.api as unknown as Record<string, unknown>).process = {
       run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [] }), stderr: '' }),
     };
+    (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
+    crewRuntimeState.projectRoot = '/repo';
     await h.emit('session.start', { sessionId: 'sess-count-1', cwd: '/repo' });
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const text = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));

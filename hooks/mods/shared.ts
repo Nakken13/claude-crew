@@ -87,6 +87,8 @@ export interface ModApi {
   session?: {
     usage: () => Promise<any>;
   };
+  process?: { run: (argv: string[], init?: object) => Promise<any> };
+  plugin?: { root: () => string | undefined };
 }
 
 export type HookHandler<TEvent = Record<string, unknown>, TResult = unknown> = (

@@ -22,27 +22,30 @@ export function formatCrewCount(n: number | null = crewCountState.launchable): s
   return n === null ? '' : `Crew ${n}`;
 }
 
+// Sécurité : on n'exécute QUE le script livré avec le plugin (jamais un `crew_hook.py` pris dans le
+// repo ouvert, qui peut être non fiable). cwd = racine du plugin ; le projet passe par CLAUDE_PROJECT_DIR.
 async function refresh($: unknown): Promise<void> {
   try {
-    const run = ($ as { process?: { run?: (argv: string[], init?: object) => Promise<any> } }).process?.run;
-    const root = crewRuntimeState.projectRoot;
-    if (!run || !root) return;
-    for (const script of [`${root}/crew/crew_hook.py`, `${root}/scripts/crew_hook.py`]) {
-      for (const py of ['python', 'python3', 'py']) {
-        try {
-          const r = await run([py, script, 'count'], {
-            cwd: root,
-            env: { CLAUDE_PROJECT_DIR: root },
-            timeoutMs: 10_000,
-          });
-          if (r?.exitCode !== 0) continue;
-          const n = JSON.parse(String(r.stdout)).launchable_count;
-          if (typeof n !== 'number') continue;
-          crewCountState.launchable = n;
-          return;
-        } catch {
-          // interpréteur / script suivant
-        }
+    const api = $ as { process?: { run?: (argv: string[], init?: object) => Promise<any> }; plugin?: { root?: () => string | undefined } };
+    const run = api.process?.run;
+    const pluginRoot = api.plugin?.root?.();
+    const project = crewRuntimeState.projectRoot;
+    if (!run || !pluginRoot || !project) return;
+    const script = `${pluginRoot}/scripts/crew_hook.py`;
+    for (const py of ['python3', 'python', 'py']) {
+      try {
+        const r = await run([py, script, 'count'], {
+          cwd: pluginRoot,
+          env: { CLAUDE_PROJECT_DIR: project },
+          timeoutMs: 10_000,
+        });
+        if (r?.exitCode !== 0) continue;
+        const n = JSON.parse(String(r.stdout)).launchable_count;
+        if (typeof n !== 'number') continue;
+        crewCountState.launchable = n;
+        return;
+      } catch {
+        // interpréteur suivant
       }
     }
   } catch {
