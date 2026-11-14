@@ -8,6 +8,7 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Fix: modbar vanished in a narrow terminal (1.3.6)** — the AbovePrompt band is now width-aware (`viewport.columns`): one row when both sides fit, otherwise left and right stacked on two rows, each segment truncated (`truncate-end`) instead of the band disappearing. Regression test added.
 - **Diagnostic for `Crew N` (1.3.5)** — when the `crew_hook.py count` subprocess fails, the red segment now reads `Crew ? (<stage / error>)` instead of silently disappearing.
 - **Fix: hooks module failed to load since 1.3.2 (1.3.4)** — the engine statically rejects `$.plugin?.root` (`$.plugin` may only be used as `$.plugin.name` / `$.plugin.root`), so the whole module, every band and pane included, never loaded. Now `$.plugin.root`. Found in the `claude --debug` log; `claude plugin test` and `plugin validate` do not run this check.
 - **Fix `Crew N` blocking the whole AbovePrompt band (1.3.3)** — `crew-count-band.ts` no longer awaits the `crew_hook.py count` subprocess inside `ui.render` (a slow or failing process delayed the render of every segment, crew-ui included). The count is refreshed only on `session.start` / `turn.complete`, one run at a time. New regression test with a hanging `process.run`.

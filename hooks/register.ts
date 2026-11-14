@@ -430,7 +430,7 @@ export function register(on: ModRegistrar): void {
     // Single line: crew on the left, weather on the right (segments contributed by each mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
     return composeMiddlewareChain(orderedBands, api, e, next)
-      .then((tree) => (isBandAccumulator(tree) ? renderBandAccumulator(tree, $.ui.resolve(e)) : tree))
+      .then((tree) => (isBandAccumulator(tree) ? renderBandAccumulator(tree, $.ui.resolve(e), (e as { viewport?: { columns?: number } }).viewport?.columns) : tree))
       .catch(() => next(e));
   });
 

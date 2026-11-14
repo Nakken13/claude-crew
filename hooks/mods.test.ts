@@ -538,6 +538,25 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 
+  test('AbovePrompt band: narrow viewport still renders (stacked rows, never dropped)', async () => {
+    const h = createHarness();
+    (h.api as unknown as Record<string, unknown>).session = {
+      usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
+    };
+    (h.api as unknown as Record<string, unknown>).process = {
+      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [] }), stderr: '' }),
+    };
+    (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
+    crewRuntimeState.projectRoot = '/repo';
+    await h.emit('session.start', { sessionId: 'sess-narrow-1', cwd: '/repo' });
+    await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
+    const narrow = collectTexts(await h.emit('ui.render', { viewport: { columns: 30, rows: 20 } }, 'component=AbovePrompt'));
+    const wide = collectTexts(await h.emit('ui.render', { viewport: { columns: 200, rows: 20 } }, 'component=AbovePrompt'));
+    expect(narrow).toContain('Crew 3');
+    expect(wide).toContain('Crew 3');
+    await h.emit('session.end', { sessionId: 'sess-narrow-1' });
+  });
+
   test('Crew N: a hanging process.run never blocks the AbovePrompt render', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).process = { run: () => new Promise(() => {}) };

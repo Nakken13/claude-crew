@@ -913,10 +913,11 @@ export function addBandBlock(prev: unknown, block: unknown): BandAccumulator {
 export function renderBandAccumulator(
   acc: BandAccumulator,
   ui: { Box: (p: any) => unknown; Text: (p: any) => unknown },
+  columns?: number,
 ): unknown {
   const byOrder = (a: BandSegment, b: BandSegment) => (a.order ?? 100) - (b.order ?? 100);
   const text = (s: BandSegment) =>
-    ui.Text({ color: s.color, bold: s.bold, dimColor: s.dimColor, children: [s.text] });
+    ui.Text({ color: s.color, bold: s.bold, dimColor: s.dimColor, wrap: 'truncate-end', children: [s.text] });
   const side = (slot: 'left' | 'right') =>
     ui.Box({
       flexDirection: 'row',
@@ -927,19 +928,22 @@ export function renderBandAccumulator(
     ui.Box({ flexDirection: 'row', paddingX: 1, children: [text(s)] }),
   );
   const hasMain = acc.segments.some((s) => s.slot !== 'alert');
+  // Largeur d'un côté : textes + gap 4 entre segments. Une ligne si les deux côtés tiennent
+  // (padding 1 de chaque côté + 2 de marge entre eux), sinon deux lignes empilées, tronquées.
+  const sideWidth = (slot: 'left' | 'right') => {
+    const list = acc.segments.filter((s) => s.slot === slot);
+    return list.reduce((n, s) => n + [...s.text].length, 0) + Math.max(0, list.length - 1) * 4;
+  };
+  const fitsOneRow = columns === undefined || sideWidth('left') + sideWidth('right') + 4 <= columns;
+  const sides = [side('left'), side('right')].filter((_, i) => fitsOneRow || sideWidth(i === 0 ? 'left' : 'right') > 0);
   const rows = [
     ...(acc.foreign ? [acc.foreign] : []),
     ...acc.blocks,
     ...alerts,
     ...(hasMain
-      ? [
-          ui.Box({
-            flexDirection: 'row',
-            paddingX: 1,
-            justifyContent: 'space-between',
-            children: [side('left'), side('right')],
-          }),
-        ]
+      ? fitsOneRow
+        ? [ui.Box({ flexDirection: 'row', paddingX: 1, justifyContent: 'space-between', children: sides })]
+        : sides.map((b) => ui.Box({ flexDirection: 'row', paddingX: 1, children: [b] }))
       : []),
   ];
   if (rows.length === 0) return null;
