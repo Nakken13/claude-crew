@@ -12,7 +12,7 @@ Tasks live as Markdown files, every new session knows what is in progress, and a
 [![Version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FNakken13%2Fclaude-crew%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=blue)](./CHANGELOG.md)
 [![CI](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml/badge.svg)](https://github.com/Nakken13/claude-crew/actions/workflows/ci.yml)
 [![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](#3-what-is-in-the-box)
-[![Zero-Token Mods: 10](https://img.shields.io/badge/zero--token%20mods-10-00C4B4.svg)](#-zero-token-mods)
+[![Zero-Token Mods: 12](https://img.shields.io/badge/zero--token%20mods-12-00C4B4.svg)](#-zero-token-mods)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-5A45FF.svg)](https://github.com/anthropics/claude-code)
 
 **[Quick start](#-quick-start)** · **[How it works](#-how-it-works)** · **[Specialist agents](#-a-crew-of-specialists)** · **[Commands](#-commands)** · **[Zero-Token Mods](#-zero-token-mods)** · **[Team mode](#-optional-several-devs-on-one-repo)** · **[Troubleshooting](#-troubleshooting)** · **[FAQ](#-faq)**
@@ -37,7 +37,7 @@ crew-mates is a plugin for [Claude Code](https://github.com/anthropics/claude-co
 | 🧠 **Session amnesia.** Every new Claude Code session starts blind: what is done, what is half done, why a decision was made. | Tasks and decisions live in `crew/`. A hook injects a short digest at session start, so Claude already knows what is going on. |
 | 💥 **Silent collisions.** Two sessions on the same repo will happily edit the same file at the same time. | Each batch of work gets its own git worktree, and a hook refuses a write into a zone another session has locked. |
 | 🎯 **One generalist for every decision.** A product call, a legal doubt and a UX choice need different expertise. | 8 specialist agents, each with its own role and answer format, that Claude can consult in parallel. |
-| 🕶️ **Flying blind.** You do not see your prompt cache about to expire, your context filling up, or how far a batch is. | 10 zero-token mods draw live status bands and side panes right in the Claude Code UI, without spending an LLM token. |
+| 🕶️ **Flying blind.** You do not see your prompt cache about to expire, your context filling up, or how far a batch is. | 12 zero-token mods draw live status bands and side panes right in the Claude Code UI, without spending an LLM token. |
 
 <br>
 
@@ -123,7 +123,7 @@ Commit the plan (`git add -A && git commit -m "Plan the two tasks"`), then run `
 
 <br>
 
-**Manual clone ("Option C", no plugin system).** The marketplace install above is Option A and the paste-a-prompt tip is Option B. Skills, agents and Python hooks are copied straight into the project. The 10 in-process mods need the plugin (above).
+**Manual clone ("Option C", no plugin system).** The marketplace install above is Option A and the paste-a-prompt tip is Option B. Skills, agents and Python hooks are copied straight into the project. The 12 in-process mods need the plugin (above).
 
 ```bash
 git clone https://github.com/Nakken13/claude-crew.git
@@ -198,7 +198,7 @@ Plenty of scaffolds give you a prompt template and a folder layout. crew-mates t
 
 ### 3. What is in the box
 
-<p align="center"><img src="./media/how-it-works.png" alt="You type slash commands. Inside Claude Code, the crew-mates plugin adds 10 skills, 8 personas, Python hooks and 10 zero-token mods. Skills create, move and close tasks in your repo; hooks block and lock writes; mods read the repo to draw status bands." width="900"></p>
+<p align="center"><img src="./media/how-it-works.png" alt="You type slash commands. Inside Claude Code, the crew-mates plugin adds 10 skills, 8 personas, Python hooks and 12 zero-token mods. Skills create, move and close tasks in your repo; hooks block and lock writes; mods read the repo to draw status bands." width="900"></p>
 
 | Piece | What it does |
 |---|---|
@@ -208,7 +208,7 @@ Plenty of scaffolds give you a prompt template and a folder layout. crew-mates t
 | 🎭 8 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) that Claude can consult in parallel. |
 | 🪝 `crew_hook.py` | One file, three hooks: the `PreToolUse` gate, the `SessionStart` digest, the `Stop` sync. |
 | 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes, keeping specs and tasks in sync. |
-| 🎛️ `hooks/register.ts` + `hooks/mods/*` | The 10 zero-token UI mods. |
+| 🎛️ `hooks/register.ts` + `hooks/mods/*` | The 12 zero-token UI mods. |
 | 📖 `CLAUDE.md` / `AGENTS.md` | Skill routing and context-efficiency rules, wired into Claude Code from day one. |
 
 Everything is plain Markdown, JSON state and dependency-free code: readable, greppable, diffable in a normal PR review.
@@ -251,7 +251,7 @@ These are handled in-process by the mods, so they cost nothing and answer immedi
 
 | Command | What it shows |
 |---|---|
-| `/crew-ui` | Overview of all 10 mods and their ON/OFF state. |
+| `/crew-ui` | Overview of all 12 mods and their ON/OFF state. |
 | `/crew-ui all [on\|off]` | Opens or closes every pane and status band at once. |
 | `/crew-ui radar [on\|off]` | Global counter: sessions online, current tasks, todo. |
 | `/crew-ui progress [on\|off]` | Task, batch and ETA progress bars. |
@@ -271,11 +271,11 @@ See [A crew of specialists](#-a-crew-of-specialists) for the 8 agents and how to
 
 ## 🎛️ Zero-Token Mods
 
-crew-mates ships **10 native TypeScript mods** loaded in-process. They draw live status bands above your prompt and interactive side panes **without spending a single LLM token**. They need a Claude Code build that supports hook `modules` (validated on `v2.1.314`; check with `claude plugin validate .`).
+crew-mates ships **12 native TypeScript mods** loaded in-process. They draw live status bands above your prompt and interactive side panes **without spending a single LLM token**. They need a Claude Code build that supports hook `modules` (validated on `v2.1.314`; check with `claude plugin validate .`).
 
 ```text
 ┌─ AbovePrompt (live 0-token status bands) ─────────────────────────────────────────────┐
-│ 🟢 2 Sessions online | ⚡ 2 Current Tasks | 📋 3 Todo                                │
+│ 🟢 2 Sessions online | ⚡ 2 Current Tasks | 📋 3 Todo | Crew 2                       │
 │ Task : [████░░] 4/6 (66%)  │  Batch : [██████░░] 3/4 tasks (75%)  │  ⏱️ ETA: ~8 min (~45k tokens left) │
 │ 🎭 Agent Flow (1 active / 2 total)                                                    │
 │   ├── ✅ architect [Read, Glob, Grep] · 8s                                            │
@@ -294,7 +294,7 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 ```
 
 <details>
-<summary><b>The 10 mods, one by one</b></summary>
+<summary><b>The 12 mods, one by one</b></summary>
 
 <br>
 
@@ -308,7 +308,7 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 | 4 | `stack-viewer.ts` | Pane (`/crew-stack`) | Tree of everything active in the session, annotated with source and priority (`P1` local override to `P3` plugin or docs). |
 | 5 | `agent-flow.ts` | Pane (`/crew-agents`) + band | Live execution tree of subagents and personas (running, done, blocked, failed, tools, elapsed time). |
 
-**Tasks, batches and multi-session (6–10)**
+**Tasks, batches and multi-session (6–10, 12)**
 
 | # | Mod (`hooks/mods/`) | Surface | What it does (100% local) |
 |---|---|---|---|
@@ -317,8 +317,10 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 | 8 | `batch-dependency-graph.ts` | Pane (`/crew-board`) | Kanban and dependency board; flags `PAUSED/` tasks, prerequisites and cross-session zone blocks. |
 | 9 | `file-lock-monitor.ts` | Band + toast | Instant red banner if the file you edit is held by another session or falls in a zone it locked. |
 | 10 | `batch-eta-cost.ts` | Band | Learns task duration and token velocity per batch to show `⏱️ ETA: ~8 min (~45k tokens left)`. |
+| 11 | `usage-band.ts` | Band | Orange `/usage` stats (5h and 7d limits, context, cost) on the right of the band, read from `$.session.usage()`. |
+| 12 | `crew-count-band.ts` | Band | Red `Crew N` right after the crew radar: how many sessions you can launch in parallel (same count as `/crew-count`, via the plugin's own `crew_hook.py`). Shows `Crew ?` if the count fails. |
 
-**Golden rules.** (1) **0 extra tokens**: no `$.model.complete`, no prompt injection, no LLM tool registration; everything relies on local telemetry, `crew/` files and `$.ui`. (2) **No dependencies**: pure TypeScript on Claude Code's sandboxed `$` API, no `node_modules`, no bundler. (3) **One entrypoint**: `hooks/register.ts` multiplexes lifecycle events across the 10 modules in `hooks/mods/`.
+**Golden rules.** (1) **0 extra tokens**: no `$.model.complete`, no prompt injection, no LLM tool registration; everything relies on local telemetry, `crew/` files and `$.ui`. (2) **No dependencies**: pure TypeScript on Claude Code's sandboxed `$` API, no `node_modules`, no bundler. (3) **One entrypoint**: `hooks/register.ts` multiplexes lifecycle events across the 12 modules in `hooks/mods/`.
 
 **Layout of `hooks/`**
 
@@ -329,8 +331,25 @@ hooks/
 ├── mods.test.ts               # Test suite run by `claude plugin test .`
 └── mods/
     ├── shared.ts              # Sandbox-safe types, Markdown/batch/lock parsers, worktree and zone matchers
-    └── <one file per mod>     # The 10 mods above
+    └── <one file per mod>     # The 12 mods above
 ```
+
+</details>
+
+<details>
+<summary><b>What's new (1.3.2 → 1.3.10)</b></summary>
+
+<br>
+
+- **`Crew N` band (1.3.2):** a red segment showing how many sessions you can launch in parallel, next to the crew radar. It only runs the script shipped with the plugin, never one from the repo you have open.
+- **Orange `/usage` band:** your 5h / 7d limits, context and cost on the right of the band.
+- **Narrow terminals (1.3.6, 1.3.8):** the band now adapts to the terminal width. It goes on two rows when it does not fit, and `Crew N` no longer gets squeezed out.
+- **Load fix (1.3.4):** a `$.plugin?.root` call made Claude Code refuse the whole mods module. Fixed.
+- **Non-blocking count (1.3.3):** `Crew N` no longer delays the band while it counts.
+- **`Crew ?` (1.3.5, 1.3.7):** shown when the count fails, without error detail.
+- **Position and first render (1.3.9, 1.3.10):** `Crew N` sits right after the radar, before the weather, and shows up at session start instead of after a resize.
+
+Full details in the [CHANGELOG](./CHANGELOG.md).
 
 </details>
 
@@ -508,7 +527,7 @@ No, it is built on Claude Code hooks, skills and plugins.
 If you are developing or auditing crew-mates:
 
 ```bash
-claude plugin test .                         # the 10 zero-token mods, in Claude Code's mod harness
+claude plugin test .                         # the 12 zero-token mods, in Claude Code's mod harness
 claude plugin validate .                     # audits mod hooks, commands and sandboxed $-API calls (0 LLM calls)
 pytest -q                                    # Python hooks, updater and dashboard
 python scripts/dev/verify_plugin_package.py  # manifests, hooks.json, mod inventory, script sync
