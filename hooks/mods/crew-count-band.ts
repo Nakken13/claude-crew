@@ -20,7 +20,8 @@ export const crewCountState: { launchable: number | null; error: string | null }
 
 export function formatCrewCount(n: number | null = crewCountState.launchable): string {
   if (n !== null) return `Crew ${n}`;
-  return crewCountState.error ? `Crew ? (${crewCountState.error})` : '';
+  // Échec du comptage : `Crew ?` seul (le détail reste dans crewCountState.error).
+  return crewCountState.error ? 'Crew ?' : '';
 }
 
 // Sécurité : on n'exécute QUE le script livré avec le plugin (jamais un `crew_hook.py` pris dans le
