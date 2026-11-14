@@ -318,7 +318,7 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 | 9 | `file-lock-monitor.ts` | Band + toast | Instant red banner if the file you edit is held by another session or falls in a zone it locked. |
 | 10 | `batch-eta-cost.ts` | Band | Learns task duration and token velocity per batch to show `⏱️ ETA: ~8 min (~45k tokens left)`. |
 | 11 | `usage-band.ts` | Band | Orange `/usage` stats (5h and 7d limits, context, cost) on the right of the band, read from `$.session.usage()`. |
-| 12 | `crew-count-band.ts` | Band | Red `Crew x/n` right after the crew radar: x = batches running, n = most you can run in parallel with the current zones (running + launchable, same count as `/crew-count`, via the plugin's own `crew_hook.py`). n moves when a batch finishes and frees its zone. Shows `Crew ?` if the count fails. |
+| 12 | `crew-count-band.ts` | Band | Red `Crew x/n` right after the crew radar: x = batches running (paused ones excluded), n = most you can run in parallel with the current zones (running + launchable, same count as `/crew-count`, via the plugin's own `crew_hook.py`). n moves when a batch finishes and frees its zone. Shows `Crew ?` if the count fails. |
 
 **Golden rules.** (1) **0 extra tokens**: no `$.model.complete`, no prompt injection, no LLM tool registration; everything relies on local telemetry, `crew/` files and `$.ui`. (2) **No dependencies**: pure TypeScript on Claude Code's sandboxed `$` API, no `node_modules`, no bundler. (3) **One entrypoint**: `hooks/register.ts` multiplexes lifecycle events across the 12 modules in `hooks/mods/`.
 
@@ -349,6 +349,7 @@ hooks/
 - **`Crew ?` (1.3.5, 1.3.7):** shown when the count fails, without error detail.
 - **Position and first render (1.3.9, 1.3.10):** `Crew N` sits right after the radar, before the weather, and shows up at session start instead of after a resize.
 - **`Crew x/n` (1.3.12):** the segment now shows running batches over the parallel maximum, e.g. `Crew 2/5`.
+- **`Crew x/n` ignores paused batches (1.3.13):** only batches with a task in `CURRENT_TASKS` count as running.
 
 Full details in the [CHANGELOG](./CHANGELOG.md).
 

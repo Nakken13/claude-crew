@@ -8,6 +8,7 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Fix: `Crew x/n` counted paused batches as running (1.3.13)** — `crew_hook.py count` now also returns `running_count` (batch with a task in `CURRENT_TASKS`) and `paused_count` (zone held by a `PAUSED` task). `x` = running, `n` = running + launchable; paused batches still hold their zone for overlap checks but no longer inflate the numbers (voyageo showed `6/10` with 1 current task and 5 paused). `active` is unchanged for `/crew-count`.
 - **`Crew x/n` (1.3.12)** — the red segment now reads `Crew x/n`: x = batches running (a task in `CURRENT_TASKS`/`PAUSED`, paused ones included), n = x + batches launchable now, i.e. the parallel maximum with the current zones. Same `crew_hook.py count` data.
 - **Fix: `🟢N` ignored `/clear` and over-counted sessions (1.3.11)** — the radar registered itself under a random id generated at load (`session.start` carries no id) and `session.end` overwrote it with the old real id, so each `/clear` left a ghost in `.claude/crew-sessions.lock` for 30 min. The radar now follows `$.session.id()` (exposed through the `register.ts` multiplexer), drops its previous ids on a switch, and `session.end` removes every id of the process. Regression test added.
 - **Fix: `Crew N` only appeared after a resize (1.3.10)** — `session.start` now invalidates the cached render once the count is computed, and the project dir is read from `CLAUDE_PROJECT_DIR` instead of a field the radar may not have set yet.

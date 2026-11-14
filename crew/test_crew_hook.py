@@ -1727,6 +1727,23 @@ def test_count_launchable_active_and_overlap(repo):
     assert "Batch E" not in ex and r["launchable"][0]["remaining"] == 1
 
 
+def test_count_separates_running_from_paused(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/a/", "a1.md"),
+        _sec("P", "src/p/", "p1.md"),
+        _sec("C", "docs/", "c1.md"),
+    ), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "PAUSED", "p1.md")
+    _put(dirs, "TODO", "c1.md")
+    r = h.count_batches()
+    # a paused batch still holds its zone (stays in `active`) but is not "running"
+    assert [b["name"] for b in r["active"]] == ["Batch A", "Batch P"]
+    assert r["running_count"] == 1 and r["paused_count"] == 1
+    assert r["launchable_count"] == 1
+
+
 def test_count_ignores_template_placeholders_and_reports_them(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(_sec("<A>", "<files/modules>", "<slug>.md")), encoding="utf-8")

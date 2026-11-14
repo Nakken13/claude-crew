@@ -526,7 +526,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
       usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
     };
     (h.api as unknown as Record<string, unknown>).process = {
-      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, active: [{}, {}] }), stderr: '' }),
+      run: async () => ({ exitCode: 0, stdout: JSON.stringify({ launchable_count: 3, running_count: 2, paused_count: 1, active: [{}, {}, {}] }), stderr: '' }),
     };
     (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
     crewRuntimeState.projectRoot = '/repo';

@@ -2,7 +2,7 @@
  * Mod 12 — crew-count-band.ts
  *
  * `Crew x/n` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
- * x = batchs actifs, n = actifs + lançables en parallèle (même calcul que `/crew-count`,
+ * x = batchs en cours (hors pause), n = en cours + lançables en parallèle (même calcul que `/crew-count`,
  * via `crew_hook.py count`). 0 appel LLM.
  */
 
@@ -16,14 +16,14 @@ import {
 const RED = '#ff3b30';
 const AFTER_CREW = 40; // à gauche, après radar (10), progression (20) et agents (30)
 
-// active = batchs ayant une tâche en CURRENT_TASKS/PAUSED ; launchable = lançables en plus maintenant.
+// active = batchs en cours (tâche en CURRENT_TASKS ; les PAUSED ne comptent pas) ; launchable = lançables en plus maintenant.
 export const crewCountState: { launchable: number | null; active: number; error: string | null } = {
   launchable: null,
   active: 0,
   error: null,
 };
 
-// `Crew x/n` : x = batchs actifs, n = actifs + lançables (max en parallèle avec les zones actuelles).
+// `Crew x/n` : x = batchs en cours, n = en cours + lançables (max en parallèle avec les zones actuelles ; les batchs en pause sont mis de côté).
 export function formatCrewCount(n: number | null = crewCountState.launchable, x: number = crewCountState.active): string {
   if (n !== null) return `Crew ${x}/${x + n}`;
   // Échec du comptage : `Crew ?` seul (le détail reste dans crewCountState.error).
@@ -73,7 +73,8 @@ async function doRefresh($: unknown, project: string): Promise<void> {
           continue;
         }
         crewCountState.launchable = n;
-        crewCountState.active = Array.isArray(parsed.active) ? parsed.active.length : 0;
+        crewCountState.active =
+          typeof parsed.running_count === 'number' ? parsed.running_count : Array.isArray(parsed.active) ? parsed.active.length : 0;
         crewCountState.error = null;
         return;
       } catch (err) {

@@ -1819,8 +1819,10 @@ def count_batches():
     parallel (zones disjoint from the active ones AND from each other, file order =
     priority), excluded (overlap). A batch with no remaining task (all
     struck through) or with a template placeholder is ignored (the latter is reported)."""
-    held = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+    running_names = set(_task_names(DIRS["CURRENT_TASKS"]))
+    held = running_names | set(_task_names(DIRS["PAUSED"]))
     active, launchable, excluded, placeholders = [], [], [], []
+    running_count = 0
     secs = []
     for sec in load_sections():
         if _is_placeholder_section(sec):
@@ -1836,6 +1838,7 @@ def count_batches():
         if set(rem) & held:
             active.append(info(sec, rem))
             taken.append(sec)
+            running_count += bool(set(rem) & running_names)
     for sec, rem in secs:
         if set(rem) & held:
             continue
@@ -1848,7 +1851,10 @@ def count_batches():
         else:
             launchable.append(info(sec, rem))
             taken.append(sec)
+    # `active` = batches holding a zone (a task in CURRENT_TASKS or PAUSED); `running_count` = those with a
+    # task in CURRENT_TASKS, `paused_count` = parked ones (zone held, nobody working).
     return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
+            "running_count": running_count, "paused_count": len(active) - running_count,
             "excluded": excluded, "placeholders": placeholders,
             "report": _count_report(launchable, active, excluded, placeholders)}
 
