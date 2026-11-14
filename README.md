@@ -348,7 +348,7 @@ hooks/
 - **Non-blocking count (1.3.3):** `Crew N` no longer delays the band while it counts.
 - **`Crew ?` (1.3.5, 1.3.7):** shown when the count fails, without error detail.
 - **Position and first render (1.3.9, 1.3.10):** `Crew N` sits right after the radar, before the weather, and shows up at session start instead of after a resize.
-- **`Crew x/n` (1.3.11):** the segment now shows running batches over the parallel maximum, e.g. `Crew 2/5`.
+- **`Crew x/n` (1.3.12):** the segment now shows running batches over the parallel maximum, e.g. `Crew 2/5`.
 
 Full details in the [CHANGELOG](./CHANGELOG.md).
 
