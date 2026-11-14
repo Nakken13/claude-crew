@@ -544,6 +544,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
     crewRuntimeState.projectRoot = '/repo';
     crewCountState.launchable = null;
+    crewCountState.error = null;
     const tree = await Promise.race([
       h.emit('ui.render', {}, 'component=AbovePrompt'),
       new Promise(resolve => setTimeout(() => resolve('BLOCKED'), 500)),

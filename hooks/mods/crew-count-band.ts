@@ -16,10 +16,11 @@ import {
 const RED = '#ff3b30';
 const AFTER_WEATHER = 110; // la météo n'a pas d'`order` (défaut 100)
 
-export const crewCountState: { launchable: number | null } = { launchable: null };
+export const crewCountState: { launchable: number | null; error: string | null } = { launchable: null, error: null };
 
 export function formatCrewCount(n: number | null = crewCountState.launchable): string {
-  return n === null ? '' : `Crew ${n}`;
+  if (n !== null) return `Crew ${n}`;
+  return crewCountState.error ? `Crew ? (${crewCountState.error})` : '';
 }
 
 // Sécurité : on n'exécute QUE le script livré avec le plugin (jamais un `crew_hook.py` pris dans le
@@ -35,13 +36,19 @@ function refresh($: unknown): Promise<void> {
 }
 
 async function doRefresh($: unknown): Promise<void> {
+  const fail = (why: string): void => {
+    crewCountState.error = why.replace(/\s+/g, ' ').slice(0, 70);
+  };
   try {
     const api = $ as { process?: { run?: (argv: string[], init?: object) => Promise<any> }; plugin?: { root?: () => string | undefined } };
     const run = api.process?.run;
     const pluginRoot = api.plugin?.root?.();
     const project = crewRuntimeState.projectRoot;
-    if (!run || !pluginRoot || !project) return;
+    if (!run) return fail('no $.process.run');
+    if (!pluginRoot) return fail('no plugin root');
+    if (!project) return fail('no project root');
     const script = `${pluginRoot}/scripts/crew_hook.py`;
+    let last = 'no python';
     for (const py of ['python3', 'python', 'py']) {
       try {
         const r = await run([py, script, 'count'], {
@@ -49,17 +56,25 @@ async function doRefresh($: unknown): Promise<void> {
           env: { CLAUDE_PROJECT_DIR: project },
           timeoutMs: 10_000,
         });
-        if (r?.exitCode !== 0) continue;
+        if (r?.exitCode !== 0) {
+          last = `${py} exit ${r?.exitCode} ${String(r?.stderr ?? '')}`;
+          continue;
+        }
         const n = JSON.parse(String(r.stdout)).launchable_count;
-        if (typeof n !== 'number') continue;
+        if (typeof n !== 'number') {
+          last = `${py} bad json`;
+          continue;
+        }
         crewCountState.launchable = n;
+        crewCountState.error = null;
         return;
-      } catch {
-        // interpréteur suivant
+      } catch (err) {
+        last = `${py}: ${(err as Error)?.message ?? err}`;
       }
     }
-  } catch {
-    // ancien état conservé
+    fail(last);
+  } catch (err) {
+    fail(`refresh: ${(err as Error)?.message ?? err}`);
   }
 }
 
