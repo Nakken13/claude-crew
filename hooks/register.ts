@@ -290,7 +290,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
 
     return composeMiddlewareChain(buckets.sessionStart, api, e, next);
@@ -315,7 +315,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     return composeMiddlewareChain(buckets.turnStart, api, e, next);
   });
@@ -339,7 +339,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     return composeMiddlewareChain(buckets.toolCall, api, e, next).catch(() => next(e));
   });
@@ -364,7 +364,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     // e.usage sums the turn's requests; the real context size comes from the session.
     let enriched: unknown = e;
@@ -401,7 +401,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     return composeMiddlewareChain(buckets.sessionEnd, api, e, next);
   });
@@ -425,7 +425,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     // Single line: crew on the left, weather on the right (segments contributed by each mod)
     const orderedBands = [...buckets.abovePrompt].reverse();
@@ -463,7 +463,7 @@ export function register(on: ModRegistrar): void {
       env: { get: (k) => envCache[k] },
       session: { usage: () => ($ as any).session.usage() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-      plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+      plugin: { root: () => ($ as any).plugin.root as string },
     };
     return composeMiddlewareChain(buckets.pane, api, e, next).catch(() => next(e));
   });
@@ -492,7 +492,7 @@ export function register(on: ModRegistrar): void {
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-          plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+          plugin: { root: () => ($ as any).plugin.root as string },
         };
         return handler(api, e, async () => undefined);
       })
@@ -522,7 +522,7 @@ export function register(on: ModRegistrar): void {
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-          plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+          plugin: { root: () => ($ as any).plugin.root as string },
         };
         return handler(api, e, async () => undefined);
       })
@@ -552,7 +552,7 @@ export function register(on: ModRegistrar): void {
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-          plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+          plugin: { root: () => ($ as any).plugin.root as string },
         };
         return handler(api, e, async () => undefined);
       })
@@ -582,7 +582,7 @@ export function register(on: ModRegistrar): void {
           env: { get: (k) => envCache[k] },
           session: { usage: () => ($ as any).session.usage() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
-          plugin: { root: () => ($ as any).plugin?.root as string | undefined },
+          plugin: { root: () => ($ as any).plugin.root as string },
         };
         return handler(api, e, async () => undefined);
       })
