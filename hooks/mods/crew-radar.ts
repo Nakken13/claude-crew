@@ -73,10 +73,32 @@ export function parseCollabOn(configText: string): boolean {
   return /^\s*remote_claims\s*[:=]\s*(true|1|yes|oui|on)\s*$/im.test(configText);
 }
 
+/**
+ * Real id of the live session (`$.session.id()`, which changes after a `/clear`), falling back to the
+ * id the mod generated at load. Returns every id of this process that must not outlive the switch
+ * (previous fallback / previous real id) so the caller can drop them from the lock.
+ */
+async function syncSessionId(
+  $: { session?: { id?: () => string | Promise<string> } },
+): Promise<{ sid: string; stale: string[] }> {
+  const previous = crewRuntimeState.sessionId;
+  let real = '';
+  try {
+    const got = await $.session?.id?.();
+    if (typeof got === 'string') real = got.trim();
+  } catch {
+    // keep the fallback
+  }
+  const sid = real || previous;
+  crewRuntimeState.sessionId = sid;
+  return { sid, stale: previous !== sid ? [previous] : [] };
+}
+
 export function registerCrewRadar(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
     const previousSid = crewRuntimeState.sessionId;
-    const sid = resolveSessionIdFromEvent(e as Record<string, unknown>);
+    resolveSessionIdFromEvent(e as Record<string, unknown>);
+    const { sid } = await syncSessionId($);
     const projectRoot = $.env.get('CLAUDE_PROJECT_DIR') || '.';
     crewRuntimeState.projectRoot = projectRoot;
 
@@ -179,7 +201,8 @@ export function registerCrewRadar(on: ModRegistrar): void {
   });
 
   on('turn.complete', async ($, e, next) => {
-    const sid = crewRuntimeState.sessionId;
+    // After a `/clear` the process continues under a new session id (no session.start): follow it.
+    const { sid, stale } = await syncSessionId($);
     const mainRoot = crewRuntimeState.mainRoot || crewRuntimeState.projectRoot || '.';
     const projectRoot = crewRuntimeState.projectRoot || mainRoot;
     const nowMs = Date.now();
@@ -188,6 +211,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
     const lockPath = joinPath(mainRoot, SESSIONS_LOCK_REL_PATH);
     const rawLock = await $.fs.read(lockPath).catch(() => '');
     const parsedLock = parseSessionsLock(rawLock, nowMs);
+    for (const old of stale) delete parsedLock.sessions[old];
 
     const existing = parsedLock.sessions[sid];
     parsedLock.sessions[sid] = {
@@ -265,14 +289,23 @@ export function registerCrewRadar(on: ModRegistrar): void {
   });
 
   on('session.end', async ($, e, next) => {
-    const sid = resolveSessionIdFromEvent(e as Record<string, unknown>);
+    // Drop every id this process registered (generated fallback, previous real id and the ending one);
+    // after a `/clear` the next turn registers the new session id.
+    const ending = (e as { sessionId?: string } | null)?.sessionId;
+    const ids = new Set<string>([crewRuntimeState.sessionId, ...(ending ? [ending] : [])]);
     const mainRoot = crewRuntimeState.mainRoot || crewRuntimeState.projectRoot || '.';
     const lockPath = joinPath(mainRoot, SESSIONS_LOCK_REL_PATH);
     const rawLock = await $.fs.read(lockPath).catch(() => '');
     const parsedLock = parseSessionsLock(rawLock, Date.now());
 
-    if (parsedLock.sessions[sid]) {
-      delete parsedLock.sessions[sid];
+    let removed = false;
+    for (const id of ids) {
+      if (parsedLock.sessions[id]) {
+        delete parsedLock.sessions[id];
+        removed = true;
+      }
+    }
+    if (removed) {
       await $.fs
         .write(lockPath, JSON.stringify(parsedLock, null, 2) + '\n')
         .catch(() => undefined);

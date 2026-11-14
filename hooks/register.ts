@@ -288,7 +288,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -313,7 +313,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -337,7 +337,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -362,7 +362,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -399,7 +399,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -423,7 +423,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -461,7 +461,7 @@ export function register(on: ModRegistrar): void {
         stat: (p) => $.fs.stat(p),
       },
       env: { get: (k) => envCache[k] },
-      session: { usage: () => ($ as any).session.usage() },
+      session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
       process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
       plugin: { root: () => ($ as any).plugin.root as string },
     };
@@ -490,7 +490,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
-          session: { usage: () => ($ as any).session.usage() },
+          session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
           plugin: { root: () => ($ as any).plugin.root as string },
         };
@@ -520,7 +520,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
-          session: { usage: () => ($ as any).session.usage() },
+          session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
           plugin: { root: () => ($ as any).plugin.root as string },
         };
@@ -550,7 +550,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
-          session: { usage: () => ($ as any).session.usage() },
+          session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
           plugin: { root: () => ($ as any).plugin.root as string },
         };
@@ -580,7 +580,7 @@ export function register(on: ModRegistrar): void {
             stat: (p) => $.fs.stat(p),
           },
           env: { get: (k) => envCache[k] },
-          session: { usage: () => ($ as any).session.usage() },
+          session: { usage: () => ($ as any).session.usage(), id: () => ($ as any).session.id() },
           process: { run: (a: string[], i?: object) => ($ as any).process.run(a, i) },
           plugin: { root: () => ($ as any).plugin.root as string },
         };

@@ -86,6 +86,8 @@ export interface ModApi {
   };
   session?: {
     usage: () => Promise<any>;
+    /** Live session id (changes after a `/clear`). */
+    id?: () => string | Promise<string>;
   };
   process?: { run: (argv: string[], init?: object) => Promise<any> };
   plugin?: { root: () => string | undefined };

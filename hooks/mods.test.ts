@@ -538,6 +538,23 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 
+  test('crew radar: /clear switches the session id without leaving a ghost session', async () => {
+    const h = createHarness();
+    let liveId = 'real-A';
+    (h.api as unknown as Record<string, unknown>).session = { id: async () => liveId };
+    crewRuntimeState.projectRoot = '/repo';
+    await h.emit('session.start', { cwd: '/repo' });
+    await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
+    expect(crewRadarState.sessionIds).toEqual(['real-A']);
+    // /clear: session.end carries the old id, the process continues under a new one, no session.start
+    await h.emit('session.end', { reason: 'clear', sessionId: 'real-A' });
+    liveId = 'real-B';
+    await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
+    expect(crewRadarState.sessionIds).toEqual(['real-B']);
+    expect(crewRadarState.onlineSessions).toBe(1);
+    await h.emit('session.end', { reason: 'other', sessionId: 'real-B' });
+  });
+
   test('AbovePrompt band: narrow viewport still renders (stacked rows, never dropped)', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
