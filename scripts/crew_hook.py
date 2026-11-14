@@ -1819,7 +1819,13 @@ def count_batches():
     parallel (zones disjoint from the active ones AND from each other, file order =
     priority), excluded (overlap). A batch with no remaining task (all
     struck through) or with a template placeholder is ignored (the latter is reported)."""
-    running_names = set(_task_names(DIRS["CURRENT_TASKS"]))
+    # A batch started in a worktree moves its task to CURRENT_TASKS in THAT worktree only (the main sees it
+    # after the merge): tasks held by live sessions in the shared crew_lock.json count as running too.
+    live_locks = load_locks()
+    purge_stale_locks(live_locks, datetime.datetime.now())
+    locked = {t for info in live_locks.get("sessions", {}).values() if isinstance(info, dict)
+              for t in info.get("tasks") or [] if isinstance(t, str)}
+    running_names = set(_task_names(DIRS["CURRENT_TASKS"])) | locked
     held = running_names | set(_task_names(DIRS["PAUSED"]))
     active, launchable, excluded, placeholders = [], [], [], []
     running_count = 0

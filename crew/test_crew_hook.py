@@ -1744,6 +1744,23 @@ def test_count_separates_running_from_paused(repo):
     assert r["launchable_count"] == 1
 
 
+def test_count_running_includes_tasks_locked_by_live_sessions(repo):
+    """A batch started in a worktree moves its task to CURRENT_TASKS in THAT worktree only
+    (the main sees it after the merge): the shared crew_lock.json is the live source."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/a/", "a1.md"),
+        _sec("B", "src/b/", "b1.md"),
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    _put(dirs, "TODO", "b1.md")
+    assert h.count_batches()["running_count"] == 0
+    _write_other_session_lock(root, ["a1.md"])
+    r = h.count_batches()
+    assert r["running_count"] == 1 and r["paused_count"] == 0
+    assert [b["name"] for b in r["active"]] == ["Batch A"]
+
+
 def test_count_ignores_template_placeholders_and_reports_them(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(_sec("<A>", "<files/modules>", "<slug>.md")), encoding="utf-8")
