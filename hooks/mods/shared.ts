@@ -666,7 +666,22 @@ export function parseSessionsLock(jsonText: string, nowMs = Date.now()): Session
 // Bounds the combinatorial explosion of `{a,b}{c,d}…` (2^N) in a `Zone :` line.
 const MAX_BRACE_EXPANSIONS = 64;
 
+// `zonesOverlap` calls these once per pair of zones (batches x batches x zones x zones): on a big
+// CLAUDE_BATCH.md that froze the event loop for seconds. Both are pure, so memoize them.
+const braceCache = new Map<string, string[]>();
+const globReCache = new Map<string, RegExp>();
+const CACHE_MAX = 5_000;
+
 export function expandBraceGlob(pattern: string): string[] {
+  const hit = braceCache.get(pattern);
+  if (hit) return hit;
+  const out = expandBraceGlobUncached(pattern);
+  if (braceCache.size >= CACHE_MAX) braceCache.clear();
+  braceCache.set(pattern, out);
+  return out;
+}
+
+function expandBraceGlobUncached(pattern: string): string[] {
   const norm = normalizeSlashes(pattern.trim()).replace(/\/+\*\*$/, '').replace(/\/+$/, '');
   const braceMatch = norm.match(/\{([^{}]+)\}/);
   if (!braceMatch || braceMatch.index === undefined) {
@@ -685,6 +700,15 @@ export function expandBraceGlob(pattern: string): string[] {
 }
 
 function globToRegExp(glob: string): RegExp {
+  const hit = globReCache.get(glob);
+  if (hit) return hit;
+  const re = globToRegExpUncached(glob);
+  if (globReCache.size >= CACHE_MAX) globReCache.clear();
+  globReCache.set(glob, re);
+  return re;
+}
+
+function globToRegExpUncached(glob: string): RegExp {
   let regexStr = '^';
   for (let i = 0; i < glob.length; i += 1) {
     const ch = glob[i];
@@ -723,16 +747,60 @@ export function pathMatchesZone(repoRelPath: string, rawZonePattern: string): bo
   return false;
 }
 
-export function zonesOverlap(zonesA: string[], zonesB: string[]): boolean {
-  const expA = zonesA.flatMap((z) => expandBraceGlob(z));
-  const expB = zonesB.flatMap((z) => expandBraceGlob(z));
-  for (const a of expA) {
-    for (const b of expB) {
-      if (a === b) return true;
-      if (pathMatchesZone(a, b) || pathMatchesZone(b, a)) return true;
-    }
+const isWildcard = (z: string): boolean => /[*?[]/.test(z);
+
+// Does `path` or any of its ancestor directories belong to `set`?
+function hasAncestorOrSelf(set: Set<string>, path: string): boolean {
+  let cur = path;
+  for (;;) {
+    if (set.has(cur)) return true;
+    const i = cur.lastIndexOf('/');
+    if (i < 0) return false;
+    cur = cur.slice(0, i);
   }
-  return false;
+}
+
+interface ZoneIndex {
+  expanded: string[];
+  plain: Set<string>;
+  wild: string[];
+}
+const zoneIndexCache = new WeakMap<string[], ZoneIndex>();
+
+function indexZones(zones: string[]): ZoneIndex {
+  const hit = zoneIndexCache.get(zones);
+  if (hit) return hit;
+  const expanded = zones.flatMap((z) => expandBraceGlob(z));
+  const plain = new Set<string>();
+  const wild: string[] = [];
+  for (const z of expanded) {
+    if (isWildcard(z)) wild.push(z);
+    else plain.add(z.replace(/^\.\//, ''));
+  }
+  const idx = { expanded, plain, wild };
+  zoneIndexCache.set(zones, idx);
+  return idx;
+}
+
+export function zonesOverlap(zonesA: string[], zonesB: string[]): boolean {
+  // Plain directories (the vast majority): two zones overlap iff one is the other or inside it,
+  // checked by walking ancestors through a Set (O(Z x depth)) instead of testing every pair.
+  const A = indexZones(zonesA);
+  const B = indexZones(zonesB);
+  for (const a of A.plain) if (hasAncestorOrSelf(B.plain, a)) return true;
+  for (const b of B.plain) if (hasAncestorOrSelf(A.plain, b)) return true;
+  // Pairs involving a wildcard keep the exact pairwise test (wildcards are rare).
+  const anyOverlap = (xs: string[], ys: string[]): boolean => {
+    for (const a of xs) {
+      for (const b of ys) {
+        if (a === b || pathMatchesZone(a, b) || pathMatchesZone(b, a)) return true;
+      }
+    }
+    return false;
+  };
+  return (
+    anyOverlap(A.wild, B.expanded) || anyOverlap(A.expanded, B.wild)
+  );
 }
 
 /* -------------------------------------------------------------------------- */

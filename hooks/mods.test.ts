@@ -12,8 +12,9 @@ import {
   formatBatchProgressSegment,
   formatTaskProgressSegment,
 } from './mods/batch-progress.ts';
+import { zonesOverlap } from './mods/shared.ts';
 import { crewCountState } from './mods/crew-count-band.ts';
-import { batchBoardState } from './mods/batch-dependency-graph.ts';
+import { batchBoardState, buildKanbanBoards } from './mods/batch-dependency-graph.ts';
 import { fileLockMonitorState } from './mods/file-lock-monitor.ts';
 import { computeBatchEta } from './mods/batch-eta-cost.ts';
 
@@ -572,6 +573,41 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(narrow).toContain('Crew 2/5');
     expect(wide).toContain('Crew 2/5');
     await h.emit('session.end', { sessionId: 'sess-narrow-1' });
+  });
+
+  test('perf: zone overlap on a big CLAUDE_BATCH.md (29 batches x 25 zones) never freezes the event loop', () => {
+    const zoneOf = (b: number) =>
+      Array.from({ length: 25 }, (_, i) =>
+        i % 5 === 0
+          ? `frontend/src/app/{admin,my}/feature-${b}-${i}/`
+          : `backend/app/services/svc-${b}-${i}/sub/`,
+      );
+    const sections = Array.from({ length: 29 }, (_, b) => ({
+      key: `Batch ${b}`,
+      header: `Batch ${b}`,
+      zonePaths: zoneOf(b),
+      tasks: [],
+    })) as any[];
+    const t0 = Date.now();
+    const built = buildKanbanBoards({
+      sections,
+      unclassified: [],
+      todoSlugs: new Set(),
+      currentSlugs: new Set(),
+      pausedSlugs: new Set(),
+      taskInfos: new Map(),
+      crewLocks: {},
+      liveSessionTasks: {},
+      preferredBatchKey: null,
+      currentSessionId: 'x',
+    });
+    const elapsed = Date.now() - t0;
+    expect(built.allBoards.length).toBe(29);
+    expect(elapsed).toBeLessThan(500);
+    // semantics preserved: disjoint dirs do not overlap, a parent dir overlaps its child
+    expect(zonesOverlap(['a/b/'], ['c/d/'])).toBe(false);
+    expect(zonesOverlap(['a/'], ['a/b/c.ts'])).toBe(true);
+    expect(zonesOverlap(['src/{x,y}/'], ['src/y/z/'])).toBe(true);
   });
 
   test('Crew N: a hanging process.run never blocks the AbovePrompt render', async () => {
