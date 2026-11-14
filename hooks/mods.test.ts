@@ -520,7 +520,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { sessionId: 'sess-vel-1' });
   });
 
-  test('Crew N: launchable sessions in red, same line, right after the weather', async () => {
+  test('Crew N: launchable sessions in red, same line, after the crew radar and before the weather', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
       usage: async () => ({ context: { tokens: 120_000, window: 200_000, percent: 80 } }),
@@ -534,7 +534,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const text = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
     expect(text).toContain('Crew 3');
-    expect(text.indexOf('Crew 3')).toBeGreaterThan(text.indexOf('80%'));
+    expect(text.indexOf('Crew 3')).toBeLessThan(text.indexOf('80%'));
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 

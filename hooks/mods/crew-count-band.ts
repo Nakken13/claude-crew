@@ -1,7 +1,7 @@
 /**
  * Mod 12 — crew-count-band.ts
  *
- * `Crew N` en rouge, à droite sur la même ligne que la météo (juste après) :
+ * `Crew N` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
  * N = nombre de sessions lançables en parallèle (même calcul que `/crew-count`,
  * via `crew_hook.py count`). 0 appel LLM.
  */
@@ -14,7 +14,7 @@ import {
 } from './shared.ts';
 
 const RED = '#ff3b30';
-const AFTER_WEATHER = 110; // la météo n'a pas d'`order` (défaut 100)
+const AFTER_CREW = 40; // à gauche, après radar (10), progression (20) et agents (30)
 
 export const crewCountState: { launchable: number | null; error: string | null } = { launchable: null, error: null };
 
@@ -98,7 +98,7 @@ export function registerCrewCountBand(on: ModRegistrar): void {
     // Le compteur est alimenté par session.start / turn.complete.
     const text = formatCrewCount();
     if (!text) return prev;
-    return addBandSegments(prev, { slot: 'right', color: RED, bold: true, text, order: AFTER_WEATHER });
+    return addBandSegments(prev, { slot: 'left', color: RED, bold: true, text, order: AFTER_CREW });
   });
 }
 
