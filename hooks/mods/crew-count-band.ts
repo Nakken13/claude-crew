@@ -29,14 +29,14 @@ export function formatCrewCount(n: number | null = crewCountState.launchable): s
 let inFlight: Promise<void> | null = null;
 
 // Un seul calcul à la fois (évite d'empiler des sous-processus python).
-function refresh($: unknown): Promise<void> {
-  inFlight ??= doRefresh($).finally(() => {
+function refresh($: unknown, project: string): Promise<void> {
+  inFlight ??= doRefresh($, project).finally(() => {
     inFlight = null;
   });
   return inFlight;
 }
 
-async function doRefresh($: unknown): Promise<void> {
+async function doRefresh($: unknown, project: string): Promise<void> {
   const fail = (why: string): void => {
     crewCountState.error = why.replace(/\s+/g, ' ').slice(0, 70);
   };
@@ -44,7 +44,6 @@ async function doRefresh($: unknown): Promise<void> {
     const api = $ as { process?: { run?: (argv: string[], init?: object) => Promise<any> }; plugin?: { root?: () => string | undefined } };
     const run = api.process?.run;
     const pluginRoot = api.plugin?.root?.();
-    const project = crewRuntimeState.projectRoot;
     if (!run) return fail('no $.process.run');
     if (!pluginRoot) return fail('no plugin root');
     if (!project) return fail('no project root');
@@ -80,13 +79,20 @@ async function doRefresh($: unknown): Promise<void> {
 }
 
 export function registerCrewCountBand(on: ModRegistrar): void {
+  // Dossier projet lu dans l'env (comme les autres mods) : au session.start, le radar n'a pas
+  // forcément encore renseigné crewRuntimeState.projectRoot (défaut '.').
+  const projectOf = async ($: { env: { get: (k: string) => unknown } }): Promise<string> =>
+    String((await $.env.get('CLAUDE_PROJECT_DIR')) || crewRuntimeState.projectRoot || '.');
+
   on('session.start', async ($, e, next) => {
-    await refresh($);
+    await refresh($, await projectOf($));
+    // Le rendu est mis en cache : sans invalidation, le segment n'apparaît qu'au prochain événement.
+    $.ui.invalidate('ui.render');
     return next(e);
   });
 
   on('turn.complete', async ($, e, next) => {
-    await refresh($);
+    await refresh($, await projectOf($));
     $.ui.invalidate('ui.render');
     return next(e);
   });
