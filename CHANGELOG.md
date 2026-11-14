@@ -8,6 +8,7 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Fix: `Crew N` shrunk to nothing in a narrow terminal (1.3.8)** — band segments no longer shrink (`flexShrink: 0`); a side that overflows wraps its segments onto the next row instead.
 - **`Crew N` failure display simplified (1.3.7)** — on a failed count the segment reads just `Crew ?` (the error detail stays in `crewCountState.error`, no longer drawn).
 - **Fix: modbar vanished in a narrow terminal (1.3.6)** — the AbovePrompt band is now width-aware (`viewport.columns`): one row when both sides fit, otherwise left and right stacked on two rows, each segment truncated (`truncate-end`) instead of the band disappearing. Regression test added.
 - **Diagnostic for `Crew N` (1.3.5)** — when the `crew_hook.py count` subprocess fails, the red segment now reads `Crew ? (<stage / error>)` instead of silently disappearing.

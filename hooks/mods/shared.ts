@@ -918,11 +918,17 @@ export function renderBandAccumulator(
   const byOrder = (a: BandSegment, b: BandSegment) => (a.order ?? 100) - (b.order ?? 100);
   const text = (s: BandSegment) =>
     ui.Text({ color: s.color, bold: s.bold, dimColor: s.dimColor, wrap: 'truncate-end', children: [s.text] });
+  // Chaque segment garde sa largeur (flexShrink 0) ; si le côté déborde, les segments passent à la
+  // ligne au lieu que le dernier (ex. `Crew N`) soit rétréci jusqu'à disparaître.
   const side = (slot: 'left' | 'right') =>
     ui.Box({
       flexDirection: 'row',
-      gap: 4,
-      children: acc.segments.filter((s) => s.slot === slot).sort(byOrder).map(text),
+      flexWrap: 'wrap',
+      columnGap: 4,
+      children: acc.segments
+        .filter((s) => s.slot === slot)
+        .sort(byOrder)
+        .map((s) => ui.Box({ flexShrink: 0, children: [text(s)] })),
     });
   const alerts = acc.segments.filter((s) => s.slot === 'alert').map((s) =>
     ui.Box({ flexDirection: 'row', paddingX: 1, children: [text(s)] }),
