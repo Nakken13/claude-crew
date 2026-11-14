@@ -12,6 +12,7 @@ import {
   formatBatchProgressSegment,
   formatTaskProgressSegment,
 } from './mods/batch-progress.ts';
+import { crewCountState } from './mods/crew-count-band.ts';
 import { batchBoardState } from './mods/batch-dependency-graph.ts';
 import { fileLockMonitorState } from './mods/file-lock-monitor.ts';
 import { computeBatchEta } from './mods/batch-eta-cost.ts';
@@ -535,6 +536,20 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(text).toContain('Crew 3');
     expect(text.indexOf('Crew 3')).toBeGreaterThan(text.indexOf('80%'));
     await h.emit('session.end', { sessionId: 'sess-count-1' });
+  });
+
+  test('Crew N: a hanging process.run never blocks the AbovePrompt render', async () => {
+    const h = createHarness();
+    (h.api as unknown as Record<string, unknown>).process = { run: () => new Promise(() => {}) };
+    (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
+    crewRuntimeState.projectRoot = '/repo';
+    crewCountState.launchable = null;
+    const tree = await Promise.race([
+      h.emit('ui.render', {}, 'component=AbovePrompt'),
+      new Promise(resolve => setTimeout(() => resolve('BLOCKED'), 500)),
+    ]);
+    expect(tree).not.toBe('BLOCKED');
+    expect(collectTexts(tree as never)).not.toContain('Crew');
   });
 
   test('weather: context comes from $.session.usage() when turn.complete carries no tokens', async () => {

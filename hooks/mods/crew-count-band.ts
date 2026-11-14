@@ -24,7 +24,17 @@ export function formatCrewCount(n: number | null = crewCountState.launchable): s
 
 // Sécurité : on n'exécute QUE le script livré avec le plugin (jamais un `crew_hook.py` pris dans le
 // repo ouvert, qui peut être non fiable). cwd = racine du plugin ; le projet passe par CLAUDE_PROJECT_DIR.
-async function refresh($: unknown): Promise<void> {
+let inFlight: Promise<void> | null = null;
+
+// Un seul calcul à la fois (évite d'empiler des sous-processus python).
+function refresh($: unknown): Promise<void> {
+  inFlight ??= doRefresh($).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function doRefresh($: unknown): Promise<void> {
   try {
     const api = $ as { process?: { run?: (argv: string[], init?: object) => Promise<any> }; plugin?: { root?: () => string | undefined } };
     const run = api.process?.run;
@@ -68,7 +78,8 @@ export function registerCrewCountBand(on: ModRegistrar): void {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const prev = await next(e);
     if (!crewUiState.bands.count) return prev;
-    if (crewCountState.launchable === null) await refresh($);
+    // Jamais d'await ici : un sous-processus lent ne doit pas bloquer le rendu de toute la barre.
+    // Le compteur est alimenté par session.start / turn.complete.
     const text = formatCrewCount();
     if (!text) return prev;
     return addBandSegments(prev, { slot: 'right', color: RED, bold: true, text, order: AFTER_WEATHER });
