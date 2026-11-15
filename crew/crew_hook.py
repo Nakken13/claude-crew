@@ -1827,6 +1827,7 @@ def count_batches():
               for t in info.get("tasks") or [] if isinstance(t, str)}
     running_names = set(_task_names(DIRS["CURRENT_TASKS"])) | locked
     held = running_names | set(_task_names(DIRS["PAUSED"]))
+    real_tasks = held | set(_task_names(DIRS["TODO"]))
     active, launchable, excluded, placeholders = [], [], [], []
     running_count = 0
     secs = []
@@ -1834,7 +1835,8 @@ def count_batches():
         if _is_placeholder_section(sec):
             placeholders.append(_batch_key(sec["header"]))
             continue
-        remaining = [t for t in sec["ordered"] if t not in sec["struck"]]
+        # Only real task files count: a `doc.md` cited in a Zone/prose line is not a task.
+        remaining = [t for t in sec["ordered"] if t not in sec["struck"] and t in real_tasks]
         if remaining:
             secs.append((sec, remaining))
     info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem),

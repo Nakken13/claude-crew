@@ -1727,6 +1727,18 @@ def test_count_launchable_active_and_overlap(repo):
     assert "Batch E" not in ex and r["launchable"][0]["remaining"] == 1
 
 
+def test_count_ignores_md_refs_that_are_not_tasks(repo):
+    """`doc.md` cited in a Zone/prose line is not a task: a batch with no real task file
+    (TODO/CURRENT/PAUSED) must not count as launchable."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("Z", "docs/launch/RAPPORT_FINAL.md", "z1.md").replace("`z1.md`", "~~`z1.md`~~"),
+        _sec("R", "src/r/", "r1.md"),          # task file missing everywhere -> not launchable
+    ).replace("docs/launch/RAPPORT_FINAL.md", "`docs/launch/RAPPORT_FINAL.md`"), encoding="utf-8")
+    r = h.count_batches()
+    assert r["launchable_count"] == 0 and r["launchable"] == []
+
+
 def test_count_separates_running_from_paused(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(
@@ -1803,6 +1815,8 @@ def test_count_report_gives_exact_count_and_session_titles(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"),
                                       _sec("B", "src/b/", "b1.md")), encoding="utf-8")
+    for t in ("a1.md", "a2.md", "b1.md"):
+        _put(dirs, "TODO", t)
     r = h.count_batches()
     assert [b["task"] for b in r["launchable"]] == ["a1", "b1"]
     assert r["report"].startswith("**2 terminals in parallel**")
