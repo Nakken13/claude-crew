@@ -21,7 +21,7 @@ Single source = `crew/` folders (a root `TODO.md`/`PROBLEMS.md` is only a pointe
 Anti-collision is mandatory before any move (`/crew-start`, see § Batching). Keep the boxes up to date. `ICEBOX/`: never started directly, go back through `TODO/`.
 
 ### 2bis. `PAUSED/` — blocked awaiting dev validation
-A task already started whose continuation depends on a human action (visual rendering, real device, external answer): `git mv` to `PAUSED/`, back to `CURRENT_TASKS/` once validated. Counts as active for anti-collision. Never resumed automatically by the AI.
+A task already started whose continuation depends on a human action (visual rendering, real device, external answer): `git mv` to `PAUSED/`, back to `CURRENT_TASKS/` once validated. Does NOT count as active for anti-collision: it neither makes its batch active nor reserves its zone (check the paused batch's worktree for unmerged divergence before editing its files). Never resumed automatically by the AI.
 
 ### 3. Code done
 Delete the file from `CURRENT_TASKS/`, record it in `HISTORY.md`, produce the tests **if the test policy asks for it** (`/crew-close-task`). **Do not check** the tests at this stage.
@@ -36,10 +36,10 @@ Delete the file from `CURRENT_TASKS/`, record it in `HISTORY.md`, produce the te
 
 **One batch = one Claude**; several batches run in parallel. Every new task is also added to `CLAUDE_BATCH.md`: known impact zone → existing batch if overlap/dependency, otherwise new batch (`Zone :` line, i.e. the impact zone); unknown zone → the « À classer » section ("to be classified"). Task done → strike its line (`~~`slug.md`~~`), never delete it; a fully struck batch is removed automatically by the hook.
 
-**Invariant: the zones of two active batches (≥1 task in `CURRENT_TASKS/` or `PAUSED/`) are disjoint**; shared files → same batch.
+**Invariant: the zones of two active batches (≥1 task in `CURRENT_TASKS/` or a live session lock; `PAUSED/` reserves nothing) are disjoint**; shared files → same batch.
 
 ### Anti-collision check before starting a task
-`crew_hook.py next-task` (run by `/crew-start`) does it deterministically: locks of other sessions, active batches (`CURRENT_TASKS/`, `PAUSED/`), overlap of `Zone :` → candidate discarded, next one tried; nothing startable → report to the user. Manual start outside `/crew-start`: apply the same rules by hand. The Stop hook warns (non-blocking) about missed overlaps; `/crew-status` for an on-demand view.
+`crew_hook.py next-task` (run by `/crew-start`) does it deterministically: locks of other sessions, active batches (`CURRENT_TASKS/` and live locks), overlap of `Zone :` → candidate discarded, next one tried; nothing startable → report to the user. Manual start outside `/crew-start`: apply the same rules by hand. The Stop hook warns (non-blocking) about missed overlaps; `/crew-status` for an on-demand view.
 
 ## Context efficiency
 

@@ -1769,8 +1769,8 @@ def next_task(session_id):
             out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
         return out
 
-    held = set(current) | set(paused)
-    active = [s for s in sections if s["slugs"] & held or _section_lock_sessions(s, locks, owners) - {session_id}]
+    # PAUSED/ neither makes its batch active nor reserves its zone: nobody works on it.
+    active = [s for s in sections if s["slugs"] & set(current) or _section_lock_sessions(s, locks, owners) - {session_id}]
     for sec in sections:
         cands = [t for t in sec["ordered"] if t in todo]
         if not cands:
@@ -1826,8 +1826,10 @@ def count_batches():
     locked = {t for info in live_locks.get("sessions", {}).values() if isinstance(info, dict)
               for t in info.get("tasks") or [] if isinstance(t, str)}
     running_names = set(_task_names(DIRS["CURRENT_TASKS"])) | locked
-    held = running_names | set(_task_names(DIRS["PAUSED"]))
-    real_tasks = held | set(_task_names(DIRS["TODO"]))
+    # Same rule as next_task: PAUSED/ neither makes its batch active nor reserves its zone.
+    paused_held = set(_task_names(DIRS["PAUSED"]))
+    held = running_names
+    real_tasks = held | paused_held | set(_task_names(DIRS["TODO"]))
     active, launchable, excluded, placeholders = [], [], [], []
     running_count = 0
     secs = []
@@ -1847,9 +1849,13 @@ def count_batches():
             active.append(info(sec, rem))
             taken.append(sec)
             running_count += bool(set(rem) & running_names)
+    paused_secs = [sec for sec, rem in secs if set(rem) & paused_held and not set(rem) & held]
     for sec, rem in secs:
         if set(rem) & held:
             continue
+        if not [t for t in rem if t not in paused_held]:
+            continue  # only paused tasks left: nothing to launch
+        rem = [t for t in rem if t not in paused_held] + [t for t in rem if t in paused_held]
         clash = next(((o, _zones_overlap(sec, o)) for o in taken if _zones_overlap(sec, o)), None)
         if not sec["zone_paths"]:
             excluded.append({**info(sec, rem), "reason": "unknown zone"})
@@ -1862,7 +1868,7 @@ def count_batches():
     # `active` = batches holding a zone (a task in CURRENT_TASKS or PAUSED); `running_count` = those with a
     # task in CURRENT_TASKS, `paused_count` = parked ones (zone held, nobody working).
     return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
-            "running_count": running_count, "paused_count": len(active) - running_count,
+            "running_count": running_count, "paused_count": len(paused_secs),
             "excluded": excluded, "placeholders": placeholders,
             "report": _count_report(launchable, active, excluded, placeholders)}
 

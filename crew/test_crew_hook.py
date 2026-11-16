@@ -1644,14 +1644,15 @@ def test_next_task_skips_batch_active_in_other_session_even_for_todo_sibling(rep
     assert {s["slug"] for s in r["skipped"]} >= {"a1.md", "a2.md"}
 
 
-def test_next_task_skips_batch_with_paused_task(repo):
+def test_next_task_paused_task_frees_its_batch(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md", "a2.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")
     _put(dirs, "PAUSED", "a1.md")
     _put(dirs, "TODO", "a2.md")
     _put(dirs, "TODO", "b1.md")
     r = h.next_task("S1")
-    assert (r["action"], r["task"]) == ("start", "b1.md")
+    # PAUSED/ neither makes its batch active nor reserves its zone: a2.md stays startable
+    assert (r["action"], r["task"]) == ("start", "a2.md")
     assert r["paused"] == ["a1.md"]
 
 
@@ -1750,8 +1751,8 @@ def test_count_separates_running_from_paused(repo):
     _put(dirs, "PAUSED", "p1.md")
     _put(dirs, "TODO", "c1.md")
     r = h.count_batches()
-    # a paused batch still holds its zone (stays in `active`) but is not "running"
-    assert [b["name"] for b in r["active"]] == ["Batch A", "Batch P"]
+    # a paused batch holds nothing (not in `active`, zone free) but is still counted as parked
+    assert [b["name"] for b in r["active"]] == ["Batch A"]
     assert r["running_count"] == 1 and r["paused_count"] == 1
     assert r["launchable_count"] == 1
 
