@@ -64,7 +64,7 @@ Roles/points of view (`Agent({subagent_type: "<name>"})`), not technical procedu
 - **Starting an existing task** (`TODO/` → `CURRENT_TASKS/`) → `/crew-start` (its `next-task` script does the zone anti-collision, no persona); `manager` only to classify a task without a batch. Never a bare file move.
 - Marketing/landing/email copy, brand tone → `comms` (check `AGENTS.md` for the tone of a product agent).
 - Structuring technical choice (2+ approaches, refactor now or later) → `architect` (read-only).
-- UX/UI decision (flows, hierarchy, retention, quantified specs, platform conventions) → `designer` (read-only; preloads the `ux-intuitive` skill and must return its five deliverables — color roles, button system, motion, emotion map, zero-thinking checklist; touching up a screen → `impeccable`).
+- UX/UI decision (flows, hierarchy, retention, quantified specs, platform conventions) → `designer` (read-only; preloads the `ux-intuitive` skill and, for any screen or flow, must return its five deliverables — color roles, button system, motion, emotion map, zero-thinking checklist; touching up a screen → `impeccable`).
 - New legal exposure (personal data, third-party SDK, payment, minors, AI, user content, scraping, licence, regulated sector, new country, influencer/contest/prospecting/comparative claims) → `legal` (read-only) before coding.
 - Organic distribution on social networks (platform/format, cadence, hooks, why a video plateaus, test plan) → `social` (read-only; hands a brief to `comms`).
 - Search visibility (Google, stores, AI answers: indexing, keywords, schema.org, Core Web Vitals, ASO) → `seo` (read-only; hands a brief to `comms`) — without a public web surface or store listing, do not invoke it; social networks → `social`.

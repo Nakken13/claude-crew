@@ -64,11 +64,10 @@ Single column, labels above (never placeholder alone), 44-48 px tall fields,
 inline validation on blur, right keyboard type (`inputmode`, `autocomplete`),
 errors that say how to fix.
 
-## Motion (base values — rules and functions in `SKILL.md` § 6)
+## Motion
 
-Micro-interactions 100-200 ms, transitions 200-400 ms, ease-out on enter /
-ease-in on exit, `prefers-reduced-motion` respected for every animation
-(choice of implementation skill → § Skill routing in `CLAUDE.md`).
+Functions, durations, easing and reduced motion: `SKILL.md` § 6 (single
+source). Choice of implementation skill → § Skill routing in `CLAUDE.md`.
 
 ## Principles for arbitrating
 

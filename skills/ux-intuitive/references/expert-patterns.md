@@ -93,14 +93,14 @@ rule states the observable trigger and the fix.
 | Disabled button with no explanation | Explain inline, or keep it enabled and explain on tap |
 | Placeholder used as label | Label above; placeholder only for format examples |
 | "Are you sure?" on a reversible action | Do it, offer Undo |
-| Confirmation dialog whose default is the destructive action | Default/primary = the safe choice |
+| Confirmation dialog whose default is the destructive action | Default focus on the safe choice (secondary); the destructive is the only filled button |
 | Icon-only toolbar with non-universal icons | Add labels (or tooltips on desktop + labels on touch) |
 | Error message "Invalid input" / "An error occurred" | Say what is wrong and how to fix it, next to the field |
 | Form cleared after an error | Preserve every value |
 | Spinner with no end or centered on a blank page | Skeleton, then progress, then background + notify |
 | Toast as the only feedback for a critical result | Confirm in place; toast only for low-stakes info |
 | Animation that replays on every visit or loops | Play once, or remove |
-| Animation > 400 ms on a frequent action | Cut to ≤ 150 ms or remove |
+| Animation > 150 ms on a frequent action | Cut to ≤ 150 ms or remove |
 | Carousel hiding key content | Show the items, or a list |
 | Hamburger menu hiding the 3-5 main destinations on mobile | Bottom tab bar |
 | Modal on top of a modal | Inline expansion or a dedicated step |

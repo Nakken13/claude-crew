@@ -29,8 +29,8 @@ under `~/.claude/plugins`):
   high-emotion moment (money, deletion, sensitive data, long wait, first
   success, failure) or the product needs a personality.
 
-This file is self-sufficient for every rule and for the core numbers (§ 8);
-the references add depth. If a reference cannot be read, continue with this
+This file is enough to decide and to fill the deliverables (core numbers
+in § 8); the references add depth. If a reference cannot be read, continue with this
 file and name the file that was unavailable.
 
 ## Mandatory deliverables
@@ -39,7 +39,7 @@ Any answer that specifies or critiques a screen, component or flow contains
 D1-D5, restricted to the elements actually in scope. If the project already
 has tokens, the tables map the **existing** tokens to roles instead of
 inventing values. If no screen is in scope (pure metric or prioritization
-question), write "no screen in scope" and give only D5.
+question), write "no screen in scope" and give no deliverable.
 
 **D1 — Color roles** (one row per role used; never two rows with the same color)
 
@@ -92,13 +92,13 @@ each marked ✅ / ❌ (with the fix) / n/a (with the reason).
 | Primary | The one action the screen exists for | Filled, accent color | **Exactly 1** (0 on pure reading screens) |
 | Secondary | Valid alternative | Outlined or tonal | 0-2 |
 | Tertiary | Low-stakes, dismiss, "later" | Text only | as needed |
-| Destructive | Irreversible or data-losing | Danger color; filled only on the final confirmation step, outlined/text before it | 0-1 |
+| Destructive | Irreversible or data-losing | Danger color; filled only on the final confirmation step (where it is the only filled button and the safe choice is a secondary with default focus), outlined/text before it | 0-1 |
 
 - **Shape encodes type, size encodes importance.** A given look means the
   same thing on every screen. One radius for all buttons of the product.
 - Fixed heights per level, no in-between: large 48-56 px (the primary on
-  touch), medium 40-44 px, small 32 px (dense desktop only; touch hit area
-  stays ≥ 44 px). Full-width primary on mobile, content-width on desktop.
+  touch), medium 40-44 px, small 32 px (dense desktop only). Whatever the visual
+  height, the touch hit area stays ≥ 44 px (48 dp on Android). Full-width primary on mobile, content-width on desktop.
 - **Label = verb + object** that predicts the result ("Pay €24", "Delete
   booking"), never "OK", "Yes", "Submit". The label of a confirm dialog
   repeats the verb of the button that opened it.
@@ -162,7 +162,8 @@ each marked ✅ / ❌ (with the fix) / n/a (with the reason).
 - Duration scales with distance and size: press feedback 100-150 ms; small
   state change (toggle, check, expand) 150-250 ms; element entering/leaving
   200-300 ms (exit ≈ 75 % of enter); full-screen transition 300-400 ms.
-  Desktop ≈ 30 % shorter than mobile. Nothing over 500 ms.
+  Desktop ≈ 30 % shorter than mobile. Nothing over 500 ms — single
+  exception: a rare celebration (emotional design), ≤ 1 s and skippable.
 - One easing per kind of movement, product-wide: entering = ease-out,
   leaving = ease-in, moving on screen = ease-in-out; linear only for
   progress and opacity.
@@ -204,7 +205,7 @@ each marked ✅ / ❌ (with the fix) / n/a (with the reason).
 |---|---|
 | Text contrast | ≥ 4.5:1 (≥ 3:1 for large text ≥ 24 px / 18.66 px bold) |
 | UI components, focus ring | ≥ 3:1; focus always visible |
-| Touch target | ≥ 44×44 px (iOS 44 pt, Android 48 dp), ≥ 8 px apart |
+| Touch target | ≥ 44×44 px web and iOS (44 pt), ≥ 48×48 dp Android; ≥ 8 px apart |
 | Keyboard | Everything reachable and operable, logical tab order, no trap |
 | Text | Body ≥ 16 px on web (inputs too), never < 12 px; survives 200 % zoom / Dynamic Type |
 | Screen reader | Every control has a name; status changes are announced |
@@ -224,6 +225,10 @@ dark mode, forms): `platform-specs.md`.
 - **Recognition over recall**: keep options and states visible (recent,
   suggestions, current value, recap) — never make the user remember
   something from a previous screen.
+- **Tesler**: complexity that cannot be removed is absorbed by the system
+  (totals, deadlines, formats, eligibility), never left to the user.
+- **Critique of an existing screen**: Nielsen's heuristics, each problem
+  rated for severity 0-4 and ranked by impact/effort.
 - **Mental model and information scent**: labels use the user's words and
   predict the destination; the structure mirrors how users think about the
   task, not how the database is built.
@@ -282,7 +287,7 @@ dark mode, forms): `platform-specs.md`.
     they happen they are blameless, jargon-free and say how to fix. Every
     screen has an exit that loses no data; destructive actions are confirmed
     or undoable.
-11. Accessibility floor met: contrast ≥ 4.5:1, targets ≥ 44×44 px, full
-    keyboard operation, visible focus.
+11. Accessibility floor met: contrast ≥ 4.5:1, targets ≥ 44×44 px
+    (48 dp on Android), full keyboard operation, visible focus.
 12. The anxious moments of the flow are reassured before the action, and the
     flow ends on a clear, positive confirmation.

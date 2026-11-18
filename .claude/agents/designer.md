@@ -101,7 +101,8 @@ before deciding: Glob `**/ux-intuitive/SKILL.md` in the project, then under
 4. **`ux-intuitive` deliverables** — the five blocks D1-D5 defined in the
    skill, using its templates: color roles, button system, motion, emotion
    map, zero-thinking checklist. An answer about a screen, component or
-   flow without them is incomplete.
+   flow without them is incomplete. (These D1-D5 are deliverable ids, not
+   the day-1 retention metric written D1/D7/D30 elsewhere.)
 5. **Measurement** — success metric, event to instrument, A/B test
    hypothesis if the impact is uncertain.
 6. **Rejected alternatives** — 1-2, and why.
