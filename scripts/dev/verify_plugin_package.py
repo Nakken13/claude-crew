@@ -130,6 +130,12 @@ ENGINE_FILE_PAIRS = [
     (".claude/skills/crew-version/SKILL.md", "skills/crew-version/SKILL.md"),
     (".claude/skills/crew-status/SKILL.md", "skills/crew-status/SKILL.md"),
     (".claude/skills/crew-update/SKILL.md", "skills/crew-update/SKILL.md"),
+    # ux-intuitive: preloaded by the designer persona (`skills:` frontmatter);
+    # its references/ are read on demand, so each file needs its own pair.
+    (".claude/skills/ux-intuitive/SKILL.md", "skills/ux-intuitive/SKILL.md"),
+    (".claude/skills/ux-intuitive/references/platform-specs.md", "skills/ux-intuitive/references/platform-specs.md"),
+    (".claude/skills/ux-intuitive/references/expert-patterns.md", "skills/ux-intuitive/references/expert-patterns.md"),
+    (".claude/skills/ux-intuitive/references/emotional-design.md", "skills/ux-intuitive/references/emotional-design.md"),
     # Personas (.claude/agents/*.md <-> agents/*.md) are compared by glob in
     # check_engine_files_copied, so adding one needs no entry here.
     # crew/crew_hook.py and crew/spec_to_task_hook.py are intentionally

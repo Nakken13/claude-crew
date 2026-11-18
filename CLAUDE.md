@@ -7,7 +7,7 @@ If `graphify-out/graph.json` exists: `graphify query "<question>"` before any ra
 Adapt/remove lines that do not fit the stack.
 
 - Architecture/exploration before raw reading → `graphify`.
-- UI (adapt to the stack): new component/redesign → `designer` if flows/specs are undecided, then `design-taste-frontend` (anti-slop), `frontend-design`, `ui-ux-pro-max`; audit/touch-up of a screen → `impeccable`; chart → `dataviz` before the code; RN animation → `motion-design-rn` + `accessibility-motion` (reduced-motion mandatory), `haptics` if touch, no sound by default.
+- UI (adapt to the stack): new component/redesign → `designer` if flows/specs are undecided (it applies its preloaded `ux-intuitive` skill: color roles, button system, motion, emotion map, zero-thinking checklist), then `design-taste-frontend` (anti-slop), `frontend-design`, `ui-ux-pro-max`; audit/touch-up of a screen → `impeccable`; chart → `dataviz` before the code; RN animation → `motion-design-rn` + `accessibility-motion` (reduced-motion mandatory), `haptics` if touch, no sound by default.
 - Bug/failing test → `systematic-debugging` before any fix.
 - Feature or fix → `test-driven-development` (test before code). Ambiguous feature → `brainstorming` first.
 - 2+ independent tasks → `dispatching-parallel-agents`; workspace isolation → `using-git-worktrees`; in-session plan with independent tasks → `subagent-driven-development`.

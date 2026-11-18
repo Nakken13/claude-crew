@@ -60,6 +60,12 @@ ENGINE_FILES_LEGACY = [
     ".claude/skills/crew-status/SKILL.md",
     ".claude/skills/crew-start/SKILL.md",
     ".claude/skills/crew-collab/SKILL.md",
+    # Preloaded by the designer persona: without it a legacy project would
+    # receive a designer.md pointing at a skill it does not have.
+    ".claude/skills/ux-intuitive/SKILL.md",
+    ".claude/skills/ux-intuitive/references/platform-specs.md",
+    ".claude/skills/ux-intuitive/references/expert-patterns.md",
+    ".claude/skills/ux-intuitive/references/emotional-design.md",
 ]
 
 # Source path -> former French path. A project that still has the French-named file keeps

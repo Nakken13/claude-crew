@@ -50,7 +50,7 @@ crew-mates ships **8 specialist agents** (Claude Code subagents, called *persona
 | `ceo` | Prioritising, cutting scope, "is this worth building?" | A recommendation framed in ROI and risk. |
 | `manager` | A request must be broken into trackable work. | Task files and batches (writes only under `crew/`). |
 | `architect` | Choosing a library or pattern, refactor now or later. | The trade-offs and a pick. |
-| `designer` | A UX decision with real ambiguity: flows, onboarding, specs. | Concrete specs and a critique. |
+| `designer` | A UX decision with real ambiguity: flows, onboarding, specs. | Concrete specs and a critique, plus the `ux-intuitive` deliverables: color roles, button system, motion, emotion map, zero-thinking checklist. |
 | `legal` | A feature changes legal exposure: personal data, payments, minors, AI, licences. | Go, go-with-conditions or no-go, and when a real lawyer is needed. This is risk framing, not legal advice. |
 | `comms` | Landing copy, emails, posts, brand voice. | Ready-to-use copy. |
 | `social` | Organic social distribution. | Platform, format, cadence and a test plan. |
@@ -206,6 +206,7 @@ Plenty of scaffolds give you a prompt template and a folder layout. crew-mates t
 | 🌳 Per-batch `git worktree` | Physical isolation: each active batch gets its own checkout and branch. |
 | ⚡ 10 `/crew-*` skills | Drive the whole lifecycle deterministically (see [Commands](#-commands)). |
 | 🎭 8 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) that Claude can consult in parallel. |
+| 🎨 `ux-intuitive` skill | The designer's UX decision system, preloaded into the `designer` agent: color roles, button system, purposeful motion, error prevention, expert patterns and emotional design, so end users never have to think. |
 | 🪝 `crew_hook.py` | One file, three hooks: the `PreToolUse` gate, the `SessionStart` digest, the `Stop` sync. |
 | 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes, keeping specs and tasks in sync. |
 | 🎛️ `hooks/register.ts` + `hooks/mods/*` | The 12 zero-token UI mods. |
