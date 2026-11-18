@@ -49,11 +49,9 @@ manipulated.
    progress bar that starts already partly filled, a short onboarding
    checklist (3-5 items), streaks only if the product's natural frequency is
    daily, and always with a tolerance (freeze day) so as not to punish.
-4. **Friction and perceived performance** — visual feedback < 100 ms on every
-   interaction, optimistic UI for reversible actions, skeletons rather than
-   spinners beyond ~300 ms, determinate progress indicator beyond ~2 s, long
-   task (>10 s) moved to the background with a notification. Doherty
-   threshold: keep the system under ~400 ms.
+4. **Friction and perceived performance** — a product that feels slow is
+   abandoned before it is judged. Thresholds (feedback, Doherty, skeleton,
+   progress, background task): `ux-intuitive` § 5.
 5. **Re-engagement** — priming before the system notification permission
    request (in-house screen explaining the benefit, then the OS prompt only
    on "yes": on iOS a refusal is almost final), capped frequency, granular

@@ -12,7 +12,7 @@ rule states the observable trigger and the fix.
   More than ~5-7 visible choices → recommend one (pre-selected or
   highlighted), group the rest, or hide the rare ones behind "More".
 - **Chunking (Miller)**: break long numbers, long forms and long lists into
-  groups of at most 5-7 (3-5 is better) with a visible label per group. A 12-field form becomes 3 labelled
+  groups of at most 5-7 items with a visible label per group. A 12-field form becomes 3 labelled
   groups of 4, not 12 equal rows.
 - **Recognition over recall**: show recent items, suggestions, examples and
   the current value. Never ask the user to remember something shown on a

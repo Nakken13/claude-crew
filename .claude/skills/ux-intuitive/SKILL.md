@@ -111,8 +111,9 @@ each marked ✅ / ❌ (with the fix) / n/a (with the reason).
 - Acts = button, navigates = link. A link never looks like a button, and the
   reverse.
 - Every button specifies: default, hover, focus, pressed, loading (keeps its
-  width, shows progress, blocks double-submit), disabled (with a visible
-  reason nearby — or better, stays enabled and explains on tap), success.
+  width, shows progress, blocks double-submit), disabled (always with a
+  visible reason nearby; for an incomplete form, prefer staying enabled and
+  showing what is missing on tap), success.
 
 ### 3. Signifiers and consistency
 
@@ -178,11 +179,14 @@ each marked ✅ / ❌ (with the fix) / n/a (with the reason).
   location, today) — the best field is the one already filled correctly.
 - Constrain instead of validate: pickers, steppers, masked input, disabled
   impossible dates — make the wrong value unenterable.
-- Invalid actions are unavailable (disabled with the reason visible), not
-  available-then-rejected.
-- **Undo instead of "Are you sure?"** for anything reversible. Every
-  irreversible or destructive action asks for confirmation, and the dialog
-  names the consequence.
+- Impossible actions cannot be triggered: the option is absent, or disabled
+  with the reason visible. (An action that is only *incomplete* — a form
+  with missing fields — follows § 2: the button stays enabled and points at
+  what is missing.)
+- **Destructive actions never happen on a single unprotected tap.** If the
+  action can be reversed: do it and offer Undo — no "Are you sure?". If it
+  cannot: a confirmation that names the consequence, with the safe choice
+  as default.
 - **Control and freedom**: every screen, sheet, dialog and flow has an
   obvious exit (back, close, cancel) that works at any step and **loses no
   data** — drafts are kept, progress is restored on return.
