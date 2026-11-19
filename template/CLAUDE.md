@@ -36,7 +36,7 @@ Tooled execution of the lifecycle and batching (procedures in each skill):
 - `/crew-close-task` — closure (review, `simplify`, history, tests).
 - `/crew-status` — read-only report; `/crew-count` — batches that can run in parallel; `/crew-dashboard` — local web dashboard; `/crew-collab` — team mode (name + remote claims, solo by default); `/crew-version` — crew-mates version.
 
-## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/LIFECYCLE.md` before creating/moving a task or editing `CLAUDE_BATCH.md`
+## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/LIFECYCLE.md` before creating/moving a task or editing `CLAUDE_BATCH.md` outside a `/crew-*` command (they inline the rules)
 
 Always-on rules (details in that doc):
 - A task = one `.md` that moves (`PROBLEMS/`→`TODO/`→`CURRENT_TASKS/`→`PAUSED/`→`HISTORY.md`+`TESTS/`), never in two folders; never a bare move, go through `/crew-start`. Single source of truth = `crew/`.
