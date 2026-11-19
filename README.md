@@ -58,6 +58,8 @@ crew-mates ships **8 specialist agents** (Claude Code subagents, called *persona
 
 Most agents are read-only advisers. `manager` writes task files under `crew/` and `comms` writes copy; none of them implements your feature.
 
+`manager`, `comms`, `social` and `seo` run on Sonnet (`model: sonnet`, a fraction of Opus's price); `ceo`, `architect`, `designer` and `legal` inherit your session model, because their calls need the strongest judgment.
+
 ### Run them in parallel
 
 They are regular Claude Code subagents, so Claude can consult several at the same time and keep working while they answer. For example:
@@ -153,7 +155,7 @@ Two Claude Code sessions in the same repo. Session A plans two tasks and starts 
 | # | You do | What happens |
 |---|---|---|
 | 1 | `/crew-init` | `crew/` is created, your stack is detected, placeholders are filled. |
-| 2 | `/crew-new-task …` | The `manager` persona writes one task file per item, with `- [ ]` actions, and files each one in a batch with its **zone** (`crew/CLAUDE_BATCH.md`). |
+| 2 | `/crew-new-task …` | One task file per item, with `- [ ]` actions, filed in a batch with its **zone** (`crew/CLAUDE_BATCH.md`). A single task is written inline; the `manager` persona steps in for a multi-task breakdown or an unclear zone. |
 | 3 | `git commit` | The plan is committed, so worktrees (created from `main`) contain it. |
 | 4 | `/crew-start` (terminal 1) | Picks a free batch, opens `../repo-batch-a` on branch `crew/batch-a`, locks its zone. |
 | 5 | `/crew-start` (terminal 2) | Picks the other batch, opens a second worktree. The two sessions never share a working tree. |

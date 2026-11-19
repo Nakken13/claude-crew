@@ -6,7 +6,8 @@ description: Resumes crew work without saying which task — continues the task 
 Single entry point to resume a crew session without naming a task. The task
 **choice** is made by a deterministic script (`crew_hook.py next-task`); this
 skill then runs the start (lock, worktree, `git mv`), the implementation, then
-`/crew-close-task`.
+`/crew-close-task`. Self-sufficient: the script and the steps apply the
+lifecycle rules, no need to read `crew/CLAUDE_CONTEXT/LIFECYCLE.md`.
 
 **Repo-root anchoring is mandatory**: every `crew/...` path is resolved from the
 repo root (`git rev-parse --show-toplevel`), never from the current cwd
@@ -39,8 +40,7 @@ repo root (`git rev-parse --show-toplevel`), never from the current cwd
    - `start` → step 3 (start case).
    - `classify` → `TODO/` tasks have neither batch nor zone (`unclassified`):
      dispatch `Agent({subagent_type: "manager"})` to classify them (impact zone +
-     batch, see `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Batching), then rerun
-     step 1.
+     batch; the manager applies § Batching itself), then rerun step 1.
    - `none` → nothing startable: tell the user why from `skipped` (lock, active
      batch, overlap) or "TODO empty", and stop. The only case where the skill
      stops without having coded.

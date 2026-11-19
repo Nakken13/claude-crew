@@ -1,6 +1,6 @@
 # Task lifecycle, batching and context efficiency
 
-Doc read **on demand** (moved as-is out of `CLAUDE.md`, which keeps only the routing). Read it before creating/moving a task, touching `CLAUDE_BATCH.md`, or when in doubt about the context thresholds.
+Doc read **on demand** (moved as-is out of `CLAUDE.md`, which keeps only the routing). Read it before creating/moving a task or touching `CLAUDE_BATCH.md` outside a `/crew-*` command, or when in doubt about the context thresholds.
 
 ## Task management — single lifecycle (folder model)
 
