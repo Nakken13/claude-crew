@@ -14,7 +14,7 @@ Adapt/remove lines that do not fit the stack.
 - Auth/tokens/encryption/secrets → `security-review` before merge (`security-guidance` as a complement).
 - Frontend created or touched: tested responsive (mobile/tablet/desktop) and visually validated (`run` then `playwright` or `claude-in-chrome`) before declaring done — a passing build is not enough. This validation follows `crew/CLAUDE_CONTEXT/TESTS_POLICY.md`.
 - Scriptable browser test with `playwright` → `crew/TESTS/IA`, not `DEV`.
-- End of task: `requesting-code-review` then `simplify` before committing **if the diff exceeds ~50 lines or touches an engine/auth/hook file** (docs only, rename, typo: `verification-before-completion` is enough); review feedback received → `receiving-code-review`; branch ready → `finishing-a-development-branch`.
+- End of task: `/crew-close-task` step 3 sizes the passes by `git diff --stat` — quick (docs, < ~50 non-sensitive lines): `verification-before-completion`; standard (≥ ~50 code/prompt lines, any crew skill/persona): one Sonnet `requesting-code-review` incl. cleanup; deep (hook/engine, auth/secrets, settings, CI, payments, migrations, > ~400 lines): review + `simplify`; review feedback received → `receiving-code-review`; branch ready → `finishing-a-development-branch`.
 - Before claiming "done/tested/works" → `verification-before-completion` (actually run the tests). LSP diagnostics do not replace the test suite/build.
 - After a lasting change to `CLAUDE.md`/`AGENTS.md`/crew rules → `claude-md-management`.
 - LLM/agent: check the real provider (`grep`) before `claude-api`.
@@ -33,7 +33,7 @@ Tooled execution of the lifecycle and batching (procedures in each skill):
 - `/crew-init` — scaffold bootstrap (once only); `/crew-update` — updates engine files without touching data.
 - `/crew-new-task` — creates a task (`TODO/` or `CURRENT_TASKS/`) with batching.
 - `/crew-start` — resumes or starts a task (anti-collision, worktree per batch) through to closure.
-- `/crew-close-task` — closure (review, `simplify`, history, tests).
+- `/crew-close-task` — closure (review proportionate to the diff, history, tests).
 - `/crew-status` — read-only report; `/crew-count` — batches that can run in parallel; `/crew-dashboard` — local web dashboard; `/crew-collab` — team mode (name + remote claims, solo by default); `/crew-version` — crew-mates version.
 
 ## Tasks, batching, context — read `crew/CLAUDE_CONTEXT/LIFECYCLE.md` before creating/moving a task or editing `CLAUDE_BATCH.md` outside a `/crew-*` command (they inline the rules)

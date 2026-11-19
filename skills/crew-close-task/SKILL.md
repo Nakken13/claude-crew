@@ -1,11 +1,11 @@
 ---
 name: crew-close-task
-description: Closes a finished crew task — checks the boxes, runs review + simplify passes (above the threshold), writes the history entry, produces the AI/DEV test checklists according to the project's test policy, strikes the task out of its batch. Also triggers on — "/crew-close-task", "cette tâche est finie", "clôture la tâche", "this task is done", "close the task".
+description: Closes a finished crew task — checks the boxes, runs review passes sized to the diff (quick / standard / deep), writes the history entry, produces the AI/DEV test checklists according to the project's test policy, strikes the task out of its batch. Also triggers on — "/crew-close-task", "cette tâche est finie", "clôture la tâche", "this task is done", "close the task".
 ---
 
 Run the protocol defined in `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § "Task management" (item
-3) — skip no step. The passes in step 3 and the tests in step 5 follow their
-thresholds; modularity is always required (see `crew/CLAUDE_CONTEXT/AGENTS.md`
+3) — skip no step. The passes in step 3 follow the size it picks, the tests
+in step 5 the test policy; modularity is always required (see `crew/CLAUDE_CONTEXT/AGENTS.md`
 if this project documents specific anti-patterns).
 
 **Repo-root anchoring is mandatory**: every `crew/...` path in this skill is
@@ -22,16 +22,22 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
    several tasks are active and the user did not say).
 2. Check that **all** `- [ ]` actions in the file are ticked `- [x]`. If not →
    **do not continue**: list the remaining actions and stop there.
-3. Passes before closing, **if the diff exceeds the threshold in the
-   `CLAUDE.md` routing** ("End of task"; same for every level of
-   the test policy):
-   - Skill `requesting-code-review` on the code touched by the task.
-   - Skill `simplify` on the same scope — covers reuse, simplification,
-     efficiency **and** modularity (no catch-all file, no logic duplicated in
-     2+ places without extraction).
+3. **Passes before closing, sized to the diff** (independent of the test
+   policy level). Pick the size from `git diff --stat` against the task's base,
+   counting **code and prompt lines only** (docs and tests in the same diff do
+   not count); when two sizes fit, take the larger; the user can force one.
 
-   Below this threshold: `verification-before-completion` is enough; modularity
-   is still required.
+   | Size | When | Passes |
+   |---|---|---|
+   | **quick** | Non-sensitive docs, copy, rename, typo, or < ~50 code/prompt lines | `verification-before-completion` + your own read of the diff |
+   | **standard** | ≥ ~50 code/prompt lines; any change to a crew skill, persona or other prompt that gates behavior; dependency bumps | **One** `requesting-code-review` reviewer with `model: "sonnet"`, whose brief also asks for the cleanup angles (reuse, simplification, efficiency, modularity). No `simplify` |
+   | **deep** | Hook or engine scripts, hooks config, auth / tokens / secrets / encryption, permissions or settings files, CI workflows, payments, data migration, or > ~400 code lines | `requesting-code-review` on the session model, then skill `simplify` |
+
+   Why: each subagent starts from a large base context and `simplify` fans out
+   4 agents — on a prompt-only task the old rule spent ~460k tokens; the single
+   review found the real issues, `simplify` only trimmed wording. Modularity is
+   required at every size (no catch-all file, no logic duplicated in 2+ places
+   without extraction).
 4. **Commit the implementation**, once the step 3 passes are done and their
    feedback applied: `git status` to identify the files actually modified by
    **this task** (the one being closed — not another task lingering in parallel
@@ -104,8 +110,8 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
 
 - Never ticks actions on the user's behalf to close faster — if actions remain
   unticked, it stops and says so.
-- Never skips `requesting-code-review`/`simplify` above the step 3 threshold, nor
-  the modularity requirement below it.
+- Never runs fewer passes than the size step 3 picks (unless the user forces
+  one), nor skips the modularity requirement.
 - Does not generate a checklist "by reflex": `TESTS_POLICY.md` decides.
 - Does not default a test to `IA/` — applies the real criterion (does the AI
   have what it needs to run it itself?), not convenience.
