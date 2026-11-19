@@ -170,6 +170,59 @@ the fix) / n/a (with the reason).
 | Screen reader | Every control has a name; status changes are announced |
 | Spacing | 4/8 grid: 4, 8, 12, 16, 24, 32, 48, 64 |
 
+## Expert layer (summary — detail in `expert-patterns.md`)
+
+- **Hick**: each extra option slows the decision — one decision per step,
+  few options per screen, one recommended.
+- **Progressive disclosure**: only the essential up front; advanced options
+  behind one click or a drawer.
+- **Chunking (Miller)**: group information in blocks of at most 5-7 items,
+  each with a label, so the screen can be scanned.
+- **Recognition over recall**: keep options and states visible (recent,
+  suggestions, current value, recap) — never make the user remember
+  something from a previous screen.
+- **Tesler**: complexity that cannot be removed is absorbed by the system
+  (totals, deadlines, formats, eligibility), never left to the user.
+- **Critique of an existing screen**: Nielsen's heuristics, each problem
+  rated for severity 0-4 and ranked by impact/effort.
+- **Mental model and information scent**: labels use the user's words and
+  predict the destination; the structure mirrors how users think about the
+  task, not how the database is built.
+- **Natural mapping**: a control sits next to what it affects and moves in
+  the direction of its effect.
+- **Attention**: one isolated element is remembered (Von Restorff) — spend
+  it on the primary action; **serial position**: the most important
+  entries go at the very start or very end of a nav bar or list, never the
+  middle; key content on the F/Z reading path.
+- **Edge states** are designed, not left over: empty, first use, error,
+  offline, permission denied, too much content, too long text, slow network.
+  Each offers a next action.
+
+## Emotional design (summary — detail in `emotional-design.md`)
+
+- Judge each screen on Norman's three levels: **visceral** (first-second
+  impression: does it look trustworthy and calm?), **behavioral** (does
+  using it feel effortless and under control?), **reflective** (what will
+  the user remember and tell?).
+- **Map the emotions of the flow** (D4): where is the user anxious, unsure,
+  impatient, proud? The design answers the feeling, not only the task.
+- **Anxiety moments** (payment, deletion, sensitive data, waiting): reassure
+  *before* the action — what will happen, what it costs, how to undo — with
+  trust signals at the exact point of doubt.
+- **Blameless errors**: the product takes responsibility, stays calm, and
+  shows the way out. Never "invalid", "illegal", "you failed to".
+- **Measured delight**: celebration proportional to the user's effort,
+  reserved for rare achievements, never on frequent actions, never delaying
+  the next step, always skippable.
+- **Peak and end**: polish the best moment and the last impression of each
+  session more than the average.
+- **One personality** (shape, motion, tone) across the product, that steps
+  back in serious moments (money, errors, loss).
+- Empty and waiting states are occasions for warmth and orientation.
+- **Hard limit**: emotion serves the user. No guilt, fake urgency, fake
+  scarcity or shaming to drive a metric — refuse and offer the honest
+  alternative.
+
 ## D5 — Zero-thinking checklist
 
 1. One primary action per screen, recognizable in under a second, large and
