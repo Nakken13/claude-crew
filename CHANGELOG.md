@@ -8,6 +8,7 @@ version numbers match the `version` field in
 
 ## [Unreleased]
 
+- **Closure passes sized to the diff (1.3.19)** — `/crew-close-task` step 3 picks a size from `git diff --stat` (code/prompt lines only): **quick** (docs, < ~50 non-sensitive lines) → `verification-before-completion`; **standard** (≥ ~50 lines, any crew skill/persona, dependency bumps) → one `requesting-code-review` reviewer on Sonnet that also covers cleanup, no `simplify`; **deep** (hook/engine, auth/secrets, settings, CI, payments, migrations, > ~400 lines) → review + `simplify` as before. Measured on a prompt-only task: the old rule spent ~460k tokens on closure passes.
 - **Lower token cost per command (1.3.18)** — `model: sonnet` on `manager`/`seo`/`social`/`comms`; `/crew-new-task` writes a single task inline and dispatches `manager` only for 2+ tasks or an ambiguous zone (one measured `manager` dispatch for a single task: ~44k tokens); `/crew-new-task` and `/crew-start` inline the lifecycle rules, so `LIFECYCLE.md` (8.3k chars) is no longer read through them; `ux-intuitive` `SKILL.md` 16.9k → 14.0k chars (expert and emotional summaries kept); `seo` 12.0k → 8.6k chars.
 - **Change: `PAUSED/` no longer holds its batch nor its zone** — `next_task` and `count_batches` ignore `PAUSED/` for anti-collision: other `TODO` tasks of the same batch stay startable and other batches may use the paused batch's zone (nobody works on it). `paused_count` still reports parked batches. Tests and `LIFECYCLE.md` updated.
 
