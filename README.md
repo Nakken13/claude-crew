@@ -43,7 +43,7 @@ crew-mates is a plugin for [Claude Code](https://github.com/anthropics/claude-co
 
 ## 🎭 A crew of specialists
 
-crew-mates ships **8 specialist agents** (Claude Code subagents, called *personas* elsewhere in the docs). Each has its own role, its own tools and its own answer format, so a product call, a legal doubt and a UX choice get an expert's framing instead of a generalist guess. Claude calls them when a decision has at least two real options in their domain, or when you ask for one by name.
+crew-mates ships **8 specialist agents** (Claude Code subagents, called *personas* elsewhere in the docs). A ninth, read-only `reviewer`, is not a persona: `/crew-close-task` uses it for its review passes. Each has its own role, its own tools and its own answer format, so a product call, a legal doubt and a UX choice get an expert's framing instead of a generalist guess. Claude calls them when a decision has at least two real options in their domain, or when you ask for one by name.
 
 | Agent | Ask it when | You get |
 |---|---|---|
@@ -207,7 +207,7 @@ Plenty of scaffolds give you a prompt template and a folder layout. crew-mates t
 | 🗂️ `crew/` | The task folders: `PROBLEMS`, `TODO`, `CURRENT_TASKS`, `PAUSED`, `ICEBOX`, `TESTS`, `CLAUDE_CONTEXT`. |
 | 🌳 Per-batch `git worktree` | Physical isolation: each active batch gets its own checkout and branch. |
 | ⚡ 10 `/crew-*` skills | Drive the whole lifecycle deterministically (see [Commands](#-commands)). |
-| 🎭 8 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) that Claude can consult in parallel. |
+| 🎭 9 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) that Claude can consult in parallel, plus a read-only `reviewer` used by `/crew-close-task`. |
 | 🎨 `ux-intuitive` skill | The designer's UX decision system, preloaded into the `designer` agent: color roles, button system, purposeful motion, error prevention, expert patterns and emotional design, so end users never have to think. |
 | 🪝 `crew_hook.py` | One file, three hooks: the `PreToolUse` gate, the `SessionStart` digest, the `Stop` sync. |
 | 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes, keeping specs and tasks in sync. |

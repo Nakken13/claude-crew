@@ -30,8 +30,23 @@ already known — no need to re-check on every following `Read`/`Write`/`Edit`/`
    | Size | When | Passes |
    |---|---|---|
    | **quick** | Non-sensitive docs, copy, rename, typo, or < ~50 code/prompt lines | `verification-before-completion` + your own read of the diff |
-   | **standard** | ≥ ~50 code/prompt lines; any change to a crew skill, persona or other prompt that gates behavior; dependency bumps | **One** `requesting-code-review` reviewer with `model: "sonnet"`, whose brief also asks for the cleanup angles (reuse, simplification, efficiency, modularity). No `simplify` |
-   | **deep** | Hook or engine scripts, hooks config, auth / tokens / secrets / encryption, permissions or settings files, CI workflows, payments, data migration, or > ~400 code lines | `requesting-code-review` on the session model, then skill `simplify` |
+   | **standard** | ≥ ~50 code/prompt lines; any change to a crew skill, persona or other prompt that gates behavior; dependency bumps | **One** `requesting-code-review` review dispatched to the crew reviewer agent with `model: "sonnet"` (see below), whose brief also asks for the cleanup angles (reuse, simplification, efficiency, modularity). No `simplify` |
+   | **deep** | Hook or engine scripts, hooks config, auth / tokens / secrets / encryption, permissions or settings files, CI workflows, payments, data migration, or > ~400 code lines | `requesting-code-review` dispatched to the crew reviewer agent on the session model, then skill `simplify` |
+
+   **Reviewer agent:** `requesting-code-review` fills its `code-reviewer.md`
+   template into a `general-purpose` subagent; use the crew reviewer agent
+   (Read/Grep/Glob/Bash only) instead. Read that skill's `code-reviewer.md`,
+   fill its placeholders, add the cleanup angles for **standard**, and pass the
+   result as the `Agent` `prompt` — the template's own "You are a Senior Code
+   Reviewer…" text is fine, the agent file is generic. `subagent_type`: pick
+   from the Agent tool's agent-type list — `"crew-mates:reviewer"` when the
+   plugin serves the agents, `"reviewer"` when the project has local
+   `.claude/agents/` copies (both listed → the local `reviewer`, it is the
+   project's own copy). `model` per the size table. Fall back to
+   `general-purpose` only if neither name is in that list. A `general-purpose`
+   agent loads every tool schema, deferred MCP tool name and the full skill
+   listing — measured ~55–59k tokens before it reads the diff; 6–8-tool
+   personas measured ~14–17k, so the reviewer is expected around that.
 
    Why: each subagent starts from a large base context and `simplify` fans out
    4 agents — on a prompt-only task the old rule spent ~460k tokens; the single
