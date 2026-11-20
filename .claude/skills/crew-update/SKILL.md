@@ -9,14 +9,28 @@ never replaces a file without explicit confirmation.
 
 ## Install-mode detection
 
-1. `detect_mode(project_root)` (in the module, not just in prose here — a single
-   source of truth) looks for `.claude/skills/crew-init/SKILL.md` in the target
-   project:
-   - **Present** → `"legacy"` (Option C / manual clone, pre-plugin):
-     `ENGINE_FILES_LEGACY` (`crew_hook.py`, `spec_to_task_hook.py`,
+1. `detect_mode(project_root, source_root=<plugin root>)` (in the module, not just
+   in prose here — a single source of truth; always pass `source_root`, the CLI
+   passes `--source`) looks for a local copy of one of the scaffold's own skills
+   (`.claude/skills/<name>/SKILL.md` for the names in `ENGINE_FILES_LEGACY`; a
+   user skill named `crew-<x>` does not count) — or, with `source_root`, any
+   plugin-served skill/persona still copied locally (e.g. only personas left
+   after a partial migration) — then whether the crew-mates plugin is installed
+   (`plugin_installed()`: `CLAUDE_PLUGIN_ROOT` set, otherwise `enabledPlugins` —
+   `settings.local.json` > `settings.json` > `~/.claude/settings.json`, the most
+   specific scope wins; the Double hook check uses the same rule):
+   - **Present, plugin not installed** → `"legacy"` (Option C / manual clone,
+     pre-plugin): `ENGINE_FILES_LEGACY` (`crew_hook.py`, `spec_to_task_hook.py`,
      `.claude/skills/crew-*/SKILL.md`, `.claude/agents/*.md`) is included in the
      update automatically, on top of the common files. The `--legacy` CLI flag
-     forces this inclusion if detection is wrong.
+     forces this mode if detection is wrong. The scaffold source repo itself
+     (`.claude-plugin/plugin.json` named `crew-mates`) is always `"legacy"`: its
+     `.claude/` copies are the dogfood sources, never purged.
+   - **Present, plugin installed** → `"migrate"`: the local copies load **on top
+     of** the plugin's `crew-mates:*` skills/personas (duplicates in the context
+     at every start). The skills/agents are no longer synced; only the common
+     files and the two local hook scripts, only where they already exist (a
+     plugin + local *hook* pair is the Double hook section below). See § Migrate (remove the local copies).
    - **Absent** → `"plugin"`: do NOT try to sync skills/agents/hooks (they
      already run from the installed plugin and update through
      `/plugin update crew-mates` — say so explicitly to the user). Only the
@@ -125,9 +139,44 @@ long `CLAUDE.md` stays valid (those sections are in it too).
      `--remove-double-hook` (removes only those hook entries, the rest of the
      settings is kept, but the file is reformatted as indented JSON).
 
+## Migrate (remove the local copies)
+
+8bis. Only in `"migrate"` mode (`--source` = the plugin root, e.g.
+   `${CLAUDE_PLUGIN_ROOT}`). `plan_migration(project_root, source_root)` (run by
+   the CLI, read-only) lists one **unit** per plugin-served copy: a skill folder
+   `.claude/skills/<name>/` (everything in it) or a persona `.claude/agents/<name>.md`,
+   when the plugin ships `skills/<name>/` / `agents/<name>.md`. A skill or persona
+   the plugin does not ship (the user's own) is never listed, and neither is
+   anything reached through a symlink/junction (a linked clone or shared skills
+   folder is never touched).
+   - `remove` — every file unchanged (hash = last recorded write in
+     `SCAFFOLD_VERSION.json`, or = the plugin's current file): safe to delete.
+     Not to be confused with `removed` from the plan above (file gone upstream).
+   - `conflict` — the unit is kept whole unless the user says otherwise; the CLI
+     says why: customized or never-recorded files (e.g. a pre-plugin copy), and/or
+     the user's own files inside the skill folder (deleting the unit deletes them
+     too — say so in the question).
+   - Show the list to the user and confirm via `AskUserQuestion` ("Delete the N
+     unchanged copies" / "Keep everything"; a keep/delete choice per `conflict`,
+     or one "delete all the listed conflicts" option when they are just old
+     copies). **Nothing is deleted without that confirmation.** Then rerun with
+     `--remove-local-copies` (deletes the `remove` units) plus one
+     `--remove-copy <unit path as listed>` per `conflict` to delete. `--apply`
+     alone never deletes; a `--remove-copy` path that is not listed is refused
+     before anything is written. The deleted files leave `SCAFFOLD_VERSION.json`.
+     Seeding (step 2) does not cover the copies in this mode.
+   - The CLI then lists the live project docs (`CLAUDE.md`, `AGENTS.md`,
+     `crew/CLAUDE_CONTEXT/*.md`, history and archives excluded) still naming a
+     copy the plugin serves (`.claude/skills/<served>`, `.claude/agents/<served>.md`;
+     the user's own skills/personas are not flagged, `hardcoded_copy_refs()`): flag them to the user, never rewrite them
+     automatically.
+   - Tell the user to restart Claude Code (the skill/agent lists are read at
+     startup) and to commit the deletions. Batch worktrees keep their own copies
+     until they are merged.
+
 ## Test policy (existing projects)
 
-8bis. If `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` is **missing**, offer to create it
+8ter. If `crew/CLAUDE_CONTEXT/TESTS_POLICY.md` is **missing**, offer to create it
    — never silently — through a dedicated `AskUserQuestion`, separate from the
    step 5 confirmation. Content: the template
    `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/TESTS_POLICY.md` (manual
@@ -139,7 +188,7 @@ long `CLAUDE.md` stays valid (those sections are in it too).
 
 ## Remote claims (existing projects)
 
-8ter. If `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` is **missing**, create it from
+8quater. If `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` is **missing**, create it from
    `${CLAUDE_PLUGIN_ROOT}/template/crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (manual
    clone: `<source>/template/...`), with `remote_claims : false`: a solo project
    keeps exactly its behavior, nothing is synced until the dev flips the line to
@@ -165,7 +214,9 @@ only when the user asks:
 9. Final summary: files created, files updated, files left in conflict or
    `removed` (reminding that they will be offered again at the next
    `/crew-update` until resolved), newly recorded version, and whether the test
-   policy was created (level + zones, editable in `TESTS_POLICY.md`).
+   policy was created (level + zones, editable in `TESTS_POLICY.md`). In
+   `"migrate"` mode: local copies deleted / kept, and the docs still pointing at
+   them.
 
 ## What this skill does not do
 
@@ -186,3 +237,6 @@ only when the user asks:
   to `/plugin update crew-mates`.
 - Never removes a duplicate local hook without `--remove-double-hook` confirmed
   by the user.
+- Never deletes a local skill/agent copy without the user's confirmation
+  (`--remove-local-copies` / `--remove-copy`), never one the plugin does not
+  serve, and never in the scaffold source repo.

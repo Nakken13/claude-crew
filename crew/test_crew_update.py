@@ -5,6 +5,7 @@ tmp_path (never the real repo), real files on disk, real hashing —
 no mocks."""
 import json
 import pathlib
+import shutil
 import sys
 
 import pytest
@@ -517,21 +518,11 @@ CYCLE = "crew/CLAUDE_CONTEXT/CYCLE_DE_VIE.md"
 
 
 def _mini(tmp_path, files):
-    root = tmp_path / "proj"
-    for rel, text in files.items():
-        p = root / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
-    return root
+    return _tree(tmp_path / "proj", files)
 
 
 def _src(tmp_path, files):
-    root = tmp_path / "src"
-    for rel, text in files.items():
-        p = root / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
-    return root
+    return _tree(tmp_path / "src", files)
 
 
 def test_engine_whitelist_ships_the_english_lifecycle_doc():
@@ -635,3 +626,380 @@ def test_migrate_cli_is_dry_run_without_apply(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "HISTORIQUE.md" in out and "Dry-run" in out
     assert (proj / "crew/CLAUDE_CONTEXT/HISTORIQUE.md").exists()
+
+
+# --- migrate mode: local skill/agent copies + installed plugin --------------
+# A project bootstrapped before the plugin keeps .claude/skills/crew-* and
+# .claude/agents/*.md; with crew-mates installed both load (duplicates).
+# Decisions are per unit: one skill folder, or one persona file.
+
+@pytest.fixture(autouse=True)
+def _hermetic_plugin_detection(tmp_path, monkeypatch):
+    """The real ~/.claude/settings.json and CLAUDE_PLUGIN_ROOT of the dev
+    machine must never decide a test's install mode."""
+    monkeypatch.setattr(u, "USER_SETTINGS_PATH", tmp_path / "no-user-settings.json")
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+
+def _tree(root, files):
+    root = pathlib.Path(root)
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    return root
+
+
+def _plugin_source(tmp_path):
+    """What the installed plugin serves: skills/<name>/..., agents/*.md, the hook scripts."""
+    return _tree(tmp_path / "plugin", {
+        "skills/crew-init/SKILL.md": "init v2\n",
+        "skills/crew-start/SKILL.md": "start v2\n",
+        "skills/ux-intuitive/SKILL.md": "ux v2\n",
+        "skills/ux-intuitive/references/platform-specs.md": "specs v2\n",
+        "agents/ceo.md": "ceo v2\n",
+        "agents/designer.md": "designer v2\n",
+        "crew/crew_hook.py": "hook v2\n",
+        "crew/spec_to_task_hook.py": "spec v2\n",
+    })
+
+
+def _copies_project(tmp_path):
+    return _tree(tmp_path / "copies", {
+        ".claude/skills/crew-init/SKILL.md": "init v1\n",           # recorded -> unchanged
+        ".claude/skills/crew-start/SKILL.md": "start v1 + mine\n",  # recorded differently -> customized
+        ".claude/skills/ux-intuitive/SKILL.md": "ux v2\n",          # identical to the plugin
+        ".claude/skills/ux-intuitive/references/platform-specs.md": "specs v2\n",
+        ".claude/skills/my-skill/SKILL.md": "user skill\n",         # not served by the plugin
+        ".claude/agents/ceo.md": "ceo v1\n",                        # recorded -> unchanged
+        ".claude/agents/designer.md": "designer v0\n",              # never recorded, differs -> conflict
+        ".claude/agents/mine.md": "user persona\n",                 # not served by the plugin
+        "crew/crew_hook.py": "hook v1\n",
+        "CLAUDE.md": "claude\n",
+    })
+
+
+def _record(project, rels):
+    files = {rel: u.hash_file(project / rel) for rel in rels}
+    u.save_scaffold_version(project, {"version": "1.0.0", "files": files})
+
+
+def _enable_plugin(root, name="settings.json", value=True, key="crew-mates@crew-mates"):
+    _write_settings(root, name, {"enabledPlugins": {key: value}})
+
+
+def _status(proj, src):
+    return {d["path"]: d["status"] for d in u.plan_migration(proj, src)}
+
+
+def _link_or_skip(link, target):
+    """Symlink, or a junction on Windows without symlink rights (a dir link either way)."""
+    try:
+        link.symlink_to(target, target_is_directory=pathlib.Path(target).is_dir())
+        return
+    except (OSError, NotImplementedError):
+        pass
+    if sys.platform == "win32" and pathlib.Path(target).is_dir():
+        import subprocess
+        done = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                              capture_output=True, stdin=subprocess.DEVNULL)
+        if done.returncode == 0:
+            return
+    pytest.skip("links not available here")
+
+
+def test_plugin_installed_from_project_settings(tmp_path):
+    _enable_plugin(tmp_path)
+    assert u.plugin_installed(tmp_path, env={})
+
+
+def test_plugin_installed_from_user_settings(tmp_path):
+    user = tmp_path / "user.json"
+    user.write_text(json.dumps({"enabledPlugins": {"crew-mates@crew-mates": True}}), encoding="utf-8")
+    assert u.plugin_installed(tmp_path / "proj", user_settings_path=user, env={})
+
+
+def test_plugin_installed_under_its_former_name(tmp_path):
+    _enable_plugin(tmp_path, key="claude-crew@nakken13")
+    assert u.plugin_installed(tmp_path, env={})
+
+
+def test_plugin_installed_from_plugin_root_env(tmp_path):
+    assert u.plugin_installed(tmp_path, env={"CLAUDE_PLUGIN_ROOT": str(tmp_path)})
+
+
+def test_plugin_not_installed_without_any_signal(tmp_path):
+    assert not u.plugin_installed(tmp_path, env={})
+
+
+def test_project_disable_beats_user_enable(tmp_path):
+    user = tmp_path / "user.json"
+    user.write_text(json.dumps({"enabledPlugins": {"crew-mates@crew-mates": True}}), encoding="utf-8")
+    _enable_plugin(tmp_path / "proj", value=False)
+    assert not u.plugin_installed(tmp_path / "proj", user_settings_path=user, env={})
+
+
+def test_local_settings_beat_project_settings(tmp_path):
+    _enable_plugin(tmp_path, "settings.json", True)
+    _enable_plugin(tmp_path, "settings.local.json", False)
+    assert not u.plugin_installed(tmp_path, env={})
+
+
+def test_double_hook_uses_the_same_scope_precedence(tmp_path):
+    # plugin disabled in this project, enabled for the user: the local hook is the only one
+    user = tmp_path / "user.json"
+    user.write_text(json.dumps({"enabledPlugins": {"crew-mates@crew-mates": True}}), encoding="utf-8")
+    settings = {"enabledPlugins": {"crew-mates@crew-mates": False}}
+    settings.update(_hooks(LOCAL_HOOK_CMD, "PreToolUse"))
+    _write_settings(tmp_path / "proj", "settings.json", settings)
+    assert u.detect_double_hook(tmp_path / "proj", user_settings_path=user) == {}
+
+
+def test_detect_mode_migrate_when_copies_and_plugin(tmp_path):
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    assert u.detect_mode(proj) == "migrate"
+
+
+def test_detect_mode_stays_legacy_without_plugin(tmp_path):
+    assert u.detect_mode(_copies_project(tmp_path)) == "legacy"
+
+
+def test_detect_mode_never_migrates_the_scaffold_source_repo(tmp_path):
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    _tree(proj, {".claude-plugin/plugin.json": json.dumps({"name": "crew-mates", "version": "9.9.9"})})
+    assert u.detect_mode(proj) == "legacy"
+
+
+def test_detect_mode_stays_migrate_once_crew_init_is_gone(tmp_path):
+    # partial migration: crew-init deleted, a kept crew-start copy remains
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    u.remove_copies(proj, [".claude/skills/crew-init/"])
+    assert u.detect_mode(proj, source_root=src) == "migrate"
+
+
+def test_detect_mode_migrate_when_only_persona_copies_remain(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _tree(tmp_path / "agents-only", {".claude/agents/ceo.md": "ceo v1\n"})
+    _enable_plugin(proj)
+    assert u.detect_mode(proj, source_root=src) == "migrate"
+    assert u.detect_mode(proj) == "plugin"  # without a source the personas cannot be identified
+
+
+def test_plan_migration_removes_unchanged_units_and_flags_customized_ones(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _record(proj, [".claude/skills/crew-init/SKILL.md", ".claude/agents/ceo.md"])
+    recorded = u.load_scaffold_version(proj)
+    recorded["files"][".claude/skills/crew-start/SKILL.md"] = "0" * 64  # our last write != local
+    u.save_scaffold_version(proj, recorded)
+
+    assert _status(proj, src) == {
+        ".claude/skills/crew-init/": "remove",
+        ".claude/skills/ux-intuitive/": "remove",
+        ".claude/agents/ceo.md": "remove",
+        ".claude/skills/crew-start/": "conflict",
+        ".claude/agents/designer.md": "conflict",
+    }  # my-skill and mine.md (not served by the plugin) are never listed
+
+
+def test_one_customized_file_keeps_the_whole_skill(tmp_path):
+    # a kept SKILL.md must not lose the unchanged reference files it points at
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _tree(proj, {".claude/skills/ux-intuitive/SKILL.md": "ux v2 + mine\n"})
+    decision = {d["path"]: d for d in u.plan_migration(proj, src)}[".claude/skills/ux-intuitive/"]
+    assert decision["status"] == "conflict"
+    assert decision["changed"] == [".claude/skills/ux-intuitive/SKILL.md"]
+
+
+def test_user_file_inside_a_served_skill_is_reported_as_the_users_own(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _tree(proj, {".claude/skills/ux-intuitive/notes.md": "my notes\n"})
+    decision = {d["path"]: d for d in u.plan_migration(proj, src)}[".claude/skills/ux-intuitive/"]
+    assert decision["status"] == "conflict"
+    assert decision["user_files"] == [".claude/skills/ux-intuitive/notes.md"]
+    assert decision["changed"] == []
+
+
+def test_plan_migration_writes_nothing(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    before = sorted(p.relative_to(proj).as_posix() for p in proj.rglob("*"))
+    u.plan_migration(proj, src)
+    assert sorted(p.relative_to(proj).as_posix() for p in proj.rglob("*")) == before
+
+
+def test_linked_skill_dir_is_never_listed_nor_deleted(tmp_path):
+    # .claude/skills/crew-init -> the plugin's own folder (dogfooding through a link)
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    shutil.rmtree(proj / ".claude/skills/crew-init")
+    _link_or_skip(proj / ".claude/skills/crew-init", src / "skills/crew-init")
+    assert ".claude/skills/crew-init/" not in _status(proj, src)
+    with pytest.raises(ValueError):
+        u.remove_copies(proj, [".claude/skills/crew-init/"])
+    assert (src / "skills/crew-init/SKILL.md").is_file()
+
+
+def test_linked_skills_root_is_never_listed(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _tree(tmp_path / "linked", {"CLAUDE.md": "x\n"})
+    (proj / ".claude").mkdir()
+    _link_or_skip(proj / ".claude/skills", src / "skills")
+    assert _status(proj, src) == {}
+
+
+def test_linked_file_inside_a_skill_blocks_the_whole_unit(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    outside = _tree(tmp_path / "elsewhere", {"specs.md": "specs v2\n"}) / "specs.md"
+    target = proj / ".claude/skills/ux-intuitive/references/platform-specs.md"
+    target.unlink()
+    _link_or_skip(target, outside)
+    assert ".claude/skills/ux-intuitive/" not in _status(proj, src)
+    with pytest.raises(ValueError):
+        u.remove_copies(proj, [".claude/skills/ux-intuitive/"])
+    assert outside.is_file()
+
+
+def test_remove_copies_deletes_units_prunes_dirs_and_forgets_hashes(tmp_path):
+    proj = _copies_project(tmp_path)
+    _record(proj, [".claude/skills/ux-intuitive/SKILL.md", ".claude/agents/ceo.md", "CLAUDE.md"])
+
+    removed = u.remove_copies(proj, [".claude/skills/ux-intuitive/", ".claude/agents/ceo.md"])
+
+    assert removed == [".claude/skills/ux-intuitive/", ".claude/agents/ceo.md"]
+    assert not (proj / ".claude/skills/ux-intuitive").exists()
+    assert not (proj / ".claude/agents/ceo.md").exists()
+    assert (proj / ".claude/agents/mine.md").exists() and (proj / ".claude/skills/my-skill/SKILL.md").exists()
+    assert set(u.load_scaffold_version(proj)["files"]) == {"CLAUDE.md"}
+
+
+@pytest.mark.parametrize("bad", ["CLAUDE.md", ".claude/skills/", ".claude/agents/../../CLAUDE.md",
+                                 ".claude/agents/..\\..\\CLAUDE.md", ".claude/skills/../../crew/"])
+def test_remove_copies_refuses_anything_but_a_skill_dir_or_a_persona(tmp_path, bad):
+    proj = _copies_project(tmp_path)
+    with pytest.raises(ValueError):
+        u.remove_copies(proj, [bad])
+    assert (proj / "CLAUDE.md").exists() and (proj / "crew/crew_hook.py").exists()
+
+
+def test_hardcoded_copy_refs_lists_project_docs_pointing_at_local_copies(tmp_path):
+    proj = _tree(tmp_path / "refs", {
+        "CLAUDE.md": "ok\nsee .claude/skills/crew-start/SKILL.md\n",
+        "AGENTS.md": "the folder `.claude/agents/` in general is not a copy path\n",
+        "crew/CLAUDE_CONTEXT/LIFECYCLE.md": "personas in .claude/agents/ceo.md\n",
+        "crew/CLAUDE_CONTEXT/HISTORY.md": "old .claude/skills/crew-init/SKILL.md\n",  # history: not a live ref
+    })
+    refs = u.hardcoded_copy_refs(proj, _plugin_source(tmp_path))
+    assert [(r["file"], r["line"]) for r in refs] == [("CLAUDE.md", 2), ("crew/CLAUDE_CONTEXT/LIFECYCLE.md", 1)]
+
+
+def test_hardcoded_copy_refs_ignore_the_users_own_skills_and_personas(tmp_path):
+    proj = _tree(tmp_path / "own", {
+        "CLAUDE.md": "use .claude/agents/mine.md and .claude/skills/crew-deploy/SKILL.md\n",
+    })
+    assert u.hardcoded_copy_refs(proj, _plugin_source(tmp_path)) == []
+
+
+def test_users_own_crew_skill_does_not_change_a_plugin_project_mode(tmp_path):
+    src = _plugin_source(tmp_path)
+    proj = _tree(tmp_path / "own-skill", {".claude/skills/crew-deploy/SKILL.md": "mine\n", "CLAUDE.md": "x\n"})
+    _enable_plugin(proj)
+    assert u.detect_mode(proj, source_root=src) == "plugin"
+    _enable_plugin(proj, value=False)
+    assert u.detect_mode(proj, source_root=src) == "plugin"
+
+
+def test_migrate_never_creates_hook_scripts_the_project_does_not_have(tmp_path, monkeypatch):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    (proj / "crew/crew_hook.py").unlink()
+    _enable_plugin(proj)
+    _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--apply")
+    assert not (proj / "crew/crew_hook.py").exists()
+    assert not (proj / "crew/spec_to_task_hook.py").exists()
+
+
+def test_bad_remove_copy_is_refused_before_the_double_hook_is_removed(tmp_path, monkeypatch):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    settings = {"enabledPlugins": {"crew-mates@crew-mates": True}}
+    settings.update(_hooks(LOCAL_HOOK_CMD, "PreToolUse"))
+    _write_settings(proj, "settings.json", settings)
+    before = (proj / ".claude/settings.json").read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--remove-double-hook",
+                  "--remove-copy", ".claude/agents/mine.md")
+    assert (proj / ".claude/settings.json").read_text(encoding="utf-8") == before
+
+
+def test_main_migrate_apply_deletes_nothing_and_skips_skill_resync(tmp_path, monkeypatch, capsys):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    _record(proj, [".claude/skills/crew-init/SKILL.md", ".claude/agents/ceo.md", "crew/crew_hook.py"])
+
+    _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--apply")
+
+    out = capsys.readouterr().out
+    assert (proj / ".claude/skills/crew-init/SKILL.md").exists()
+    assert ".claude/skills/crew-init/" in out and "--remove-local-copies" in out
+    # --apply never re-syncs the plugin-served copies (ceo.md would be "apply" in legacy mode)
+    assert (proj / ".claude/agents/ceo.md").read_text(encoding="utf-8") == "ceo v1\n"
+    # ...but the local hook scripts stay synced
+    assert (proj / "crew/crew_hook.py").read_text(encoding="utf-8") == "hook v2\n"
+
+
+def test_main_remove_local_copies_deletes_only_unchanged_units(tmp_path, monkeypatch):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    _record(proj, [".claude/skills/crew-init/SKILL.md"])
+
+    _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--remove-local-copies")
+
+    assert not (proj / ".claude/skills/crew-init").exists()
+    assert not (proj / ".claude/skills/ux-intuitive").exists()
+    assert (proj / ".claude/skills/crew-start/SKILL.md").exists()   # conflict kept
+    assert (proj / ".claude/agents/designer.md").exists()           # conflict kept
+
+
+def test_main_remove_copy_deletes_a_chosen_conflict(tmp_path, monkeypatch):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+
+    _run_main(monkeypatch, "--project", str(proj), "--source", str(src),
+              "--remove-copy", ".claude/agents/designer.md")
+
+    assert not (proj / ".claude/agents/designer.md").exists()
+    assert (proj / ".claude/skills/crew-start/SKILL.md").exists()
+
+
+def test_main_unknown_remove_copy_is_refused_before_anything_is_written(tmp_path, monkeypatch):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    _enable_plugin(proj)
+    _record(proj, ["crew/crew_hook.py"])
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--apply",
+                  "--remove-copy", ".claude/agents/mine.md")
+    assert (proj / ".claude/agents/mine.md").exists()
+    assert (proj / "crew/crew_hook.py").read_text(encoding="utf-8") == "hook v1\n"  # --apply not run
+
+
+@pytest.mark.parametrize("extra", [[], ["--seed", "--source-version", "1.0.0"], ["--migrate-names"]])
+def test_remove_flags_are_refused_outside_a_plain_migrate_run(tmp_path, monkeypatch, extra):
+    src = _plugin_source(tmp_path)
+    proj = _copies_project(tmp_path)
+    if extra:
+        _enable_plugin(proj)  # migrate mode, but combined with a flag that returns early
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, "--project", str(proj), "--source", str(src), "--remove-local-copies", *extra)
+    assert (proj / ".claude/skills/crew-init/SKILL.md").exists()
