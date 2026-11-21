@@ -20,6 +20,8 @@ CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" count
    table + active/excluded in one line). Collab mode (`/crew-collab`): only your
    tasks count — other devs' TODO tasks are left out and batches held by their
    remote claims (task or zone) are `excluded` (local view, no fetch).
+   `blocked[]`: batches whose every remaining task has a `Blocked by:` line
+   naming a still-open task (`blocked_by` = task → blockers); they reserve no zone.
 
 2. Answer by displaying **`report` as is**, nothing else (no rewording, no
    reminder of the rules). Each title in the "Session title" (session title)

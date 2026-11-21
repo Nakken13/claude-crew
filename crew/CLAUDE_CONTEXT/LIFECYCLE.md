@@ -39,7 +39,7 @@ Delete the file from `CURRENT_TASKS/`, record it in `HISTORY.md`, produce the te
 **Invariant: the zones of two active batches (≥1 task in `CURRENT_TASKS/` or a live session lock; `PAUSED/` reserves nothing) are disjoint**; shared files → same batch.
 
 ### Anti-collision check before starting a task
-`crew_hook.py next-task` (run by `/crew-start`) does it deterministically: locks of other sessions, active batches (`CURRENT_TASKS/` and live locks), overlap of `Zone :` → candidate discarded, next one tried; nothing startable → report to the user. Manual start outside `/crew-start`: apply the same rules by hand. The Stop hook warns (non-blocking) about missed overlaps; `/crew-status` for an on-demand view.
+`crew_hook.py next-task` (run by `/crew-start`) does it deterministically: locks of other sessions, active batches (`CURRENT_TASKS/` and live locks), overlap of `Zone :` or a task file line ``Blocked by: `a.md`, `b.md` `` naming a still-open task (in `TODO/`/`CURRENT_TASKS/`/`PAUSED/`, not struck) → candidate discarded, next one tried; nothing startable → report to the user. Manual start outside `/crew-start`: apply the same rules by hand. The Stop hook warns (non-blocking) about missed overlaps; `/crew-status` for an on-demand view.
 
 ## Context efficiency
 

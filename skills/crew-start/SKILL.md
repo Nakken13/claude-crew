@@ -28,8 +28,8 @@ repo root (`git rev-parse --show-toplevel`), never from the current cwd
    `crew/crew_hook.py`). JSON output: `action`, `task`, `batch`,
    `worktree`, `branch`, `skipped[{slug,reason}]`, `paused`,
    `unclassified`, `ambiguous`. It already covers: other sessions' locks,
-   active/paused batches, `Zone :` overlap, ICEBOX and `Unsorted` (to be
-   sorted) ignored. Do not redo this sorting by hand.
+   active/paused batches, `Zone :` overlap, `Blocked by:` lines whose
+   blocker is still open, ICEBOX and `Unsorted` (to be sorted) ignored. Do not redo this sorting by hand.
 
    If `paused` is not empty, flag it to the user (task + what blocks it) — a
    `PAUSED/` task is NEVER resumed automatically.

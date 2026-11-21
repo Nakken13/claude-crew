@@ -17,6 +17,10 @@ would create a phantom `crew/` there.
   `crew/CURRENT_TASKS/` if it starts now, otherwise `crew/TODO/`.
 - Content: title, short "why", the zone line, then concrete tickable `- [ ]`
   actions (not vague ones).
+- Depends on other tasks → one line ``Blocked by: `a.md`, `b.md` `` (exact
+  slugs). `count` / `next-task` skip the task while one of them is still open
+  (in `TODO/`, `CURRENT_TASKS/` or `PAUSED/` and not struck); a prose "after X"
+  is not read by them.
 - Zone line: ``Zone : `path/`, `file.ext` `` — **every path in backticks**: the
   hook ignores the others, and a batch with no parsed zone is skipped by
   `count` / `next-task`.
