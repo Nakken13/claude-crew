@@ -306,7 +306,7 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 | # | Mod (`hooks/mods/`) | Surface | What it does (100% local) |
 |---|---|---|---|
 | 1 | `prompt-cache-control.ts` | Pane (`/crew-ui cache`) + toast | Tracks prompt-cache TTL (`1h` default, `5 min` only via `CLAUDE_CACHE_TTL=5m`), a live countdown, read/write token counters, hit rate and a `< 60s` expiry warning. |
-| 2 | `token-weather.ts` | Band + toast | One-line context gauge: `☀️ Clear` (<50%), `⛅ Cloudy` (50–74%), `⛈️ Storm` (75–89%), `🚨 Compact soon` (≥90%). |
+| 2 | `token-weather.ts` | Band + toast | Context gauge, emoji + digits (`☀️ 13%  20k/150k`): ☀️ <50%, ⛅ 50–74%, ⛈️ 75–89%, 🚨 ≥90%. Hidden until a turn reports the real size, and again right after `/clear`. |
 | 3 | `turn-inspector.ts` | Pane (`/crew-turns`) | Per-turn log: tokens, cache, deduplicated tool calls, duration, context bar. |
 | 4 | `stack-viewer.ts` | Pane (`/crew-stack`) | Tree of everything active in the session, annotated with source and priority (`P1` local override to `P3` plugin or docs). |
 | 5 | `agent-flow.ts` | Pane (`/crew-agents`) + band | Live execution tree of subagents and personas (running, done, blocked, failed, tools, elapsed time). |
@@ -315,13 +315,13 @@ If another session holds a lock on a file you try to edit, or your prompt cache 
 
 | # | Mod (`hooks/mods/`) | Surface | What it does (100% local) |
 |---|---|---|---|
-| 6 | `crew-radar.ts` | Band | `🟢 X Sessions online \| ⚡ Y Current Tasks \| 📋 Z Todo` (plus `⏸️ Paused`), worktree-aware. |
+| 6 | `crew-radar.ts` | Band | `🟢X ⚡Y 📋Z ⏸️W` (sessions, running, todo, paused), worktree-aware. Hidden until the first count; refreshed right after a tool that touches `crew/` and every 5 s between turns (moves by other sessions). |
 | 7 | `batch-progress.ts` | Band | Task and batch progress bars from the checkboxes of the active task and `CLAUDE_BATCH.md`; updates mid-turn. |
 | 8 | `batch-dependency-graph.ts` | Pane (`/crew-board`) | Kanban and dependency board; flags `PAUSED/` tasks, prerequisites and cross-session zone blocks. |
 | 9 | `file-lock-monitor.ts` | Band + toast | Instant red banner if the file you edit is held by another session or falls in a zone it locked. |
 | 10 | `batch-eta-cost.ts` | Band | Learns task duration and token velocity per batch to show `⏱️ ETA: ~8 min (~45k tokens left)`. |
 | 11 | `usage-band.ts` | Band | Orange `/usage` stats (5h and 7d limits, context, cost) on the right of the band, read from `$.session.usage()`. |
-| 12 | `crew-count-band.ts` | Band | Red `Crew x/n` right after the crew radar: x = batches running (paused ones excluded), n = most you can run in parallel with the current zones (running + launchable, same count as `/crew-count`, via the plugin's own `crew_hook.py`). n moves when a batch finishes and frees its zone. Shows `Crew ?` if the count fails. |
+| 12 | `crew-count-band.ts` | Band | Red `🤖x/n` right after the crew radar: x = batches running (paused ones excluded), n = most you can run in parallel with the current zones (running + launchable, same count as `/crew-count`, via the plugin's own `crew_hook.py`). n moves when a batch finishes and frees its zone. Reads `🤖x/n`; hidden while unknown or if the count fails. In collab mode only your tasks count (other devs' TODO and remote claims left out). Recounted right after a tool that touches `crew/`, and between turns when the crew state changes on disk. |
 
 **Golden rules.** (1) **0 extra tokens**: no `$.model.complete`, no prompt injection, no LLM tool registration; everything relies on local telemetry, `crew/` files and `$.ui`. (2) **No dependencies**: pure TypeScript on Claude Code's sandboxed `$` API, no `node_modules`, no bundler. (3) **One entrypoint**: `hooks/register.ts` multiplexes lifecycle events across the 12 modules in `hooks/mods/`.
 

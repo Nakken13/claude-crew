@@ -126,9 +126,18 @@ export function registerTokenWeather(on: ModRegistrar): void {
     return next(e);
   });
 
+  // `/clear` fires session.end then the process goes on (no session.start): the old size is no longer true.
+  on('session.end', async ($, e, next) => {
+    tokenWeatherState.contextTokens = 0;
+    tokenWeatherState.warnedCompactSoon = false;
+    $.ui.invalidate('ui.render');
+    return next(e);
+  });
+
   on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
-    if (!crewUiState.bands.weather) return prev;
+    // 0 = not known yet (no turn reported a size, or a `/clear` just reset it): hidden, never a default 0 %.
+    if (!crewUiState.bands.weather || !tokenWeatherState.contextTokens) return prev;
 
     const snap = computeTokenWeather();
     return addBandSegments(prev, {

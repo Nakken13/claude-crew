@@ -1,19 +1,29 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { register } from './register.ts';
-import { crewRuntimeState, crewUiState, parseClaudeBatch, type HookHandler, type ModApi } from './mods/shared.ts';
+import {
+  coalesce,
+  crewRuntimeState,
+  crewUiState,
+  ensurePoller,
+  parseClaudeBatch,
+  stopPollers,
+  touchesCrewState,
+  type HookHandler,
+  type ModApi,
+} from './mods/shared.ts';
 import { computePromptCacheStatus, promptCacheState } from './mods/prompt-cache-control.ts';
 import { computeTokenWeather } from './mods/token-weather.ts';
 import { formatTurnRow, turnInspectorState } from './mods/turn-inspector.ts';
 import { stackViewerState } from './mods/stack-viewer.ts';
 import { agentFlowState } from './mods/agent-flow.ts';
-import { crewRadarState, formatCrewRadarLine, formatCrewRadarCompact } from './mods/crew-radar.ts';
+import { crewRadarState, formatCrewRadarLine, formatCrewRadarCompact, pollCrewRadar } from './mods/crew-radar.ts';
 import {
   batchProgressState,
   formatBatchProgressSegment,
   formatTaskProgressSegment,
 } from './mods/batch-progress.ts';
 import { zonesOverlap } from './mods/shared.ts';
-import { crewCountState } from './mods/crew-count-band.ts';
+import { crewCountState, pollCrewCount } from './mods/crew-count-band.ts';
 import { batchBoardState, buildKanbanBoards } from './mods/batch-dependency-graph.ts';
 import { fileLockMonitorState } from './mods/file-lock-monitor.ts';
 import { computeBatchEta } from './mods/batch-eta-cost.ts';
@@ -31,6 +41,7 @@ interface HarnessContext {
 }
 
 function createHarness(initialFiles: Record<string, string> = {}): HarnessContext {
+  stopPollers(); // a poller left by a previous test must not tick on this harness
   const files = new Map<string, string>(Object.entries(initialFiles));
   const dirs = new Map<string, string[]>();
   const openedPanes: string[] = [];
@@ -534,8 +545,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.start', { sessionId: 'sess-count-1', cwd: '/repo' });
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const text = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
-    expect(text).toContain('Crew 2/5');
-    expect(text.indexOf('Crew 2/5')).toBeLessThan(text.indexOf('80%'));
+    expect(text).toContain('🤖2/5');
+    expect(text.indexOf('🤖2/5')).toBeLessThan(text.indexOf('80%'));
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 
@@ -556,6 +567,150 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { reason: 'other', sessionId: 'real-B' });
   });
 
+  test('token weather: hidden until a real value, hidden again after /clear, back on the next turn', async () => {
+    const h = createHarness();
+    let ctx = { tokens: 120_000, window: 200_000, percent: 60 };
+    (h.api as unknown as Record<string, unknown>).session = { usage: async () => ({ context: ctx }), id: async () => 'w-1' };
+    crewRuntimeState.projectRoot = '/repo';
+    await h.emit('session.end', { reason: 'clear', sessionId: 'previous' });
+    await h.emit('session.start', { sessionId: 'w-1', cwd: '/repo' });
+    expect(collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'))).not.toContain('/150k');
+    await h.emit('turn.complete', { contextTokens: 120_000, contextWindow: 200_000 });
+    expect(collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'))).toContain('120k/150k');
+    // /clear: session.end only, no session.start → the old value must disappear, never a default 0 %
+    await h.emit('session.end', { reason: 'clear', sessionId: 'w-1' });
+    const afterClear = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
+    expect(afterClear).not.toContain('120k');
+    expect(afterClear).not.toContain('/150k');
+    await h.emit('turn.complete', { contextTokens: 21_000, contextWindow: 200_000 });
+    expect(collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'))).toContain('21k/150k');
+    ctx = { tokens: 0, window: 200_000, percent: 0 };
+    await h.emit('session.end', { reason: 'other', sessionId: 'w-1' });
+  });
+
+  test('crew count: emoji + digits only, hidden (never stale) when the count fails', async () => {
+    const h = createHarness();
+    let ok = true;
+    (h.api as unknown as Record<string, unknown>).process = {
+      run: async () =>
+        ok
+          ? { exitCode: 0, stdout: JSON.stringify({ launchable_count: 1, running_count: 1 }), stderr: '' }
+          : { exitCode: 1, stdout: '', stderr: 'boom' },
+    };
+    (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
+    crewRuntimeState.projectRoot = '/repo';
+    await h.emit('session.start', { sessionId: 'c-1', cwd: '/repo' });
+    const shown = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
+    expect(shown).toContain('🤖1/2');
+    expect(shown).not.toContain('Crew');
+    ok = false;
+    await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
+    const failed = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
+    expect(failed).not.toContain('🤖');
+    expect(failed).not.toContain('Crew');
+    await h.emit('session.end', { sessionId: 'c-1' });
+  });
+
+  test('task counts refresh mid-turn on a crew move, and on poll when another session moves a task', async () => {
+    const h = createHarness({
+      'crew/TODO/a.md': '# a',
+      'crew/TODO/b.md': '# b',
+    });
+    let runs = 0;
+    (h.api as unknown as Record<string, unknown>).process = {
+      run: async () => {
+        runs += 1;
+        return { exitCode: 0, stdout: JSON.stringify({ launchable_count: 2, running_count: 0 }), stderr: '' };
+      },
+    };
+    (h.api as unknown as Record<string, unknown>).plugin = { root: () => '/plugin' };
+    crewRuntimeState.projectRoot = '.';
+    crewRuntimeState.mainRoot = '.';
+    await h.emit('session.start', { sessionId: 't-1' });
+    expect(crewRadarState.todoTasks).toBe(2);
+    expect(crewRadarState.currentTasks).toBe(0);
+    const runsAfterStart = runs;
+
+    // Claude moves a task during its turn: counts follow right after the tool, before turn.complete.
+    h.files.delete('crew/TODO/a.md');
+    await h.api.fs.write('crew/CURRENT_TASKS/a.md', '# a');
+    await h.emit('tool.call', { tool: 'Bash', input: { command: 'git mv crew/TODO/a.md crew/CURRENT_TASKS/a.md' } });
+    expect(crewRadarState.todoTasks).toBe(1);
+    expect(crewRadarState.currentTasks).toBe(1);
+    expect(runs).toBeGreaterThan(runsAfterStart);
+
+    // An unrelated tool does not trigger a recount.
+    const runsBeforeRead = runs;
+    await h.emit('tool.call', { tool: 'Read', input: { file_path: 'README.md' } });
+    expect(runs).toBe(runsBeforeRead);
+
+    // Another session moves b.md between two of our turns: the poll picks it up.
+    h.files.delete('crew/TODO/b.md');
+    await h.api.fs.write('crew/PAUSED/b.md', '# b');
+    await pollCrewRadar(h.api);
+    await pollCrewCount(h.api);
+    expect(crewRadarState.todoTasks).toBe(0);
+    expect(crewRadarState.pausedTasks).toBe(1);
+    // Poll with nothing changed: no new python run.
+    const runsAfterPoll = runs;
+    await pollCrewCount(h.api);
+    expect(runs).toBe(runsAfterPoll);
+    await h.emit('session.end', { sessionId: 't-1' });
+  });
+
+  test('touchesCrewState: crew paths and git moves only, not the claude-crew repo name', () => {
+    const bash = (command: string) => touchesCrewState({ tool: 'Bash', input: { command } });
+    expect(bash('git mv crew/TODO/a.md crew/CURRENT_TASKS/a.md')).toBe(true);
+    expect(bash('git -C /repo mv x y')).toBe(true);
+    expect(bash('cat "C:/Users/me/claude-crew/crew/TODO/a.md"')).toBe(true);
+    expect(bash('dir crew\\TODO')).toBe(true);
+    expect(bash('python scripts/crew_hook.py ignore add a.md')).toBe(true);
+    expect(bash('cd /c/Users/me/claude-crew && ls hooks/')).toBe(false);
+    expect(bash('ls mycrew/x')).toBe(false);
+    expect(bash('git log --oneline')).toBe(false);
+    expect(touchesCrewState({ tool: 'Write', input: { file_path: 'C:\\repo\\crew\\TODO\\a.md' } })).toBe(true);
+    expect(touchesCrewState({ tool: 'Edit', input: { file_path: '/repo/claude-crew/README.md' } })).toBe(false);
+    expect(touchesCrewState({ tool: 'Read', input: { file_path: 'crew/TODO/a.md' } })).toBe(false);
+    expect(touchesCrewState({ tool: 'MultiEdit', input: { files: [{ file_path: 'src/x.ts' }, { file_path: 'crew/CLAUDE_BATCH.md' }] } })).toBe(true);
+  });
+
+  test('coalesce: a call during a run schedules exactly one more run, which sees the latest state', async () => {
+    let disk = 'old';
+    const seen: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    let first = true;
+    const run = coalesce(async () => {
+      const snapshot = disk;
+      if (first) {
+        first = false;
+        await gate;
+      }
+      seen.push(snapshot);
+    });
+    const a = run();
+    disk = 'new';
+    const b = run();
+    const c = run();
+    release();
+    await Promise.all([a, b, c]);
+    expect(seen).toEqual(['old', 'new']);
+  });
+
+  test('ensurePoller: one timer per key, the latest callback wins (re-armed on every event)', async () => {
+    const calls: string[] = [];
+    ensurePoller('test-key', () => {
+      calls.push('first');
+    }, 10);
+    ensurePoller('test-key', () => {
+      calls.push('second');
+    }, 10);
+    await new Promise((r) => setTimeout(r, 35));
+    stopPollers();
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c === 'second')).toBe(true);
+  });
+
   test('AbovePrompt band: narrow viewport still renders (stacked rows, never dropped)', async () => {
     const h = createHarness();
     (h.api as unknown as Record<string, unknown>).session = {
@@ -570,8 +725,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const narrow = collectTexts(await h.emit('ui.render', { viewport: { columns: 30, rows: 20 } }, 'component=AbovePrompt'));
     const wide = collectTexts(await h.emit('ui.render', { viewport: { columns: 200, rows: 20 } }, 'component=AbovePrompt'));
-    expect(narrow).toContain('Crew 2/5');
-    expect(wide).toContain('Crew 2/5');
+    expect(narrow).toContain('🤖2/5');
+    expect(wide).toContain('🤖2/5');
     await h.emit('session.end', { sessionId: 'sess-narrow-1' });
   });
 
@@ -912,6 +1067,9 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     expect(alerts()).toHaveLength(1);
 
     await h.emit('session.end', { sessionId: 'sess-cache-toast' });
+    // The crew pollers keep running after session.end on purpose (a /clear ends the session, the process
+    // goes on); this test is about the cache countdown only.
+    stopPollers();
     const toastsAfterEnd = h.toasts.length;
     const invalidationsAfterEnd = h.invalidations;
     promptCacheState.lastRefreshAtMs = Date.now() - 250_000; // new refresh to alert on

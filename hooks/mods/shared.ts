@@ -1025,3 +1025,119 @@ export function renderBandAccumulator(
   if (rows.length === 0) return null;
   return ui.Box({ flexDirection: 'column', children: rows });
 }
+
+/** Tools that write a file (lower-case names). */
+export const FILE_WRITE_TOOLS = new Set(['edit', 'write', 'multiedit']);
+
+/** Target file paths of a write tool call (`file_path`/`filePath`/`path`, plus MultiEdit `files[]`). */
+export function extractTargetPathsFromToolEvent(event: Record<string, unknown>): string[] {
+  const input =
+    (event.input as Record<string, unknown> | undefined) ||
+    (event.tool_input as Record<string, unknown> | undefined) ||
+    (event.args as Record<string, unknown> | undefined) ||
+    event;
+
+  const candidates: string[] = [];
+  const primary = input.file_path ?? input.filePath ?? input.path ?? event.file_path ?? event.path;
+  if (typeof primary === 'string' && primary.trim()) {
+    candidates.push(primary.trim());
+  }
+
+  if (Array.isArray(input.files)) {
+    for (const f of input.files) {
+      if (typeof f === 'string' && f.trim()) candidates.push(f.trim());
+      else if (f && typeof (f as Record<string, unknown>).file_path === 'string') {
+        candidates.push(String((f as Record<string, unknown>).file_path).trim());
+      }
+    }
+  }
+  return Array.from(new Set(candidates));
+}
+
+/** Re-read period of the crew task state between turns (another session may move a task meanwhile). */
+export const CREW_POLL_MS = 5_000;
+
+// `crew/` as a path segment (not `claude-crew/` nor `mycrew/`), the crew engine, or a git move / branch
+// change (`git -C <dir> mv` included).
+const CREW_STATE_COMMAND =
+  /(^|[\s"'=\/\\])crew[\\/]|crew_hook|\bgit(\s+-C\s+\S+)?\s+(mv|merge|pull|rebase|checkout|switch|stash|reset|restore)\b/;
+
+/** True when a tool call can change the crew task state: a write under `crew/`, or a Bash move / branch change. */
+export function touchesCrewState(event: Record<string, unknown> | null | undefined): boolean {
+  const ev = event || {};
+  const tool = String(ev.tool ?? ev.name ?? '').toLowerCase();
+  if (tool === 'bash' || tool === 'powershell') {
+    const input = (ev.input ?? ev.tool_input ?? ev.args ?? ev) as Record<string, unknown>;
+    return CREW_STATE_COMMAND.test(String(input.command ?? ''));
+  }
+  if (!FILE_WRITE_TOOLS.has(tool)) return false;
+  return extractTargetPathsFromToolEvent(ev).some((p) => /(^|\/)crew\//.test(p.replace(/\\/g, '/')));
+}
+
+/**
+ * One background timer per key, unref'd so it never keeps the process alive. The registry lives on
+ * `globalThis` so a module reloaded by /reload-plugins reuses the timer instead of stacking a second one,
+ * and every call swaps in the latest callback (hence the latest event's `$`). Never stopped on
+ * session.end: a `/clear` ends the session but the process goes on.
+ */
+type PollerEntry = { timer: ReturnType<typeof setInterval>; fn: () => Promise<void> | void };
+function pollerRegistry(): Map<string, PollerEntry> {
+  const g = globalThis as { __crewMatesPollers?: Map<string, PollerEntry> };
+  return (g.__crewMatesPollers ??= new Map());
+}
+export function ensurePoller(key: string, fn: () => Promise<void> | void, ms: number = CREW_POLL_MS): void {
+  const registry = pollerRegistry();
+  const existing = registry.get(key);
+  if (existing) {
+    existing.fn = fn;
+    return;
+  }
+  const entry = { fn } as PollerEntry;
+  entry.timer = setInterval(() => {
+    Promise.resolve()
+      .then(() => entry.fn())
+      .catch(() => undefined);
+  }, ms);
+  (entry.timer as unknown as { unref?: () => void })?.unref?.();
+  registry.set(key, entry);
+}
+
+/** Stops every poller (tests). */
+export function stopPollers(): void {
+  const registry = pollerRegistry();
+  for (const { timer } of registry.values()) clearInterval(timer);
+  registry.clear();
+}
+
+/**
+ * Runs `fn` one call at a time. A call that arrives during a run schedules exactly ONE more run after it
+ * (later calls share it, with the latest arguments): the last caller always gets a run that started after
+ * its call, so a count launched before a `git mv` never stands as the final answer.
+ */
+export function coalesce<A extends unknown[]>(fn: (...args: A) => Promise<void>): (...args: A) => Promise<void> {
+  let running: Promise<void> | null = null;
+  let queued: { args: A; promise: Promise<void> } | null = null;
+  const start = (args: A): Promise<void> => {
+    const p = fn(...args)
+      .catch(() => undefined)
+      .finally(() => {
+        if (running === p) running = null;
+      });
+    running = p;
+    return p;
+  };
+  return (...args: A) => {
+    if (!running) return start(args);
+    if (queued) {
+      queued.args = args;
+      return queued.promise;
+    }
+    const q = { args } as { args: A; promise: Promise<void> };
+    q.promise = running.then(() => {
+      queued = null;
+      return start(q.args);
+    });
+    queued = q;
+    return q.promise;
+  };
+}
