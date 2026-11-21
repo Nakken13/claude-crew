@@ -1,7 +1,7 @@
 /**
  * Mod 12 — crew-count-band.ts
  *
- * `🤖x/n` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
+ * `Crew x/n` en rouge, sur la même ligne, à gauche juste après le radar crew (🟢 ⚡ 📋 ⏸️), avant la météo :
  * x = batchs en cours (hors pause), n = en cours + lançables en parallèle (même calcul que `/crew-count`,
  * via `crew_hook.py count`). Masqué tant que le comptage n'a pas réussi (jamais de valeur par défaut
  * ni périmée). Recalculé après un outil qui touche `crew/` et, entre les tours, dès que l'état crew
@@ -32,10 +32,10 @@ export const crewCountState: { launchable: number | null; active: number; error:
   error: null,
 };
 
-// `🤖x/n` : x = batchs en cours, n = en cours + lançables (max en parallèle avec les zones actuelles ; les batchs en pause sont mis de côté).
+// `Crew x/n` : x = batchs en cours, n = en cours + lançables (max en parallèle avec les zones actuelles ; les batchs en pause sont mis de côté).
 // Inconnu ou en échec : chaîne vide → segment masqué (le détail de l'échec reste dans crewCountState.error).
 export function formatCrewCount(n: number | null = crewCountState.launchable, x: number = crewCountState.active): string {
-  return n !== null ? `🤖${x}/${x + n}` : '';
+  return n !== null ? `Crew ${x}/${x + n}` : '';
 }
 
 // Sécurité : on n'exécute QUE le script livré avec le plugin (jamais un `crew_hook.py` pris dans le
