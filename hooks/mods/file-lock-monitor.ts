@@ -12,6 +12,8 @@
 import {
   crewRuntimeState,
   crewUiState,
+  extractTargetPathsFromToolEvent,
+  FILE_WRITE_TOOLS,
   joinPath,
   normalizeRepoRelativePath,
   parseClaudeBatch,
@@ -24,6 +26,7 @@ import {
   type SessionsLockFile,
   addBandSegments,
 } from './shared.ts';
+export { extractTargetPathsFromToolEvent } from './shared.ts';
 import { SESSIONS_LOCK_REL_PATH } from './crew-radar.ts';
 
 export interface FileCollisionAlert {
@@ -43,32 +46,6 @@ export const fileLockMonitorState: {
 };
 
 const ALERT_VISIBLE_TTL_MS = 3 * 60 * 1000; // Keep visual banner highlighted for 3 minutes
-const FILE_WRITE_TOOLS = new Set(['edit', 'write', 'multiedit']);
-
-export function extractTargetPathsFromToolEvent(event: Record<string, unknown>): string[] {
-  const input =
-    (event.input as Record<string, unknown> | undefined) ||
-    (event.tool_input as Record<string, unknown> | undefined) ||
-    (event.args as Record<string, unknown> | undefined) ||
-    event;
-
-  const candidates: string[] = [];
-  const primary = input.file_path ?? input.filePath ?? input.path ?? event.file_path ?? event.path;
-  if (typeof primary === 'string' && primary.trim()) {
-    candidates.push(primary.trim());
-  }
-
-  if (Array.isArray(input.files)) {
-    for (const f of input.files) {
-      if (typeof f === 'string' && f.trim()) candidates.push(f.trim());
-      else if (f && typeof (f as Record<string, unknown>).file_path === 'string') {
-        candidates.push(String((f as Record<string, unknown>).file_path).trim());
-      }
-    }
-  }
-  return Array.from(new Set(candidates));
-}
-
 export function detectFileCollision(params: {
   repoRelPath: string;
   toolName: string;

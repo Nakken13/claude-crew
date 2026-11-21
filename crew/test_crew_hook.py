@@ -2016,6 +2016,39 @@ def test_collab_status_lists_people_with_counts_and_me(ign):
                       {"name": "Dana", "tasks": 1, "me": True}]
 
 
+def test_count_in_collab_mode_only_counts_my_tasks(ign, monkeypatch):
+    """Collab on: another dev's TODO tasks (ignored list) are not launchable for me, and a batch whose
+    task or zone is held by another dev's remote claim is excluded. Local view only (no fetch)."""
+    h.collab_cli(["on", "--name", "Dana"])
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/a/", "a1.md"),   # Bob's task -> not mine, not counted
+        _sec("B", "src/b/", "b1.md"),   # mine -> launchable
+        _sec("C", "src/c/", "c1.md"),   # zone held by carol's remote claim -> excluded
+        _sec("D", "src/d/", "d1.md"),   # task claimed by carol -> excluded
+    ), encoding="utf-8")
+    for s in ("a1.md", "b1.md", "c1.md", "d1.md"):
+        _put(ign, "TODO", s)
+    h.IGNORED_FILE.write_text(json.dumps({"ignored": {"a1.md": "Bob"}}), encoding="utf-8")
+    claims = {"x1.md": {"status": "current", "owner": "carol", "zone": ["src/c/sub/"]},
+              "d1.md": {"status": "current", "owner": "carol", "zone": ["elsewhere/"]},
+              "b0.md": {"status": "current", "owner": "Dana", "zone": ["src/b/"]}}   # mine: never blocks
+    monkeypatch.setattr(h, "_claims_local", lambda: ("tip", claims))
+    monkeypatch.setattr(h, "_claims_expire", lambda tasks, now: tasks)
+    monkeypatch.setattr(h, "claims_fetch", lambda: pytest.fail("count must not hit the network"))
+    r = h.count_batches()
+    assert [b["name"] for b in r["launchable"]] == ["Batch B"]
+    ex = {b["name"]: b["reason"] for b in r["excluded"]}
+    assert "carol" in ex["Batch C"] and "carol" in ex["Batch D"]
+    assert "Batch A" not in ex and r["running_count"] == 0
+
+
+def test_count_without_collab_ignores_the_ignored_list(ign):
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
+    _put(ign, "TODO", "a1.md")
+    h.IGNORED_FILE.write_text(json.dumps({"ignored": {"a1.md": "Bob"}}), encoding="utf-8")
+    assert [b["name"] for b in h.count_batches()["launchable"]] == ["Batch A"]
+
+
 def test_legacy_ignored_file_with_single_owner_still_works(ign):
     h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/a/", "a1.md")), encoding="utf-8")
     _put(ign, "TODO", "a1.md")

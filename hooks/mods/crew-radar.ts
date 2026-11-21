@@ -12,6 +12,7 @@
  */
 
 import {
+  coalesce,
   crewRuntimeState,
   crewUiState,
   filterCrewTaskSlugs,
@@ -21,6 +22,9 @@ import {
   parseSessionsLock,
   resolveSessionIdFromEvent,
   resolveWorktreeMainRoot,
+  ensurePoller,
+  touchesCrewState,
+  type ModApi,
   type ModRegistrar,
   addBandSegments,
 } from './shared.ts';
@@ -35,6 +39,8 @@ export interface CrewRadarState {
   othersTasks: number;
   pausedTasks: number;
   sessionIds: string[];
+  /** false until the first real count: the radar is hidden rather than showing default zeros. */
+  known: boolean;
 }
 
 export const crewRadarState: CrewRadarState = {
@@ -44,6 +50,7 @@ export const crewRadarState: CrewRadarState = {
   othersTasks: 0,
   pausedTasks: 0,
   sessionIds: [],
+  known: false,
 };
 
 export function formatCrewRadarLine(state: CrewRadarState = crewRadarState): string {
@@ -94,6 +101,72 @@ async function syncSessionId(
   return { sid, stale: previous !== sid ? [previous] : [] };
 }
 
+/**
+ * Re-reads sessions + task state (no write) and refreshes the radar. Called after session.start /
+ * turn.complete, after a tool that touches crew state, and every CREW_POLL_MS (other sessions).
+ */
+async function readCrewRadar($: ModApi): Promise<void> {
+  const mainRoot = crewRuntimeState.mainRoot || crewRuntimeState.projectRoot || '.';
+  const projectRoot = crewRuntimeState.projectRoot || mainRoot;
+  const nowMs = Date.now();
+  const parsedLock = parseSessionsLock(
+    await $.fs.read(joinPath(mainRoot, SESSIONS_LOCK_REL_PATH)).catch(() => ''),
+    nowMs,
+  );
+  const crewLocks = parseCrewLock(
+    await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_lock.json')).catch(() => ''),
+    nowMs,
+  );
+  const allSessionIds = new Set<string>([
+    crewRuntimeState.sessionId,
+    ...Object.keys(parsedLock.sessions),
+    ...Object.keys(crewLocks),
+  ]);
+
+  const currentSlugsMain = filterCrewTaskSlugs(
+    await $.fs.list(joinPath(mainRoot, 'crew/CURRENT_TASKS')).catch(() => []),
+  );
+  const currentSlugsLocal =
+    projectRoot !== mainRoot
+      ? filterCrewTaskSlugs(await $.fs.list(joinPath(projectRoot, 'crew/CURRENT_TASKS')).catch(() => []))
+      : [];
+  const lockedSlugs = Object.values(crewLocks).flatMap((s) => s.tasks);
+  const uniqueCurrentTasks = new Set<string>([...currentSlugsMain, ...currentSlugsLocal, ...lockedSlugs]);
+
+  const todoAll = filterCrewTaskSlugs(await $.fs.list(joinPath(mainRoot, 'crew/TODO')).catch(() => []));
+  const collabOn = parseCollabOn(
+    await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/CREW_CONFIG.md')).catch(() => ''),
+  );
+  const ignored = collabOn
+    ? parseIgnoredSlugs(
+        await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_ignored.json')).catch(() => ''),
+      )
+    : new Set<string>();
+  const todoSlugs = todoAll.filter((slug) => !ignored.has(slug));
+  const pausedSlugs = filterCrewTaskSlugs(await $.fs.list(joinPath(mainRoot, 'crew/PAUSED')).catch(() => []));
+  // A paused task is counted once, as paused.
+  for (const p of pausedSlugs) uniqueCurrentTasks.delete(p);
+
+  const before = crewRadarState.known ? formatCrewRadarCompact() : '';
+  crewRadarState.sessionIds = Array.from(allSessionIds).sort();
+  crewRadarState.onlineSessions = crewRadarState.sessionIds.length;
+  crewRadarState.currentTasks = uniqueCurrentTasks.size;
+  crewRadarState.todoTasks = todoSlugs.length;
+  crewRadarState.othersTasks = todoAll.length - todoSlugs.length;
+  crewRadarState.pausedTasks = pausedSlugs.length;
+  crewRadarState.known = true;
+
+  crewRuntimeState.onlineSessionsCount = crewRadarState.onlineSessions;
+  crewRuntimeState.currentTasksCount = crewRadarState.currentTasks;
+  crewRuntimeState.todoTasksCount = crewRadarState.todoTasks;
+  crewRuntimeState.pausedTasksCount = crewRadarState.pausedTasks;
+  // Re-render only on a visible change (the poller runs every few seconds).
+  if (formatCrewRadarCompact() !== before) $.ui.invalidate('ui.render');
+}
+
+/** Serialized: a run started before a move never overwrites a fresher one (see `coalesce`). */
+export const pollCrewRadar = coalesce(readCrewRadar);
+
 export function registerCrewRadar(on: ModRegistrar): void {
   on('session.start', async ($, e, next) => {
     const previousSid = crewRuntimeState.sessionId;
@@ -136,67 +209,8 @@ export function registerCrewRadar(on: ModRegistrar): void {
 
     await $.fs.write(lockPath, JSON.stringify(parsedLock, null, 2) + '\n').catch(() => undefined);
 
-    const crewLockText = await $.fs
-      .read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_lock.json'))
-      .catch(() => '');
-    const crewLocks = parseCrewLock(crewLockText, nowMs);
-
-    const allSessionIds = new Set<string>([
-      sid,
-      ...Object.keys(parsedLock.sessions),
-      ...Object.keys(crewLocks),
-    ]);
-
-    const currentSlugsMain = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/CURRENT_TASKS')).catch(() => []),
-    );
-    const currentSlugsLocal =
-      projectRoot !== mainRoot
-        ? filterCrewTaskSlugs(
-            await $.fs.list(joinPath(projectRoot, 'crew/CURRENT_TASKS')).catch(() => []),
-          )
-        : [];
-    const lockedSlugs = Object.values(crewLocks).flatMap((s) => s.tasks);
-    const uniqueCurrentTasks = new Set<string>([
-      ...currentSlugsMain,
-      ...currentSlugsLocal,
-      ...lockedSlugs,
-    ]);
-
-    const todoAll = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/TODO')).catch(() => []),
-    );
-    const collabOn = parseCollabOn(
-      await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/CREW_CONFIG.md')).catch(() => ''),
-    );
-    const ignored = collabOn
-      ? parseIgnoredSlugs(
-          await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_ignored.json')).catch(() => ''),
-        )
-      : new Set<string>();
-    const todoSlugs = todoAll.filter((slug) => !ignored.has(slug));
-    const pausedSlugs = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/PAUSED')).catch(() => []),
-    );
-
-    // Exclude paused tasks from currentTasks count so each task is counted in its true state
-    for (const p of pausedSlugs) {
-      uniqueCurrentTasks.delete(p);
-    }
-
-    crewRadarState.sessionIds = Array.from(allSessionIds).sort();
-    crewRadarState.onlineSessions = crewRadarState.sessionIds.length;
-    crewRadarState.currentTasks = uniqueCurrentTasks.size;
-    crewRadarState.todoTasks = todoSlugs.length;
-    crewRadarState.othersTasks = todoAll.length - todoSlugs.length;
-    crewRadarState.pausedTasks = pausedSlugs.length;
-
-    crewRuntimeState.onlineSessionsCount = crewRadarState.onlineSessions;
-    crewRuntimeState.currentTasksCount = crewRadarState.currentTasks;
-    crewRuntimeState.todoTasksCount = crewRadarState.todoTasks;
-    crewRuntimeState.pausedTasksCount = crewRadarState.pausedTasks;
-
-    $.ui.invalidate('ui.render');
+    await pollCrewRadar($);
+    ensurePoller('crew-radar', () => pollCrewRadar($));
     return next(e);
   });
 
@@ -226,66 +240,16 @@ export function registerCrewRadar(on: ModRegistrar): void {
 
     await $.fs.write(lockPath, JSON.stringify(parsedLock, null, 2) + '\n').catch(() => undefined);
 
-    const crewLockText = await $.fs
-      .read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_lock.json'))
-      .catch(() => '');
-    const crewLocks = parseCrewLock(crewLockText, nowMs);
-
-    const allSessionIds = new Set<string>([
-      sid,
-      ...Object.keys(parsedLock.sessions),
-      ...Object.keys(crewLocks),
-    ]);
-
-    const currentSlugsMain = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/CURRENT_TASKS')).catch(() => []),
-    );
-    const currentSlugsLocal =
-      projectRoot !== mainRoot
-        ? filterCrewTaskSlugs(
-            await $.fs.list(joinPath(projectRoot, 'crew/CURRENT_TASKS')).catch(() => []),
-          )
-        : [];
-    const lockedSlugs = Object.values(crewLocks).flatMap((s) => s.tasks);
-    const uniqueCurrentTasks = new Set<string>([
-      ...currentSlugsMain,
-      ...currentSlugsLocal,
-      ...lockedSlugs,
-    ]);
-
-    const todoAll = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/TODO')).catch(() => []),
-    );
-    const collabOn = parseCollabOn(
-      await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/CREW_CONFIG.md')).catch(() => ''),
-    );
-    const ignored = collabOn
-      ? parseIgnoredSlugs(
-          await $.fs.read(joinPath(mainRoot, 'crew/CLAUDE_CONTEXT/crew_ignored.json')).catch(() => ''),
-        )
-      : new Set<string>();
-    const todoSlugs = todoAll.filter((slug) => !ignored.has(slug));
-    const pausedSlugs = filterCrewTaskSlugs(
-      await $.fs.list(joinPath(mainRoot, 'crew/PAUSED')).catch(() => []),
-    );
-    for (const p of pausedSlugs) {
-      uniqueCurrentTasks.delete(p);
-    }
-
-    crewRadarState.sessionIds = Array.from(allSessionIds).sort();
-    crewRadarState.onlineSessions = crewRadarState.sessionIds.length;
-    crewRadarState.currentTasks = uniqueCurrentTasks.size;
-    crewRadarState.todoTasks = todoSlugs.length;
-    crewRadarState.othersTasks = todoAll.length - todoSlugs.length;
-    crewRadarState.pausedTasks = pausedSlugs.length;
-
-    crewRuntimeState.onlineSessionsCount = crewRadarState.onlineSessions;
-    crewRuntimeState.currentTasksCount = crewRadarState.currentTasks;
-    crewRuntimeState.todoTasksCount = crewRadarState.todoTasks;
-    crewRuntimeState.pausedTasksCount = crewRadarState.pausedTasks;
-
-    $.ui.invalidate('ui.render');
+    await pollCrewRadar($);
+    ensurePoller('crew-radar', () => pollCrewRadar($));
     return next(e);
+  });
+
+  // A task moved during the turn (git mv, /crew-start, Write under crew/): show it right after the tool.
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e);
+    if (touchesCrewState(e as Record<string, unknown>)) await pollCrewRadar($); // coalesce never rejects
+    return result;
   });
 
   on('session.end', async ($, e, next) => {
@@ -320,7 +284,7 @@ export function registerCrewRadar(on: ModRegistrar): void {
 
   on('ui.render', { component: 'AbovePrompt' }, async (_$, e, next) => {
     const prev = await next(e);
-    if (!crewUiState.bands.radar) return prev;
+    if (!crewUiState.bands.radar || !crewRadarState.known) return prev;
     return addBandSegments(prev, {
       slot: 'left',
       order: 10,

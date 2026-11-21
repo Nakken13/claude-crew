@@ -1829,7 +1829,15 @@ def count_batches():
     # Same rule as next_task: PAUSED/ neither makes its batch active nor reserves its zone.
     paused_held = set(_task_names(DIRS["PAUSED"]))
     held = running_names
-    real_tasks = held | paused_held | set(_task_names(DIRS["TODO"]))
+    todo = set(_task_names(DIRS["TODO"]))
+    # Collab mode: count only MY work. Another dev's TODO tasks (local ignored list) are not launchable
+    # for me, and their active remote claims hold their task and zone. Local ref only: never a fetch.
+    remote = {}
+    if claims_enabled():
+        todo -= load_ignored()
+        me = _claims_identity()
+        remote = {s: e for s, e in _claims_expire(_claims_local()[1], _claims_now()).items() if _claimed_by_other(e, me)}
+    real_tasks = held | paused_held | todo
     active, launchable, excluded, placeholders = [], [], [], []
     running_count = 0
     secs = []
@@ -1857,8 +1865,12 @@ def count_batches():
             continue  # only paused tasks left: nothing to launch
         rem = [t for t in rem if t not in paused_held] + [t for t in rem if t in paused_held]
         clash = next(((o, _zones_overlap(sec, o)) for o in taken if _zones_overlap(sec, o)), None)
+        rclaim = next(((s, e) for s, e in sorted(remote.items())
+                       if s in sec["slugs"] or _claims_zone_clash(sec["zone_paths"], e.get("zone"))), None)
         if not sec["zone_paths"]:
             excluded.append({**info(sec, rem), "reason": "unknown zone"})
+        elif rclaim:
+            excluded.append({**info(sec, rem), "reason": f"remote claim: {rclaim[0]} ({rclaim[1].get('owner')})"})
         elif clash:
             o, (x, y) = clash
             excluded.append({**info(sec, rem), "reason": f"overlaps {_batch_key(o['header'])} ({x} / {y})"})
@@ -1975,6 +1987,11 @@ def _claims_config():
     except Exception:
         pass
     return out
+
+
+def _claimed_by_other(entry, me):
+    """Active claim (status `current`) held by ANOTHER dev: the one rule shared by count, next-task and claims."""
+    return isinstance(entry, dict) and entry.get("status") == "current" and entry.get("owner") not in (None, me)
 
 
 def claims_enabled():
@@ -2172,10 +2189,10 @@ def claims_claim(slug, session, batch, zone, branch):
 
     def fn(tasks):
         e = tasks.get(slug) or {}
-        if e.get("status") == "current" and e.get("owner") not in (None, me):
+        if _claimed_by_other(e, me):
             return f"already taken by {e['owner']} ({e.get('batch') or 'unknown batch'})"
         for other, oe in tasks.items():
-            if other != slug and oe.get("status") == "current" and oe.get("owner") not in (None, me) \
+            if other != slug and _claimed_by_other(oe, me) \
                     and _claims_zone_clash(zone, oe.get("zone")):
                 return f"zone overlaps the claim of {oe['owner']} on {other}"
         tasks[slug] = {**e, "status": "current", "owner": me, "session": session, "batch": batch,
@@ -2213,7 +2230,7 @@ def claims_publish(slug, title, zone, body):
             if e.get("author") not in (None, me):
                 return _CLAIMS_NOOP if e.get("body") == body else \
                     f"existing entry by {e['author']}: modification by another dev refused"
-            if e.get("status") == "current" and e.get("owner") not in (None, me):
+            if _claimed_by_other(e, me):
                 return f"already taken by {e['owner']}: modification refused"
         base = e or {"status": "todo", "owner": None}
         tasks[slug] = {**base, "title": title, "zone": zone, "body": body, "author": me,
@@ -2329,7 +2346,7 @@ def claims_remote_view():
     f = claims_fetch()
     tasks = _claims_expire(f["tasks"], _claims_now())
     warning = None if f["ok"] else "remote claims not checked (offline or remote unreachable)"
-    others = {s: e for s, e in tasks.items() if e.get("status") == "current" and e.get("owner") not in (None, me)}
+    others = {s: e for s, e in tasks.items() if _claimed_by_other(e, me)}
     local = active_task_slugs()
     todo = [{"slug": s, "title": e.get("title"), "zone": e.get("zone")} for s, e in sorted(tasks.items())
             if e.get("status") == "todo" and s not in local]
