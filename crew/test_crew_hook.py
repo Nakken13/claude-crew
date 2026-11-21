@@ -1781,6 +1781,138 @@ def test_count_ignores_template_placeholders_and_reports_them(repo):
     assert r["launchable_count"] == 0 and r["placeholders"] == ["Batch <A>"]
 
 
+# --- Task dependencies: a `Blocked by:` line in the task file ---
+
+def _blocked(*blockers, fr=False):
+    label = "Bloquée par" if fr else "Blocked by"
+    return f"# T\n\nZone : `x/`\n{label} : " + ", ".join(f"`{b}`" for b in blockers) + "\n\n- [ ] x\n"
+
+
+def test_task_blockers_parses_the_line_and_aliases(repo):
+    root, dirs, ctx = repo
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md", "c1"))
+    _put(dirs, "TODO", "a2.md", _blocked("b1.md", fr=True))
+    _put(dirs, "TODO", "a3.md", "# T\n**Blocked by:** none\n")
+    assert h.task_blockers("a1.md") == ["b1.md", "c1.md"]
+    assert h.task_blockers("a2.md") == ["b1.md"]
+    assert h.task_blockers("a3.md") == []
+    assert h.task_blockers("missing.md") == []
+
+
+def test_count_blocked_batch_is_not_launchable_and_holds_no_zone(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/", "a1.md"),        # a1 waits for b1 -> blocked, must not reserve src/
+        _sec("B", "lib/", "b1.md"),
+        _sec("C", "src/c/", "c1.md"),      # would overlap A if A reserved its zone
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "b1.md")
+    _put(dirs, "TODO", "c1.md")
+    r = h.count_batches()
+    assert [b["name"] for b in r["launchable"]] == ["Batch B", "Batch C"]
+    assert [(b["name"], b["blocked_by"]) for b in r["blocked"]] == [("Batch A", {"a1": ["b1"]})]
+    assert "Blocked" in r["report"] and "b1" in r["report"]
+
+
+def test_count_blocker_closed_unblocks(repo):
+    """A blocker that is struck in its batch, or whose file is gone (closed), no longer blocks."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/", "a1.md"),
+        _sec("B", "lib/", "b1.md").replace("`b1.md`", "~~`b1.md`~~"),
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md", "gone.md"))
+    _put(dirs, "TODO", "b1.md")   # still on disk but struck = closed
+    assert [b["name"] for b in h.count_batches()["launchable"]] == ["Batch A"]
+
+
+def test_count_starts_the_first_ready_task_of_a_partly_blocked_batch(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md"), _sec("B", "lib/", "b1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "a2.md")
+    _put(dirs, "TODO", "b1.md")
+    launch = {b["name"]: b["task"] for b in h.count_batches()["launchable"]}
+    assert launch["Batch A"] == "a2"
+
+
+def test_count_a_task_cited_in_two_batches_is_launched_once(repo):
+    """Recette cites the integration task in its section: the integration task must not make Recette
+    launchable a second time; Recette's own task waits for it."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("I", "crew/TODO/i1.md", "i1.md"),
+        _sec("R", "crew/TESTS/r1.md", "i1.md", "r1.md"),
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "i1.md")
+    _put(dirs, "TODO", "r1.md", _blocked("i1.md"))
+    r = h.count_batches()
+    assert [(b["name"], b["task"]) for b in r["launchable"]] == [("Batch I", "i1")]
+    assert [(b["name"], b["blocked_by"]) for b in r["blocked"]] == [("Batch R", {"r1": ["i1"]})]
+
+
+def test_blocker_struck_only_in_a_citing_section_still_blocks(repo):
+    """x is struck in A (an old cross-reference) but open in its own batch B: it still blocks y."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "old/", "x.md").replace("`x.md`", "~~`x.md`~~"),
+        _sec("B", "src/", "y.md", "x.md"),   # y first: only the blocker check can put x ahead
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "x.md")
+    _put(dirs, "TODO", "y.md", _blocked("x.md"))
+    launch = {b["name"]: b["task"] for b in h.count_batches()["launchable"]}
+    assert launch == {"Batch B": "x"}
+
+
+def test_a_section_that_only_cites_a_task_never_starts_it(repo):
+    """B cites a1 (owned by A). A is excluded by a zone clash: neither count nor next-task may hand a1
+    to B under B's zone/worktree."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("Act", "src/", "c1.md"),
+        _sec("A", "src/a/", "a1.md"),        # overlaps the active batch -> excluded
+        _sec("B", "docs/", "a1.md"),         # only cites a1
+    ), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "c1.md")
+    _put(dirs, "TODO", "a1.md")
+    r = h.count_batches()
+    assert r["launchable"] == [] and [b["name"] for b in r["excluded"]] == ["Batch A"]
+    assert h.next_task("S1")["action"] != "start"
+
+
+def test_blocked_by_tolerates_a_trailing_period_and_a_bom(repo):
+    root, dirs, ctx = repo
+    _put(dirs, "TODO", "a1.md", "﻿Blocked by: b1.md.\n")
+    assert h.task_blockers("a1.md") == ["b1.md"]
+
+
+def test_next_task_skips_blocked_tasks_with_the_reason(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md"), _sec("B", "lib/", "b1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "a2.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "b1.md")
+    r = h.next_task("S1")
+    assert r["action"] == "start" and r["task"] == "b1.md"
+    assert {"slug": "a1.md", "reason": "blocked by b1.md"} in r["skipped"]
+
+
+def test_count_placeholder_only_for_whole_token_not_a_path_pattern(repo):
+    """`versions/<new migration>.py` is a real zone (a file to be created), not template noise; a zone
+    token that is entirely `<...>` still marks the template."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("M", "backend/alembic/versions/<new migration>.py", "m1.md"),
+        _sec("T", "<files/modules>", "t1.md"),
+    ), encoding="utf-8")
+    _put(dirs, "TODO", "m1.md")
+    _put(dirs, "TODO", "t1.md")
+    r = h.count_batches()
+    assert [b["name"] for b in r["launchable"]] == ["Batch M"]
+    assert r["placeholders"] == ["Batch T"]
+
+
 def test_status_reports_current_paused_orphans_and_overlaps(repo):
     root, dirs, ctx = repo
     h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "src/b/", "b1.md")), encoding="utf-8")

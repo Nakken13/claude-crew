@@ -1582,6 +1582,62 @@ def _task_names(d):
             if d.exists() and f.name not in ("INDEX.md", "README.md") and not f.name.startswith("_")]
 
 
+# Task dependencies: `Blocked by: `a.md`, `b`` in the task file (aliases: Depends on, Bloquée par, Dépend de).
+BLOCKED_BY_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?\**\s*(?:blocked\s+by|depends\s+on|bloqu[ée]e?s?\s+par|d[ée]pend\s+de)\s*\**\s*:\s*\**\s*(.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE)
+
+
+def task_blockers(slug):
+    """`.md` slugs listed on the task's `Blocked by:` line(s), in order; [] if none or no task file.
+    Free words on the line are harmless: only a slug that is still an open task blocks (see `_open_tasks`)."""
+    path = next((DIRS[d] / slug for d in ("TODO", "CURRENT_TASKS", "PAUSED") if (DIRS[d] / slug).exists()), None)
+    if path is None:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8-sig", errors="replace")
+    except Exception:
+        return []
+    out = []
+    for m in BLOCKED_BY_RE.finditer(text):
+        for tok in re.findall(r"[\w][\w.\-]*", m.group(1)):
+            tok = tok.rstrip(".")
+            if not tok or tok.lower() in ("none", "aucune", "aucun", "nothing"):
+                continue
+            tok = tok if tok.endswith(".md") else f"{tok}.md"
+            if tok != slug and tok not in out:
+                out.append(tok)
+    return out
+
+
+def task_owners(sections):
+    """slug -> the section that owns it: the first section citing it NOT struck, else the first citing it.
+    A section that only mentions another batch's task (a cross-reference, an old struck line) does not
+    own it: it never starts it, counts it, nor closes it."""
+    owners = {}
+    for sec in sections:
+        for t in sec["ordered"]:
+            if t not in sec["struck"]:
+                owners.setdefault(t, sec)
+    for sec in sections:
+        for t in sec["ordered"]:
+            owners.setdefault(t, sec)
+    return owners
+
+
+def _open_tasks(owners, held=()):
+    """Tasks not closed yet: a file in TODO / CURRENT_TASKS / PAUSED (or held by a live lock), not struck
+    in the batch that owns it. A closed task leaves these folders (HISTORY), so an unknown slug never blocks."""
+    files = set(_task_names(DIRS["TODO"])) | set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+    return {t for t in files | set(held) if not (t in owners and t in owners[t]["struck"])}
+
+
+def _split_ready(cands, open_tasks):
+    """(ready, unmet): candidates with no open blocker, in order, and {task: open blockers} for the others."""
+    unmet = {t: [b for b in task_blockers(t) if b in open_tasks] for t in cands}
+    return [t for t in cands if not unmet[t]], {t: b for t, b in unmet.items() if b}
+
+
 def _read_ignored():
     """{slug: owner | None} from crew_ignored.json; missing/corrupt -> {}.
     The older format (list + a single `owner`) is still read."""
@@ -1771,8 +1827,10 @@ def next_task(session_id):
 
     # PAUSED/ neither makes its batch active nor reserves its zone: nobody works on it.
     active = [s for s in sections if s["slugs"] & set(current) or _section_lock_sessions(s, locks, owners) - {session_id}]
+    owners_of = task_owners(sections)
+    open_tasks = None  # computed once, only if a candidate batch reaches the blocker check
     for sec in sections:
-        cands = [t for t in sec["ordered"] if t in todo]
+        cands = [t for t in sec["ordered"] if t in todo and owners_of.get(t) is sec]
         if not cands:
             continue
         if sec in active:
@@ -1797,7 +1855,13 @@ def next_task(session_id):
         if clash:
             skipped += [{"slug": t, "reason": f"zone overlaps the active batch {_batch_key(clash['header'])}"} for t in cands]
             continue
-        out.update(action="start", task=cands[0], batch=_batch_key(sec["header"]), zone=sorted(sec["zone_paths"]))
+        if open_tasks is None:
+            open_tasks = _open_tasks(owners_of, owners)
+        ready, unmet = _split_ready(cands, open_tasks)
+        skipped += [{"slug": t, "reason": "blocked by " + ", ".join(b)} for t, b in unmet.items()]
+        if not ready:
+            continue
+        out.update(action="start", task=ready[0], batch=_batch_key(sec["header"]), zone=sorted(sec["zone_paths"]))
         out["worktree"], out["branch"] = _worktree_paths_for(sec["header"])
         return out
     if out["unclassified"]:
@@ -1811,7 +1875,9 @@ def _zones_overlap(a, b):
 
 
 def _is_placeholder_section(sec):
-    return "<" in sec["header"] or any("<" in z for z in sec["zone_paths"])
+    """Template noise: `<...>` in the header, or a zone token that is ENTIRELY `<...>` (`<files/modules>`).
+    A real path with a placeholder segment (`versions/<new migration>.py`, a file still to create) is a zone."""
+    return "<" in sec["header"] or any(z.strip().startswith("<") and z.strip().endswith(">") for z in sec["zone_paths"])
 
 
 def count_batches():
@@ -1838,15 +1904,19 @@ def count_batches():
         me = _claims_identity()
         remote = {s: e for s, e in _claims_expire(_claims_local()[1], _claims_now()).items() if _claimed_by_other(e, me)}
     real_tasks = held | paused_held | todo
-    active, launchable, excluded, placeholders = [], [], [], []
+    active, launchable, excluded, placeholders, blocked = [], [], [], [], []
     running_count = 0
     secs = []
-    for sec in load_sections():
+    sections = load_sections()
+    owners_of = task_owners(sections)
+    open_tasks = _open_tasks(owners_of, locked)  # every dev's tasks: a teammate's open task still blocks
+    for sec in sections:
         if _is_placeholder_section(sec):
             placeholders.append(_batch_key(sec["header"]))
             continue
         # Only real task files count: a `doc.md` cited in a Zone/prose line is not a task.
-        remaining = [t for t in sec["ordered"] if t not in sec["struck"] and t in real_tasks]
+        remaining = [t for t in sec["ordered"]
+                     if t not in sec["struck"] and t in real_tasks and owners_of.get(t) is sec]
         if remaining:
             secs.append((sec, remaining))
     info = lambda sec, rem: {"name": _batch_key(sec["header"]), "zone": sorted(sec["zone_paths"]), "remaining": len(rem),
@@ -1863,7 +1933,14 @@ def count_batches():
             continue
         if not [t for t in rem if t not in paused_held]:
             continue  # only paused tasks left: nothing to launch
-        rem = [t for t in rem if t not in paused_held] + [t for t in rem if t in paused_held]
+        # A task whose `Blocked by:` lists an open task cannot start; a batch with no ready task is
+        # blocked and, like a paused one, reserves no zone. The session title is its first ready task.
+        ready, unmet = _split_ready([t for t in rem if t not in paused_held], open_tasks)
+        if not ready:
+            blocked.append({**info(sec, rem), "blocked_by": {t.removesuffix(".md"): [x.removesuffix(".md") for x in b]
+                                                              for t, b in unmet.items()}})
+            continue
+        rem = ready + [t for t in rem if t not in ready]
         clash = next(((o, _zones_overlap(sec, o)) for o in taken if _zones_overlap(sec, o)), None)
         rclaim = next(((s, e) for s, e in sorted(remote.items())
                        if s in sec["slugs"] or _claims_zone_clash(sec["zone_paths"], e.get("zone"))), None)
@@ -1881,11 +1958,11 @@ def count_batches():
     # task in CURRENT_TASKS, `paused_count` = parked ones (zone held, nobody working).
     return {"launchable_count": len(launchable), "launchable": launchable, "active": active,
             "running_count": running_count, "paused_count": len(paused_secs),
-            "excluded": excluded, "placeholders": placeholders,
-            "report": _count_report(launchable, active, excluded, placeholders)}
+            "excluded": excluded, "blocked": blocked, "placeholders": placeholders,
+            "report": _count_report(launchable, active, excluded, placeholders, blocked)}
 
 
-def _count_report(launchable, active, excluded, placeholders):
+def _count_report(launchable, active, excluded, placeholders, blocked=()):
     """Compact text rendering of `/crew-count`: number of terminals and, per terminal,
     the session title (= slug of the batch's next task)."""
     n = len(launchable)
@@ -1898,6 +1975,9 @@ def _count_report(launchable, active, excluded, placeholders):
         lines = [f"**0 terminals**: {why}"]
     if active:
         lines.append("Active: " + ", ".join(b["name"] for b in active))
+    if blocked:
+        waits = lambda b: ", ".join(f"{t} waits for {' + '.join(w)}" for t, w in b["blocked_by"].items())
+        lines.append("Blocked: " + " ; ".join(f"{b['name']} ({waits(b)})" for b in blocked))
     if excluded:
         lines.append("Excluded: " + " ; ".join(f"{b['name']} ({b['reason']})" for b in excluded))
     if placeholders:
