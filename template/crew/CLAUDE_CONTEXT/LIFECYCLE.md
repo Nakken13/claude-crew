@@ -57,7 +57,7 @@ Global guide `crew/CLAUDE_CONTEXT/AGENTS.md`; one `AGENTS.md` per significant su
 
 ## Personas — detailed routing (moved from CLAUDE.md)
 
-Roles/points of view (`Agent({subagent_type: "<name>"})`), not technical procedures. Dispatch a persona when the decision has ≥2 real options in its domain, or when the user asks for it; not for a question whose answer is obvious or already settled (each dispatch opens a full subagent). Threshold per persona: `legal` and `architect` strict (new trigger or a choice that commits what follows → dispatch, and also when in real doubt about whether it is "obvious"); `designer`, `ceo`, `comms`, `social`, `seo` at judgment (≥2 real options).
+Roles/points of view (`Agent({subagent_type: "<name>"})`), not technical procedures. Dispatch a persona when the decision has ≥2 real options in its domain, or when the user asks for it; not for a question whose answer is obvious or already settled (each dispatch opens a full subagent). Threshold per persona: `architect` strict (new trigger or a choice that commits what follows → dispatch, and also when in real doubt about whether it is "obvious"); `designer`, `ceo`, `comms`, `social`, `seo` at judgment (≥2 real options).
 
 - Business arbitration/prioritization/scope, "is it worth it?" → `ceo` (read-only).
 - Breakdown into tasks, batches, sequencing → `manager` (writes under `crew/`).
@@ -65,7 +65,6 @@ Roles/points of view (`Agent({subagent_type: "<name>"})`), not technical procedu
 - Marketing/landing/email copy, brand tone → `comms` (check `AGENTS.md` for the tone of a product agent).
 - Structuring technical choice (2+ approaches, refactor now or later) → `architect` (read-only).
 - UX/UI decision (flows, hierarchy, retention, quantified specs, platform conventions) → `designer` (read-only; preloads the `ux-intuitive` skill and, for any screen or flow, must return its five deliverables — color roles, button system, motion, emotion map, zero-thinking checklist; touching up a screen → `impeccable`).
-- New legal exposure (personal data, third-party SDK, payment, minors, AI, user content, scraping, licence, regulated sector, new country, influencer/contest/prospecting/comparative claims) → `legal` (read-only) before coding.
 - Organic distribution on social networks (platform/format, cadence, hooks, why a video plateaus, test plan) → `social` (read-only; hands a brief to `comms`).
 - Search visibility (Google, stores, AI answers: indexing, keywords, schema.org, Core Web Vitals, ASO) → `seo` (read-only; hands a brief to `comms`) — without a public web surface or store listing, do not invoke it; social networks → `social`.
 

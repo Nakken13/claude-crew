@@ -23,7 +23,7 @@ Tasks live as Markdown files, every new session knows what is in progress, and a
 
 crew-mates is a plugin for [Claude Code](https://github.com/anthropics/claude-code). It gives your project a small, plain-text task system (a `crew/` folder of Markdown files) and the guard rails you need once you run more than one Claude Code session at a time.
 
-- **A crew of 8 specialist agents** you can consult in parallel, plus parallel sessions that work in separate git worktrees.
+- **A crew of 7 specialist agents** you can consult in parallel, plus parallel sessions that work in separate git worktrees.
 - **No server, no database, no account.** Tasks are files you can `diff` and review in a pull request.
 - **Install in one command, working in five minutes.**
 - **Free and MIT licensed.**
@@ -36,14 +36,14 @@ crew-mates is a plugin for [Claude Code](https://github.com/anthropics/claude-co
 |---|---|
 | 🧠 **Session amnesia.** Every new Claude Code session starts blind: what is done, what is half done, why a decision was made. | Tasks and decisions live in `crew/`. A hook injects a short digest at session start, so Claude already knows what is going on. |
 | 💥 **Silent collisions.** Two sessions on the same repo will happily edit the same file at the same time. | Each batch of work gets its own git worktree, and a hook refuses a write into a zone another session has locked. |
-| 🎯 **One generalist for every decision.** A product call, a legal doubt and a UX choice need different expertise. | 8 specialist agents, each with its own role and answer format, that Claude can consult in parallel. |
+| 🎯 **One generalist for every decision.** A product call, a technical trade-off and a UX choice need different expertise. | 7 specialist agents, each with its own role and answer format, that Claude can consult in parallel. |
 | 🕶️ **Flying blind.** You do not see your prompt cache about to expire, your context filling up, or how far a batch is. | 12 zero-token mods draw live status bands and side panes right in the Claude Code UI, without spending an LLM token. |
 
 <br>
 
 ## 🎭 A crew of specialists
 
-crew-mates ships **8 specialist agents** (Claude Code subagents, called *personas* elsewhere in the docs). A ninth, read-only `reviewer`, is not a persona: `/crew-close-task` uses it for its review passes. Each has its own role, its own tools and its own answer format, so a product call, a legal doubt and a UX choice get an expert's framing instead of a generalist guess. Claude calls them when a decision has at least two real options in their domain, or when you ask for one by name.
+crew-mates ships **7 specialist agents** (Claude Code subagents, called *personas* elsewhere in the docs). An eighth, read-only `reviewer`, is not a persona: `/crew-close-task` uses it for its review passes. Each has its own role, its own tools and its own answer format, so a product call, a legal doubt and a UX choice get an expert's framing instead of a generalist guess. Claude calls them when a decision has at least two real options in their domain, or when you ask for one by name.
 
 | Agent | Ask it when | You get |
 |---|---|---|
@@ -51,21 +51,20 @@ crew-mates ships **8 specialist agents** (Claude Code subagents, called *persona
 | `manager` | A request must be broken into trackable work. | Task files and batches (writes only under `crew/`). |
 | `architect` | Choosing a library or pattern, refactor now or later. | The trade-offs and a pick. |
 | `designer` | A UX decision with real ambiguity: flows, onboarding, specs. | Concrete specs and a critique, plus the `ux-intuitive` deliverables: color roles, button system, motion, emotion map, zero-thinking checklist. |
-| `legal` | A feature changes legal exposure: personal data, payments, minors, AI, licences. | Go, go-with-conditions or no-go, and when a real lawyer is needed. This is risk framing, not legal advice. |
 | `comms` | Landing copy, emails, posts, brand voice. | Ready-to-use copy. |
 | `social` | Organic social distribution. | Platform, format, cadence and a test plan. |
 | `seo` | Search, store or AI-answer visibility. | Keywords, indexability, listing and a test plan with thresholds. |
 
 Most agents are read-only advisers. `manager` writes task files under `crew/` and `comms` writes copy; none of them implements your feature.
 
-`manager`, `comms`, `social` and `seo` run on Sonnet (`model: sonnet`, a fraction of Opus's price); `ceo`, `architect`, `designer` and `legal` inherit your session model, because their calls need the strongest judgment.
+`manager`, `comms`, `social` and `seo` run on Sonnet (`model: sonnet`, a fraction of Opus's price); `ceo`, `architect` and `designer` inherit your session model, because their calls need the strongest judgment.
 
 ### Run them in parallel
 
 They are regular Claude Code subagents, so Claude can consult several at the same time and keep working while they answer. For example:
 
 ```text
-Ask architect, legal and designer in parallel: should we add paid plans with Stripe this month? Then ask ceo to arbitrate.
+Ask architect and designer in parallel: should we add paid plans with Stripe this month? Then ask ceo to arbitrate.
 ```
 
 Watch them work with `/crew-agents` (or the Agent Flow band): a live tree of which agent is running, with which tools and for how long.
@@ -75,7 +74,7 @@ Two kinds of parallelism, and you can use both at once:
 | | Parallel **agents** | Parallel **sessions** |
 |---|---|---|
 | What runs | Several specialists answering one question | Several Claude Code sessions, one per batch |
-| Good for | Decisions: priorities, design, legal, copy | Writing code on separate tasks |
+| Good for | Decisions: priorities, design, tech, copy | Writing code on separate tasks |
 | Isolation | They only advise | One git worktree per batch, and a hook that blocks overlapping writes |
 
 <br>
@@ -200,14 +199,14 @@ Plenty of scaffolds give you a prompt template and a folder layout. crew-mates t
 
 ### 3. What is in the box
 
-<p align="center"><img src="./media/how-it-works.png" alt="You type slash commands. Inside Claude Code, the crew-mates plugin adds 10 skills, 8 personas, Python hooks and 12 zero-token mods. Skills create, move and close tasks in your repo; hooks block and lock writes; mods read the repo to draw status bands." width="900"></p>
+<p align="center"><img src="./media/how-it-works.png" alt="You type slash commands. Inside Claude Code, the crew-mates plugin adds 10 skills, 7 personas, Python hooks and 12 zero-token mods. Skills create, move and close tasks in your repo; hooks block and lock writes; mods read the repo to draw status bands." width="900"></p>
 
 | Piece | What it does |
 |---|---|
 | 🗂️ `crew/` | The task folders: `PROBLEMS`, `TODO`, `CURRENT_TASKS`, `PAUSED`, `ICEBOX`, `TESTS`, `CLAUDE_CONTEXT`. |
 | 🌳 Per-batch `git worktree` | Physical isolation: each active batch gets its own checkout and branch. |
 | ⚡ 10 `/crew-*` skills | Drive the whole lifecycle deterministically (see [Commands](#-commands)). |
-| 🎭 9 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `legal`, `comms`, `social`, `seo`) that Claude can consult in parallel, plus a read-only `reviewer` used by `/crew-close-task`. |
+| 🎭 8 agents in `agents/` | Specialist subagents for decisions (`ceo`, `manager`, `architect`, `designer`, `comms`, `social`, `seo`) that Claude can consult in parallel, plus a read-only `reviewer` used by `/crew-close-task`. |
 | 🎨 `ux-intuitive` skill | The designer's UX decision system, preloaded into the `designer` agent: color roles, button system, purposeful motion, error prevention, expert patterns and emotional design, so end users never have to think. |
 | 🪝 `crew_hook.py` | One file, three hooks: the `PreToolUse` gate, the `SessionStart` digest, the `Stop` sync. |
 | 🪝 `spec_to_task_hook.py` | Runs asynchronously on file writes, keeping specs and tasks in sync. |
@@ -268,7 +267,7 @@ These are handled in-process by the mods, so they cost nothing and answer immedi
 
 ### Specialist agents
 
-See [A crew of specialists](#-a-crew-of-specialists) for the 8 agents and how to run them in parallel.
+See [A crew of specialists](#-a-crew-of-specialists) for the 7 agents and how to run them in parallel.
 
 <br>
 

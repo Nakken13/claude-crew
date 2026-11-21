@@ -22,9 +22,9 @@ Adapt/remove lines that do not fit the stack.
 
 ## Personas (`Agent({subagent_type: "<name>"})`) — mandatory routing
 
-Roles, not procedures; dispatch when the decision has ≥2 real options in the domain (or on request), never for an obvious answer. `legal`/`architect`: strict (real doubt included); the others at your judgment. Personas never implement.
+Roles, not procedures; dispatch when the decision has ≥2 real options in the domain (or on request), never for an obvious answer. `architect`: strict (real doubt included); the others at your judgment. Personas never implement.
 
-`ceo` prioritization/scope · `manager` task breakdown/batches (writes under `crew/`) · `architect` structuring technical choice · `designer` UX/UI decision · `legal` new legal exposure (before coding) · `comms` copy/brand tone · `social` social-network distribution · `seo` search/store visibility (if public web surface). Starting an existing task → `/crew-start`, not `manager`. Detailed criteria: `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Personas.
+`ceo` prioritization/scope · `manager` task breakdown/batches (writes under `crew/`) · `architect` structuring technical choice · `designer` UX/UI decision · `comms` copy/brand tone · `social` social-network distribution · `seo` search/store visibility (if public web surface). Starting an existing task → `/crew-start`, not `manager`. Detailed criteria: `crew/CLAUDE_CONTEXT/LIFECYCLE.md` § Personas.
 
 ## Dedicated crew commands (`/crew-*`)
 

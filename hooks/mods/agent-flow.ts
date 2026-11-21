@@ -2,7 +2,7 @@
  * Mod 5 — agent-flow.ts
  *
  * Intercepts subagent launches (`tool.call` on the `crew-mates` agents:
- * `Agent`, `Task`, `ceo`, `manager`, `comms`, `architect`, `designer`, `legal`, `social`, `seo`)
+ * `Agent`, `Task`, `ceo`, `manager`, `comms`, `architect`, `designer`, `social`, `seo`)
  * and draws the live execution tree (status, tools, duration).
  *
  * 100% local / 0-token.
@@ -38,7 +38,6 @@ export const CREW_PERSONA_DEFAULT_TOOLS: Record<string, string[]> = {
   comms: ['Read', 'Glob', 'Grep'],
   architect: ['Read', 'Glob', 'Grep'],
   designer: ['Read', 'Glob', 'Grep'],
-  legal: ['Read', 'Glob', 'Grep', 'WebSearch'],
   social: ['Read', 'Glob', 'Grep', 'WebSearch'],
   seo: ['Read', 'Glob', 'Grep', 'WebSearch'],
 };
