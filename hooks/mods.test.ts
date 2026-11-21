@@ -545,8 +545,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.start', { sessionId: 'sess-count-1', cwd: '/repo' });
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const text = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
-    expect(text).toContain('🤖2/5');
-    expect(text.indexOf('🤖2/5')).toBeLessThan(text.indexOf('80%'));
+    expect(text).toContain('Crew 2/5');
+    expect(text.indexOf('Crew 2/5')).toBeLessThan(text.indexOf('80%'));
     await h.emit('session.end', { sessionId: 'sess-count-1' });
   });
 
@@ -588,7 +588,7 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('session.end', { reason: 'other', sessionId: 'w-1' });
   });
 
-  test('crew count: emoji + digits only, hidden (never stale) when the count fails', async () => {
+  test('crew count: `Crew x/n`, hidden (never stale) when the count fails', async () => {
     const h = createHarness();
     let ok = true;
     (h.api as unknown as Record<string, unknown>).process = {
@@ -601,12 +601,10 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     crewRuntimeState.projectRoot = '/repo';
     await h.emit('session.start', { sessionId: 'c-1', cwd: '/repo' });
     const shown = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
-    expect(shown).toContain('🤖1/2');
-    expect(shown).not.toContain('Crew');
+    expect(shown).toContain('Crew 1/2');
     ok = false;
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const failed = collectTexts(await h.emit('ui.render', {}, 'component=AbovePrompt'));
-    expect(failed).not.toContain('🤖');
     expect(failed).not.toContain('Crew');
     await h.emit('session.end', { sessionId: 'c-1' });
   });
@@ -725,8 +723,8 @@ describe('crew-mates 10 Zero-Token Mods suite', () => {
     await h.emit('turn.complete', { reason: 'answer', answer: 'ok', durationMs: 1_000 });
     const narrow = collectTexts(await h.emit('ui.render', { viewport: { columns: 30, rows: 20 } }, 'component=AbovePrompt'));
     const wide = collectTexts(await h.emit('ui.render', { viewport: { columns: 200, rows: 20 } }, 'component=AbovePrompt'));
-    expect(narrow).toContain('🤖2/5');
-    expect(wide).toContain('🤖2/5');
+    expect(narrow).toContain('Crew 2/5');
+    expect(wide).toContain('Crew 2/5');
     await h.emit('session.end', { sessionId: 'sess-narrow-1' });
   });
 
