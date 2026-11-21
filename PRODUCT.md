@@ -19,7 +19,7 @@ rather than a hosted board.
 - Batching with disjoint zones, per-batch `git worktree`, and a `PreToolUse` hook that blocks edits into a zone locked by another session.
 - Opt-in team mode (`/crew-collab`): remote claims over the `refs/crew/claims` git ref.
 - Adaptive test policy (`crew/CLAUDE_CONTEXT/TESTS_POLICY.md`).
-- `/crew-*` skills, 8 specialist personas, 10 zero-token TypeScript mods, optional local dashboard.
+- `/crew-*` skills, 7 specialist personas, 10 zero-token TypeScript mods, optional local dashboard.
 
 ## Out of scope (explicitly)
 
