@@ -2624,7 +2624,7 @@ def test_count_never_offers_a_draft_only_batch_as_launchable(repo):
     assert [b["name"] for b in h.count_batches()["launchable"]] == ["Batch B"]
 
 
-@pytest.mark.parametrize("line", ["**Status:** 📝 draft", "**Status:** 📝️ draft", "**Status :** 📝 Draft (spec)", "Status: 📝 draft",
+@pytest.mark.parametrize("line", ["**Status:** 📝 draft", "**Status:** 📝\ufe0f draft", "**Status :** 📝 Draft (spec)", "Status: 📝 draft",
                                   "- **Statut :** 📝 draft"])
 def test_is_draft_reads_the_explicit_marker(line):
     assert h._is_draft(f"# T\n\n{line}\n")
