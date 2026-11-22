@@ -224,7 +224,7 @@ Everything is plain Markdown, JSON state and dependency-free code: readable, gre
 | Command | What it does | Use it when | Example |
 |---|---|---|---|
 | `/crew-init` | Creates the `crew/` scaffold and project docs (`CLAUDE.md`, `AGENTS.md`, `PRODUCT.md`, `SECURITY.md`, `CONTRIBUTING.md`), detects your stack and checks that no `<placeholder>` is left. | Once per project. | `/crew-init` |
-| `/crew-new-task` | Turns a request into task files with concrete `- [ ]` actions and files them in a batch with their `Zone:`. | You have work to plan. | `/crew-new-task Add retry with backoff in backend/payments/retry.py` |
+| `/crew-new-task` | Turns a request into task files with concrete `- [ ]` actions (plus `## Acceptance` and `Verification:` when the task comes from a spec), files them in a batch with their `Zone:`, then runs `crew_hook.py lint` on the result. | You have work to plan. | `/crew-new-task Add retry with backoff in backend/payments/retry.py` |
 | `/crew-start` | Picks the next collision-free task (`crew_hook.py next-task`), opens its batch in a dedicated worktree. Resumes unfinished work first. | You start or resume a session. | `/crew-start` |
 | `/crew-close-task` | Closes a finished task: review passes sized to the diff (quick, standard or deep), entry in `HISTORY.md`, test checklists in `crew/TESTS/{IA,DEV}/`, local commit of `crew/`. | The code is done. | `/crew-close-task` |
 | `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees. | You wonder what is going on, or why a write was refused. | `/crew-status` |

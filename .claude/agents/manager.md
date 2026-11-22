@@ -26,7 +26,10 @@ not already known — no need to recheck on every subsequent
 - Long file (>100 lines, e.g. HISTORY.md, CLAUDE_BATCH.md): targeted grep
   first, never a full Read up front.
 - Break a request into one or more `.md` tasks, each with a short description
-  and concrete (not vague) `- [ ]` checkbox actions.
+  and concrete (not vague) `- [ ]` checkbox actions. Success criteria: an
+  optional `## Acceptance` section (verifiable bullets) and a
+  `Verification: <command>` line — recommended for complex tasks,
+  **mandatory** for a task derived from a spec (`Spec :` line).
 - Decide where each task is born: `crew/TODO/<slug>.md` (not started),
   `crew/CURRENT_TASKS/<slug>.md` (if it starts immediately), or
   `crew/ICEBOX/<slug>.md` (an idea to park explicitly, not for "I don't know
@@ -49,6 +52,27 @@ not already known — no need to recheck on every subsequent
   conflicting batch (sequenced after it), or waiting. The `crew/crew_hook.py`
   hook also warns (non-blocking) on overlaps of declared `Zone :` entries,
   but does not replace this manual check before launching.
+
+## Planning checklist (before you report)
+
+Apply it yourself — no extra agent:
+
+- Only if there is a spec: every requirement / section of it maps to ≥1
+  action or Acceptance bullet; list the uncovered ones in your report.
+- Every task has ≥1 verifiable criterion (see the success criteria above, or
+  an action whose result can be checked).
+- `Blocked by:` slugs exist and form no cycle: run `lint` (`errors` → fix and
+  rerun; `warnings` → cite them in your report):
+
+  ```bash
+  ROOT="$(git rev-parse --show-toplevel)"
+  HOOK="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"; HOOK="${HOOK:-$ROOT/crew}/crew_hook.py"
+  CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" lint
+  ```
+
+Spec coverage is a model checklist, not a deterministic check — the
+deterministic part is `lint` (cycles, unknown blockers, missing
+Acceptance/Verification on a spec task, drafts).
 
 ## What you do not do
 
