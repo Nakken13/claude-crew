@@ -657,6 +657,21 @@ def _register_task_lock(slug, session_id, locks, now_dt, sections=None):
 
 # `## Unsorted` is canonical; `## À classer` / `## A classer` are the legacy French headers.
 UNSORTED_HEADER_RE = re.compile(r"^#{2,3}\s*(?:Unsorted|[AÀ] classer)\b", re.MULTILINE | re.IGNORECASE)
+# `Zone : `a/`, `b.py`` line, in a batch section or a task file (only backticked paths count).
+ZONE_LINE_RE = re.compile(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", re.MULTILINE)
+_SLUG_REF_RE = re.compile(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`")  # `x.md` or `crew/<dir>/x.md`
+_STRUCK_RE = re.compile(r"~~\s*`(?:[\w\-./]*/)?([\w\-.]+\.md)`\s*~~")  # ~~`x.md`~~ = closed task
+
+
+def _zone_raw(text):
+    """Text after `Zone :` on the first Zone line of `text`, "" if none."""
+    m = ZONE_LINE_RE.search(text)
+    return m.group(1) if m else ""
+
+
+def _zone_paths(zone_raw):
+    """Backticked paths of a Zone line (the only ones the engine reads)."""
+    return set(re.findall(r"`([^`]+)`", zone_raw))
 
 
 def slugs_by_batch_section(text):
@@ -676,14 +691,14 @@ def slugs_by_batch_section(text):
         if unclassified and start < unclassified.start() < end:
             end = unclassified.start()
         body = text[start:end]
-        raw_refs = re.findall(r"`(?:[\w\-./]*/)?([\w\-.]+\.md)`", body)
+        raw_refs = _SLUG_REF_RE.findall(body)
         slugs = set(raw_refs)
-        struck = set(re.findall(r"~~\s*`(?:[\w\-./]*/)?([\w\-.]+\.md)`\s*~~", body))  # closed tasks
+        struck = set(_STRUCK_RE.findall(body))  # closed tasks
         ordered = list(dict.fromkeys(raw_refs))  # order of appearance = intended sequencing of the batch
-        zone_match = re.search(r"^\*{0,2}Zone\b[^:\n]*:\*{0,2}\s*(.+)$", body, re.MULTILINE)
-        zone_paths = set(re.findall(r"`([^`]+)`", zone_match.group(1))) if zone_match else set()
+        zone_raw = _zone_raw(body)
+        zone_paths = _zone_paths(zone_raw)
         sections.append({"header": m.group().lstrip("#").strip(), "slugs": slugs, "zone_paths": zone_paths,
-                         "ordered": ordered, "struck": struck})
+                         "ordered": ordered, "struck": struck, "zone_raw": zone_raw})
     return sections
 
 
@@ -1594,20 +1609,34 @@ def task_blockers(slug):
     path = next((DIRS[d] / slug for d in ("TODO", "CURRENT_TASKS", "PAUSED") if (DIRS[d] / slug).exists()), None)
     if path is None:
         return []
+    return [t for t in _blocker_refs(_read_task(path)) if t != slug]
+
+
+def _read_task(path):
+    """Text of a crew file, "" if missing or unreadable."""
     try:
-        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        return path.read_text(encoding="utf-8-sig", errors="replace")
     except Exception:
-        return []
-    out = []
+        return ""
+
+
+_NONE_WORDS = ("none", "aucune", "aucun", "nothing")
+
+
+def _blocker_refs(text, explicit=False):
+    """`.md` slugs of the `Blocked by:` line(s) of a task text, in order, self-references included.
+    Default: every word, as the engine reads it. `explicit`: only refs written as refs (backticked, or a
+    bare `x.md`), so free words on the line are not mistaken for task names."""
+    toks = []
     for m in BLOCKED_BY_RE.finditer(text):
-        for tok in re.findall(r"[\w][\w.\-]*", m.group(1)):
-            tok = tok.rstrip(".")
-            if not tok or tok.lower() in ("none", "aucune", "aucun", "nothing"):
-                continue
-            tok = tok if tok.endswith(".md") else f"{tok}.md"
-            if tok != slug and tok not in out:
-                out.append(tok)
-    return out
+        val = m.group(1)
+        if explicit:
+            toks += re.findall(r"`\s*([\w][\w.\-]*)\s*`", val)
+            toks += re.findall(r"(?<![\w.\-])([\w][\w.\-]*\.md)\b", re.sub(r"`[^`]*`", " ", val))
+        else:
+            toks += [t.rstrip(".") for t in re.findall(r"[\w][\w.\-]*", val)]
+    return list(dict.fromkeys(t if t.endswith(".md") else f"{t}.md"
+                              for t in toks if t and t.lower() not in _NONE_WORDS))
 
 
 def task_owners(sections):
@@ -1636,6 +1665,151 @@ def _split_ready(cands, open_tasks):
     """(ready, unmet): candidates with no open blocker, in order, and {task: open blockers} for the others."""
     unmet = {t: [b for b in task_blockers(t) if b in open_tasks] for t in cands}
     return [t for t in cands if not unmet[t]], {t: b for t, b in unmet.items() if b}
+
+
+# --- lint: deterministic checks of the crew/ data, no LLM. Errors break the lifecycle, warnings inform. ---
+LINT_FOLDERS = ("TODO", "CURRENT_TASKS", "PAUSED", "ICEBOX", "PROBLEMS")
+_SPEC_LINE_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*Spec\s*\**\s*:\**[ \t]*(.*)$", re.IGNORECASE | re.MULTILINE)
+_EMPTY_SPEC = _NONE_WORDS + ("", "n/a", "na", "-", "—")
+_ACCEPTANCE_RE = re.compile(r"^#{2,4}\s*Accept(?:ance|ation)\b", re.IGNORECASE | re.MULTILINE)
+_VERIFICATION_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*V[ée]rification\s*\**\s*:", re.IGNORECASE | re.MULTILINE)
+_NEXT_HEADER_RE = re.compile(r"^#{1,3}\s", re.MULTILINE)
+_ZONE_PROSE_RE = re.compile(r"`[^`]*`|<[^>]*>|\S+://\S+")  # backticked paths, <placeholders>, URLs
+_EXT_RE = re.compile(r"(?<=\w)\.(\w+)$")
+_FRAMEWORK_JS_RE = re.compile(r"[A-Z]\w*\.js")  # Next.js, Vue.js: a framework name, not a file
+# Bare file names worth flagging outside backticks.
+_PATH_EXTS = {"md", "py", "ts", "tsx", "js", "jsx", "mjs", "json", "yml", "yaml", "toml", "css", "scss", "html",
+              "sh", "ps1", "bat", "txt", "cfg", "ini", "rs", "go", "java", "kt", "swift", "sql", "lock", "xml"}
+
+
+def _history_slugs():
+    """`<slug>.md` of every `## <slug> — date` heading of the history and its archive (comments skipped,
+    same heading rule as rotate_historique_entries)."""
+    out = set()
+    for f in (history_file(), history_archive_file()):
+        for m in _HISTORIQUE_HEADER_RE.finditer(_HISTORIQUE_COMMENT_RE.sub("", _read_task(f))):
+            head = m.group("rest").split()[0].strip("`*")
+            if head:
+                out.add(f"{head.removesuffix('.md')}.md")
+    return out
+
+
+def _is_path_token(t):
+    if t.endswith("/") and len(t) > 1:
+        return True
+    ext = _EXT_RE.search(t)
+    if ext and ext.group(1).lower() in _PATH_EXTS and not _FRAMEWORK_JS_RE.fullmatch(t):
+        return True
+    return t.count("/") >= 2  # a/b/c; a lone x/y (and/or, N/A, client/server) is prose
+
+
+def _unquoted_paths(zone_raw):
+    """Path-looking tokens of a Zone line left outside backticks (the engine ignores them)."""
+    toks = (t.rstrip(".,;:") for t in re.findall(r"[\w./*{}\-]+", _ZONE_PROSE_RE.sub(" ", zone_raw)))
+    return [t for t in toks if _is_path_token(t)]
+
+
+def _unsorted_slugs(text):
+    """Slugs still listed (not struck) in the Unsorted section."""
+    m = UNSORTED_HEADER_RE.search(text)
+    if not m:
+        return []
+    nxt = _NEXT_HEADER_RE.search(text, m.end())
+    body = text[m.end():nxt.start() if nxt else len(text)]
+    struck = set(_STRUCK_RE.findall(body))
+    return [t for t in dict.fromkeys(_SLUG_REF_RE.findall(body)) if t not in struck]
+
+
+def _dependency_cycles(graph):
+    """At least one cycle per strongly connected component (one per DFS back edge), each once,
+    rotated to start at its smallest slug. Edges to a node outside `graph` (closed task, free word) are ignored."""
+    cycles, state, stack = set(), {}, []
+
+    def visit(n):
+        state[n] = 1
+        stack.append(n)
+        for b in graph.get(n, ()):
+            if state.get(b) == 1:
+                cyc = stack[stack.index(b):]
+                i = cyc.index(min(cyc))
+                cycles.add(tuple(cyc[i:] + cyc[:i]))
+            elif b in graph and not state.get(b):
+                visit(b)
+        stack.pop()
+        state[n] = 2
+
+    for n in sorted(graph):
+        if not state.get(n):
+            visit(n)
+    return sorted(cycles)
+
+
+def lint_crew():
+    """Read-only `lint` report: {errors, warnings}, items {code, task, detail}.
+    Errors: dependency cycle (read like the engine reads `Blocked by:`), task in two folders,
+    CURRENT_TASKS task with no parsed zone.
+    Warnings: self-dependency (the engine ignores it), unknown explicit `Blocked by:` ref (still never
+    blocks, see `_open_tasks`), un-backticked zone path, task left in Unsorted, task with a `Spec :` line but
+    no Acceptance section / Verification line.
+    `task` is a task slug, except for a batch section's `zone_unquoted`, where it is the batch header."""
+    errors, warnings = [], []
+
+    def add(bucket, code, task, detail):
+        bucket.append({"code": code, "task": task, "detail": detail})
+
+    where = {}
+    for d in LINT_FOLDERS:
+        for t in _task_names(DIRS[d]):
+            where.setdefault(t, []).append(d)
+    for t, ds in sorted(where.items()):
+        if len(ds) > 1:
+            add(errors, "duplicate", t, "present in " + ", ".join(f"crew/{d}/" for d in ds))
+
+    text = _read_task(BATCH_FILE)
+    sections = slugs_by_batch_section(text)
+    owners = task_owners(sections)
+    live = sorted(active_task_slugs())
+    # A duplicated task is read from its most advanced copy (the in-progress one).
+    texts = {t: _read_task(next(DIRS[d] / t for d in ("CURRENT_TASKS", "PAUSED", "TODO") if d in where[t]))
+             for t in live}
+
+    graph = {}
+    for t in live:
+        deps = _blocker_refs(texts[t])
+        if t in deps:
+            add(warnings, "self_dependency", t, "`Blocked by:` lists the task itself (ignored by the engine)")
+        graph[t] = [b for b in deps if b != t]
+    for cyc in _dependency_cycles(graph):
+        add(errors, "cycle", cyc[0], "Blocked by cycle: " + " → ".join(cyc + (cyc[0],)))
+
+    known = set(where) | _history_slugs() | {t for s in sections for t in s["struck"]}
+    for t in live:
+        unknown = [b for b in _blocker_refs(texts[t], explicit=True) if b != t and b not in known]
+        if unknown:
+            add(warnings, "unknown_blocker", t, "Blocked by an unknown task (typo? never blocks): " + ", ".join(unknown))
+
+    for t in live:
+        own = owners.get(t)
+        if "CURRENT_TASKS" in where[t] and not (own and own["zone_paths"]) and not _zone_paths(_zone_raw(texts[t])):
+            add(errors, "no_zone", t, "in progress with no backticked `Zone :` path (batch section nor task file)")
+
+    zones = [(s["header"], s["zone_raw"]) for s in sections] + [(t, _zone_raw(texts[t])) for t in live]
+    for label, raw in zones:
+        bad = _unquoted_paths(raw)
+        if bad:
+            add(warnings, "zone_unquoted", label, "Zone paths outside backticks (ignored): " + ", ".join(bad))
+
+    for t in _unsorted_slugs(text):
+        if t in texts and t not in owners:
+            add(warnings, "unsorted", t, "in the Unsorted section: give it a zone and a batch before starting it")
+
+    for t in live:
+        if any(m.group(1).strip(" *`").lower() not in _EMPTY_SPEC for m in _SPEC_LINE_RE.finditer(texts[t])):
+            if not _ACCEPTANCE_RE.search(texts[t]):
+                add(warnings, "spec_no_acceptance", t, "derived from a spec but has no `## Acceptance` section")
+            if not _VERIFICATION_RE.search(texts[t]):
+                add(warnings, "spec_no_verification", t, "derived from a spec but has no `Verification:` line")
+    return {"errors": errors, "warnings": warnings}
 
 
 def _read_ignored():
@@ -2570,6 +2744,13 @@ def main():
         return
     if cmd in ("count", "status"):
         print(json.dumps(count_batches() if cmd == "count" else crew_status(), ensure_ascii=False))
+        return
+    if cmd == "lint":
+        _utf8_stdout()
+        report = lint_crew()
+        print(json.dumps(report, ensure_ascii=False))
+        if report["errors"]:
+            sys.exit(1)
         return
     if len(sys.argv) > 1 and sys.argv[1] == "next-task":
         _utf8_stdout()

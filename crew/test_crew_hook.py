@@ -2302,3 +2302,262 @@ def test_mods_accept_the_same_unsorted_header_as_the_engine():
     ts = (pathlib.Path(__file__).resolve().parent.parent / "hooks" / "mods" / "shared.ts").read_text(encoding="utf-8")
     line = next(l for l in ts.splitlines() if l.startswith("const UNCLASSIFIED_HEADER_RE"))
     assert "Unsorted" in line and "classer" in line
+
+
+# --- lint: deterministic checks of the crew/ data (errors block, warnings inform) ---
+
+def _codes(items):
+    return sorted((i["code"], i["task"]) for i in items)
+
+
+def test_lint_clean_repo_has_no_errors_nor_warnings(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    _put(dirs, "TODO", "a2.md", _blocked("a1.md"))
+    assert h.lint_crew() == {"errors": [], "warnings": []}
+
+
+def test_lint_dependency_cycle_is_an_error(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "lib/", "b1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "b1.md", _blocked("a1"))
+    r = h.lint_crew()
+    assert [e["code"] for e in r["errors"]] == ["cycle"]  # reported once, not once per member
+    assert "a1.md" in r["errors"][0]["detail"] and "b1.md" in r["errors"][0]["detail"]
+
+
+def test_lint_self_dependency_is_a_warning_since_the_engine_ignores_it(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("a1.md"))
+    r = h.lint_crew()
+    assert r["errors"] == []
+    assert _codes(r["warnings"]) == [("self_dependency", "a1.md")]
+
+
+def test_lint_cycle_written_with_bare_words_is_caught_like_the_engine_reads_it(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", "# T\n\nBlocked by: a2\n\n- [ ] x\n")
+    _put(dirs, "TODO", "a2.md", "# T\n\nBlocked by: a1 (needs its API)\n\n- [ ] x\n")
+    assert _codes(h.lint_crew()["errors"]) == [("cycle", "a1.md")]
+
+
+def test_lint_unknown_blocker_is_a_warning_and_still_never_blocks(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("typo-slug.md"))
+    r = h.lint_crew()
+    assert r["errors"] == []
+    assert _codes(r["warnings"]) == [("unknown_blocker", "a1.md")]
+    assert "typo-slug.md" in r["warnings"][0]["detail"]
+    assert h.next_task("S1")["task"] == "a1.md"  # _open_tasks semantics unchanged
+
+
+@pytest.mark.parametrize("history_name", ["HISTORIQUE.md", "HISTORY.md"])
+def test_lint_blocker_closed_in_history_is_known(repo, history_name):
+    root, dirs, ctx = repo
+    (ctx / "HISTORIQUE.md").unlink()
+    (ctx / history_name).write_text("# History\n\n## b1 — 2026-01-02\nWhat: done.\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    assert h.lint_crew() == {"errors": [], "warnings": []}
+
+
+def test_lint_blocker_struck_in_its_batch_is_known(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(
+        _sec("A", "src/", "a1.md"), _sec("B", "lib/", "b1.md").replace("`b1.md`", "~~`b1.md`~~")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    assert h.lint_crew()["warnings"] == []
+
+
+def test_lint_task_in_two_folders_is_an_error(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    _put(dirs, "PAUSED", "a1.md")
+    r = h.lint_crew()
+    assert _codes(r["errors"]) == [("duplicate", "a1.md")]
+    assert "TODO" in r["errors"][0]["detail"] and "PAUSED" in r["errors"][0]["detail"]
+
+
+def test_lint_current_task_without_zone_is_an_error(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md")
+    assert _codes(h.lint_crew()["errors"]) == [("no_zone", "a1.md")]
+
+
+def test_lint_current_task_zone_from_its_own_file_is_enough(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n\nZone : `src/`\n\n- [ ] x\n")
+    assert h.lint_crew()["errors"] == []
+
+
+def test_lint_todo_task_without_zone_is_not_an_error(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    assert h.lint_crew()["errors"] == []
+
+
+def test_lint_zone_with_unquoted_paths_is_a_warning(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A\n\nZone : `src/`, lib/util.py\n\n1. `a1.md`\n",
+                            encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", "# T\n\nZone : docs/guide.md\n\n- [ ] x\n")
+    r = h.lint_crew()
+    assert r["errors"] == []
+    warned = [w for w in r["warnings"] if w["code"] == "zone_unquoted"]
+    assert len(warned) == 2
+    assert any("lib/util.py" in w["detail"] for w in warned) and any("docs/guide.md" in w["detail"] for w in warned)
+
+
+def test_lint_task_in_unsorted_is_a_warning(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Unsorted\n\n- `u1.md` — zone unknown\n", encoding="utf-8")
+    _put(dirs, "TODO", "u1.md")
+    assert _codes(h.lint_crew()["warnings"]) == [("unsorted", "u1.md")]
+
+
+def test_lint_spec_task_without_acceptance_nor_verification_warns(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", "# T\n\n**Spec :** `docs/superpowers/specs/x.md`\n\n- [ ] x\n")
+    assert _codes(h.lint_crew()["warnings"]) == [("spec_no_acceptance", "a1.md"), ("spec_no_verification", "a1.md")]
+
+
+@pytest.mark.parametrize("heading", ["## Acceptance", "## Acceptation", "### acceptance criteria"])
+def test_lint_spec_task_with_acceptance_and_verification_is_clean(repo, heading):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", f"# T\n\n**Spec :** `docs/x.md`\n\n{heading}\n\n- works\n\n"
+                                "Verification: `pytest -q`\n\n- [ ] x\n")
+    assert h.lint_crew()["warnings"] == []
+
+
+def test_lint_task_without_spec_needs_no_acceptance(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    assert h.lint_crew()["warnings"] == []
+
+
+def test_lint_three_task_cycle_is_reported_once_from_its_smallest_slug(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "c1.md", "a1.md", "b1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    _put(dirs, "TODO", "b1.md", _blocked("c1.md"))
+    _put(dirs, "TODO", "c1.md", _blocked("a1.md"))
+    errs = h.lint_crew()["errors"]
+    assert _codes(errs) == [("cycle", "a1.md")]
+    assert "a1.md → b1.md → c1.md → a1.md" in errs[0]["detail"]
+
+
+def test_task_blockers_still_drops_a_self_reference(repo):
+    root, dirs, ctx = repo
+    _put(dirs, "TODO", "a1.md", _blocked("a1.md", "b1.md"))
+    assert h.task_blockers("a1.md") == ["b1.md"]
+
+
+def test_lint_free_words_on_the_blocked_by_line_are_not_unknown_tasks(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md", "a3.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    _put(dirs, "TODO", "a2.md", "# T\n\nBlocked by: `a1.md` (needs the API contract first)\n\n- [ ] x\n")
+    _put(dirs, "TODO", "a3.md", "# T\n\nBloquée par : nothing yet, typo-slug.md\n\n- [ ] x\n")
+    r = h.lint_crew()
+    assert _codes(r["warnings"]) == [("unknown_blocker", "a3.md")]
+    assert r["warnings"][0]["detail"].endswith("typo-slug.md")  # bare `.md` refs still count, free words do not
+
+
+def test_lint_blocker_closed_in_the_history_archive_is_known(repo):
+    root, dirs, ctx = repo
+    (ctx / "HISTORIQUE_ARCHIVE.md").write_text("# Archive\n\n## `b1.md` — 2025-01-02\nold\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    assert h.lint_crew()["warnings"] == []
+
+
+def test_lint_history_example_inside_a_comment_is_not_a_closed_task(repo):
+    root, dirs, ctx = repo
+    (ctx / "HISTORIQUE.md").write_text("# History\n\n<!--\n## b1 — 2026-01-02\nexample\n-->\n", encoding="utf-8")
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _blocked("b1.md"))
+    assert _codes(h.lint_crew()["warnings"]) == [("unknown_blocker", "a1.md")]
+
+
+def test_lint_without_batch_file_does_not_crash(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.unlink()
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n\nZone : `src/`\n\n- [ ] x\n")
+    assert h.lint_crew() == {"errors": [], "warnings": []}
+
+
+def test_lint_struck_or_batched_unsorted_lines_are_not_warned(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")) +
+                            "\n## Unsorted\n\n- ~~`u1.md`~~ closed\n- `a1.md` (moved to A)\n- `gone.md`\n",
+                            encoding="utf-8")
+    _put(dirs, "TODO", "u1.md")  # struck: closed from Unsorted
+    _put(dirs, "TODO", "a1.md")
+    assert [w for w in h.lint_crew()["warnings"] if w["code"] == "unsorted"] == []
+
+
+@pytest.mark.parametrize("prose", ["e.g. the CLI", "and/or docs", "(Next.js app)", "i.e. backend", "(client/server)",
+                                   "N/A", "since v1.5.0", "see https://example.com/doc", "ASP.NET", "<files/modules>"])
+def test_lint_zone_prose_is_not_an_unquoted_path(repo, prose):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(f"# Batching\n\n## Batch A\n\nZone : `src/` {prose}\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    assert h.lint_crew()["warnings"] == []
+
+
+@pytest.mark.parametrize("path", ["lib/util.py", "src/", "a/b/c", "README.md"])
+def test_lint_zone_real_unquoted_paths_are_still_flagged(repo, path):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(f"# Batching\n\n## Batch A\n\nZone : `x/`, {path}\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    assert [w["code"] for w in h.lint_crew()["warnings"]] == ["zone_unquoted"]
+
+
+@pytest.mark.parametrize("line", ["Spec: none", "**Spec :** —", "- Spec : n/a"])
+def test_lint_empty_spec_line_needs_no_acceptance(repo, line):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", f"# T\n\n{line}\n\n- [ ] x\n")
+    assert h.lint_crew()["warnings"] == []
+
+
+def test_lint_bulleted_spec_line_is_recognised(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", "# T\n\n- **Spec:** `docs/x.md`\n\n- [ ] x\n")
+    assert [w["code"] for w in h.lint_crew()["warnings"]] == ["spec_no_acceptance", "spec_no_verification"]
+
+
+def test_lint_duplicate_reads_the_in_progress_copy_for_the_zone(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text("# Batching\n\n## Batch A\n\n1. `a1.md`\n", encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")                                   # stale backlog copy, no zone
+    _put(dirs, "CURRENT_TASKS", "a1.md", "# T\n\nZone : `src/`\n\n- [ ] x\n")
+    assert _codes(h.lint_crew()["errors"]) == [("duplicate", "a1.md")]  # no extra no_zone
+
+
+def test_main_lint_cli_exits_1_on_errors_and_0_otherwise(repo, monkeypatch, capsys):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md")
+    _put(dirs, "PAUSED", "a1.md")
+    monkeypatch.setattr(sys, "argv", ["crew_hook.py", "lint"])
+    with pytest.raises(SystemExit) as exc:
+        h.main()
+    assert exc.value.code == 1
+    assert json.loads(capsys.readouterr().out)["errors"][0]["code"] == "duplicate"
+    (dirs["PAUSED"] / "a1.md").unlink()
+    h.main()  # no error -> returns normally (exit 0)
+    assert json.loads(capsys.readouterr().out) == {"errors": [], "warnings": []}
