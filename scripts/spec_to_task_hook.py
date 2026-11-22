@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """PostToolUse (Write) hook: superpowers spec created in docs/superpowers/specs/
-→ automatically creates the matching task in crew/CURRENT_TASKS/<slug>.md.
+→ automatically creates the matching DRAFT task in crew/TODO/<slug>.md.
 
-Idempotent: does nothing if the task already exists (CURRENT_TASKS or TODO).
+The task carries `**Status:** 📝 draft`: the engine (`next-task`) never starts it, and `lint` flags it,
+until Zone/Actions/Acceptance are filled and the marker is removed.
+Idempotent: does nothing if the slug is already tracked (TODO, CURRENT_TASKS, PAUSED, or closed in the
+history / its archive).
 """
 import json
 import os
@@ -22,8 +25,36 @@ def _git_root(start):
 
 ROOT = _git_root(Path(os.environ["CLAUDE_PROJECT_DIR"])) if os.environ.get("CLAUDE_PROJECT_DIR") else Path(__file__).resolve().parent.parent
 SPECS_DIR = ROOT / "docs" / "superpowers" / "specs"
-CURRENT = ROOT / "crew" / "CURRENT_TASKS"
-TODO = ROOT / "crew" / "TODO"
+CREW = ROOT / "crew"
+TODO = CREW / "TODO"
+CTX = CREW / "CLAUDE_CONTEXT"
+# English name first; the legacy French name is read only while the English one does not exist
+# (same rule as crew_hook._ctx_file).
+LEGACY_NAMES = {"HISTORY.md": "HISTORIQUE.md", "HISTORY_ARCHIVE.md": "HISTORIQUE_ARCHIVE.md"}
+
+
+def _ctx_file(canonical):
+    new, old = CTX / canonical, CTX / LEGACY_NAMES[canonical]
+    return old if (old.exists() and not new.exists()) else new
+
+
+def _closed_in_history(slug):
+    """True if a `## <slug> — date` heading (outside HTML comments) exists in the history or its archive.
+    Same heading rule as crew_hook._history_slugs: first word of the heading, `*`/backticks stripped."""
+    for canonical in LEGACY_NAMES:
+        try:
+            text = _ctx_file(canonical).read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            continue
+        for m in re.finditer(r"^## (.+)$", re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL), re.MULTILINE):
+            if m.group(1).split()[0].strip("`*").removesuffix(".md") == slug:
+                return True
+    return False
+
+
+def _already_tracked(slug):
+    return any((CREW / d / f"{slug}.md").exists() for d in ("TODO", "CURRENT_TASKS", "PAUSED", "ICEBOX", "PROBLEMS")) \
+        or _closed_in_history(slug)
 
 
 def main() -> None:
@@ -51,11 +82,7 @@ def main() -> None:
     # 2026-07-11-personalized-tips-checklist-design.md → personalized-tips-checklist
     slug = re.sub(r"^\d{4}-\d{2}-\d{2}-", "", spec.stem)
     slug = re.sub(r"-design$", "", slug)
-    if not slug:
-        return
-
-    task_path = CURRENT / f"{slug}.md"
-    if task_path.exists() or (TODO / f"{slug}.md").exists():
+    if not slug or _already_tracked(slug):
         return  # task already tracked, do not duplicate
 
     # Title = first H1 heading of the spec, without the "— Design" suffix
@@ -68,15 +95,18 @@ def main() -> None:
     except OSError:
         pass
 
-    spec_rel = spec.relative_to(ROOT).as_posix()
+    # Built from SPECS_DIR, not ROOT: still valid when docs/ is a symlink/junction outside the project.
+    spec_rel = f"docs/superpowers/specs/{spec.relative_to(SPECS_DIR.resolve()).as_posix()}"
     from datetime import date
 
+    task_path = TODO / f"{slug}.md"
     task_path.parent.mkdir(parents=True, exist_ok=True)
     task_path.write_text(
         f"""# {title}
 
-**Status:** 🟡 in progress (spec generated on {date.today().strftime('%d/%m/%Y')})
+**Status:** 📝 draft (spec generated on {date.today().strftime('%d/%m/%Y')}) — not startable until this line is removed
 **Spec :** `{spec_rel}`
+Zone : <backticked paths to fill>
 
 ## Description
 
@@ -85,20 +115,29 @@ Task created automatically from the superpowers spec. See the spec for the full 
 ## Actions
 
 - [ ] Break the spec down into concrete actions (replace this line)
+
+## Acceptance
+
+- <observable success criteria to fill>
+
+Verification: <command that proves it, to fill>
 """,
         encoding="utf-8",
     )
 
+    rel = f"crew/TODO/{slug}.md"
     print(
         json.dumps(
             {
-                "systemMessage": f"Spec → task created: crew/CURRENT_TASKS/{slug}.md",
+                "systemMessage": f"Spec → draft task created: {rel}",
                 "hookSpecificOutput": {
                     "hookEventName": "PostToolUse",
                     "additionalContext": (
-                        f"A task crew/CURRENT_TASKS/{slug}.md was just created automatically "
-                        f"from the spec {spec_rel}. Fill in its Actions section with the concrete steps "
-                        "from the spec, and reference the task in crew/CLAUDE_BATCH.md (batching rule)."
+                        f"A draft task {rel} was just created automatically from the spec {spec_rel}. "
+                        "It is NOT startable yet. To make it startable: fill its `Zone :` line (backticked paths), "
+                        "its Actions with the concrete steps from the spec, its `## Acceptance` section and its "
+                        "`Verification:` line; add the task to crew/CLAUDE_BATCH.md (batching rule); then remove "
+                        "the `**Status:** 📝 draft` line."
                     ),
                 },
             }
