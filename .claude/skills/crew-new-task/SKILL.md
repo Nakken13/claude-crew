@@ -17,6 +17,11 @@ would create a phantom `crew/` there.
   `crew/CURRENT_TASKS/` if it starts now, otherwise `crew/TODO/`.
 - Content: title, short "why", the zone line, then concrete tickable `- [ ]`
   actions (not vague ones).
+- Success criteria: an optional `## Acceptance` section (verifiable bullets)
+  and a `Verification: <command>` line. Recommended for complex tasks;
+  **mandatory** for a task derived from a spec (a `Spec :` line) — `lint`
+  warns when one is missing. A spec-hook draft (`**Status:** 📝 draft`) starts
+  only once filled and that line removed.
 - Depends on other tasks → one line ``Blocked by: `a.md`, `b.md` `` (exact
   slugs). `count` / `next-task` skip the task while one of them is still open
   (in `TODO/`, `CURRENT_TASKS/` or `PAUSED/` and not struck); a prose "after X"
@@ -63,12 +68,22 @@ would create a phantom `crew/` there.
    - **`manager`** — **≥2 tasks**, or zone / batch attachment ambiguous:
      dispatch **a single** `Agent({subagent_type: "manager"})` with the template
      below. No `manager` persona in this project → inline.
-4. Lint what was written (also after a `manager` run):
+4. **Planning checklist** (also after a `manager` run; done by you, no extra
+   agent):
+   - only if there is a spec: every requirement / section of it maps to ≥1
+     action or Acceptance bullet — list the uncovered ones in the report;
+   - every task has ≥1 verifiable criterion (an Acceptance bullet, or an
+     action whose result can be checked).
+
+   Spec coverage is a checklist you apply, not a deterministic check; the
+   deterministic part is `lint` (`Blocked by:` slugs and cycles, missing
+   Acceptance/Verification on a spec task, drafts…):
    `CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" lint`. Any entry in `errors`
    (exit 1) → fix the task file / `CLAUDE_BATCH.md` entry and rerun before
    reporting; `warnings` → mention them in the report.
 5. Report: path of the created file(s), summary of the actions, landing
-   batch/section, and any external dependency (cross-repo, sequencing).
+   batch/section, uncovered spec requirements (if any), and any external
+   dependency (cross-repo, sequencing).
 
 ## Prompt template for the manager agent
 
@@ -83,9 +98,12 @@ has any, existing crew tasks to look at for a similar convention/infra>
 
 Apply the standard lifecycle (already in your role): file(s) in
 crew/TODO/ or crew/CURRENT_TASKS/, concrete tickable `- [ ]` actions,
+`## Acceptance` + `Verification:` when the task comes from a spec,
 CLAUDE_BATCH.md categorization (impact zone with every path in backticks,
 existing or new batch, disjointness invariant), nothing outside crew/.
+Then your planning checklist and `lint`.
 
 Report: path of the created file(s), summary of the tickable actions chosen,
-and landing batch/section in CLAUDE_BATCH.md.
+landing batch/section in CLAUDE_BATCH.md, uncovered spec requirements and
+lint warnings.
 ```

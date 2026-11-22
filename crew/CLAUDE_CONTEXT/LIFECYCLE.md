@@ -16,6 +16,7 @@ Validated → boxes checked; a fully checked IA test → crew/CLAUDE_CONTEXT/TES
 Single source = `crew/` folders (a root `TODO.md`/`PROBLEMS.md` is only a pointer).
 
 ### 0-1. `PROBLEMS/` (inbox: one file per bug/friction, `🔴`/`🟡`/`✅`) → `TODO/` (backlog: never started, actions as `- [ ]`, categorized in `crew/CLAUDE_BATCH.md` when added)
+Task file: title, short "why", `Zone :` line (paths in backticks), optional ``Blocked by: `a.md` `` line, concrete `- [ ]` actions. **Success criteria**: an optional `## Acceptance` section (verifiable bullets) and a `Verification: <command>` line — recommended for complex tasks, **mandatory** for a task derived from a spec (`Spec :` line; `crew_hook.py lint` warns when missing). A task written by the spec hook lands in `TODO/` with `**Status:** 📝 draft`: `next-task` never starts it until Zone, actions and Acceptance are filled and that line is removed. Planning checklist (`/crew-new-task`, `manager`): every spec requirement maps to ≥1 action or Acceptance bullet (uncovered ones reported), every task has ≥1 verifiable criterion, `Blocked by:` slugs exist without cycle. Spec coverage is a model checklist, not a deterministic check — the deterministic part is `lint`.
 
 ### 2. Start → move to `CURRENT_TASKS/`
 Anti-collision is mandatory before any move (`/crew-start`, see § Batching). Keep the boxes up to date. `ICEBOX/`: never started directly, go back through `TODO/`.
