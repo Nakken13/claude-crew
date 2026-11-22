@@ -24,11 +24,12 @@ would create a phantom `crew/` there.
 - Zone line: ``Zone : `path/`, `file.ext` `` — **every path in backticks**: the
   hook ignores the others, and a batch with no parsed zone is skipped by
   `count` / `next-task`.
-- Every task gets an entry in `crew/CLAUDE_BATCH.md`: zone overlapping or
-  depending on an existing batch → append `` N. `<slug>.md` `` to that batch's
-  list; otherwise a new section `## Batch <slug> · <short title>` + zone line +
-  `` 1. `<slug>.md` ``; zone unknown → the `## Unsorted` section (or the legacy
-  `## À classer` if that is the header the file has).
+- Every task gets an entry in `crew/CLAUDE_BATCH.md`: zone overlapping an
+  existing batch → append `` N. `<slug>.md` `` to that batch's list; otherwise a
+  new section `## Batch <slug> · <short title>` + zone line + `` 1. `<slug>.md` ``;
+  zone unknown → the `## Unsorted` section (or the legacy `## À classer` if that
+  is the header the file has). Zone overlap is the **only** reason to share a
+  batch — a dependency alone is a `Blocked by:` line, own batch allowed.
 - Invariant: one batch = one Claude, two **active** batches (a task in
   `CURRENT_TASKS/`) never share a zone. A new task whose zone overlaps an
   active batch → attach it to that batch, sequenced after its current task,
@@ -62,7 +63,11 @@ would create a phantom `crew/` there.
    - **`manager`** — **≥2 tasks**, or zone / batch attachment ambiguous:
      dispatch **a single** `Agent({subagent_type: "manager"})` with the template
      below. No `manager` persona in this project → inline.
-4. Report: path of the created file(s), summary of the actions, landing
+4. Lint what was written (also after a `manager` run):
+   `CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" lint`. Any entry in `errors`
+   (exit 1) → fix the task file / `CLAUDE_BATCH.md` entry and rerun before
+   reporting; `warnings` → mention them in the report.
+5. Report: path of the created file(s), summary of the actions, landing
    batch/section, and any external dependency (cross-repo, sequencing).
 
 ## Prompt template for the manager agent

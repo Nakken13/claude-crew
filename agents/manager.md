@@ -37,8 +37,8 @@ not already known — no need to recheck on every subsequent
   goes to `TODO/`, sequenced after, never `CURRENT_TASKS/`), otherwise a
   new batch. Check the invariant: two active batches must never
   share files.
-- Flag dependencies between tasks (order to respect within a batch) and
-  potential conflicts between different batches. A task that must wait for
+- Flag dependencies between tasks (a dependency alone never means sharing a
+  batch) and potential conflicts between different batches. A task that must wait for
   another gets a ``Blocked by: `<slug>.md` `` line in its file (exact slugs,
   comma-separated): `count` and `next-task` read it, prose does not count.
 - **Before starting an existing task** (move `crew/TODO/` →
