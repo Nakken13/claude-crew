@@ -1675,7 +1675,7 @@ _ACCEPTANCE_RE = re.compile(r"^#{2,4}\s*Accept(?:ance|ation)\b", re.IGNORECASE |
 _VERIFICATION_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*V[ée]rification\s*\**\s*:", re.IGNORECASE | re.MULTILINE)
 # Explicit draft marker written by spec_to_task_hook (`**Status:** 📝 draft`): the ONLY thing that makes a
 # task unstartable. Missing metadata alone never blocks (legacy tasks stay startable).
-_DRAFT_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*Statu[st]\s*\**\s*:\s*\**\s*📝️?\s*draft\b",
+_DRAFT_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*Statu[st]\s*\**\s*:\s*\**\s*📝\uFE0F?\s*draft\b",
                        re.IGNORECASE | re.MULTILINE)
 DRAFT_REASON = "draft: missing metadata (fill Zone/Actions/Acceptance, then remove the draft marker)"
 
