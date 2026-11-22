@@ -2561,3 +2561,107 @@ def test_main_lint_cli_exits_1_on_errors_and_0_otherwise(repo, monkeypatch, caps
     (dirs["PAUSED"] / "a1.md").unlink()
     h.main()  # no error -> returns normally (exit 0)
     assert json.loads(capsys.readouterr().out) == {"errors": [], "warnings": []}
+
+
+# --- draft tasks (spec hook output): never started until the marker is removed ---
+
+_DRAFT = "# T\n\n**Status:** 📝 draft (spec generated on 22/11/2026)\n\n- [ ] x\n"
+
+
+def test_next_task_refuses_a_draft_todo_and_starts_the_next_one(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _DRAFT)
+    _put(dirs, "TODO", "a2.md")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "a2.md")
+    assert {"slug": "a1.md", "reason": h.DRAFT_REASON} in r["skipped"]
+
+
+def test_next_task_unbatched_draft_is_not_sent_to_classification(repo):
+    """A draft is skipped for its marker, not routed to the manager: classifying it would not make it startable."""
+    root, dirs, ctx = repo
+    _put(dirs, "TODO", "d.md", _DRAFT)
+    r = h.next_task("S1")
+    assert r["action"] == "none" and r["unclassified"] == []
+    assert {"slug": "d.md", "reason": h.DRAFT_REASON} in r["skipped"]
+
+
+def test_next_task_does_not_resume_a_draft_in_current_tasks(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", _DRAFT)
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {"slug": "a1.md", "reason": h.DRAFT_REASON} in r["skipped"]
+
+
+def test_next_task_draft_in_progress_keeps_its_batch_active(repo):
+    """Conservative on purpose: someone may be editing the draft; lint reports it as an error."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md", "a2.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", _DRAFT)
+    _put(dirs, "TODO", "a2.md")
+    r = h.next_task("S1")
+    assert r["action"] == "none"
+    assert {"slug": "a2.md", "reason": "active batch: Batch A"} in r["skipped"]
+
+
+def test_next_task_ignored_draft_is_listed_once_as_ignored(repo, monkeypatch):
+    root, dirs, ctx = repo
+    _put(dirs, "TODO", "d.md", _DRAFT)
+    monkeypatch.setattr(h, "_read_ignored", lambda: {"d.md": "bob"})
+    r = h.next_task("S1")
+    assert [s for s in r["skipped"] if s["slug"] == "d.md"] == [{"slug": "d.md", "reason": "ignored locally (task of bob)"}]
+
+
+def test_count_never_offers_a_draft_only_batch_as_launchable(repo):
+    """Same rule as next_task: /crew-count and /crew-start must agree on drafts."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md"), _sec("B", "lib/", "b1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", _DRAFT)
+    _put(dirs, "TODO", "b1.md")
+    assert [b["name"] for b in h.count_batches()["launchable"]] == ["Batch B"]
+
+
+@pytest.mark.parametrize("line", ["**Status:** 📝 draft", "**Status:** 📝️ draft", "**Status :** 📝 Draft (spec)", "Status: 📝 draft",
+                                  "- **Statut :** 📝 draft"])
+def test_is_draft_reads_the_explicit_marker(line):
+    assert h._is_draft(f"# T\n\n{line}\n")
+
+
+@pytest.mark.parametrize("text", [
+    "# T\n\n**Status:** 🟡 in progress\n",
+    "# T\n\nThis task is a draft of the old plan.\n",          # prose, not the marker
+    "# T\n\n**Status:** 📝 drafted earlier, now ready\n",
+    "# T\n\n- [ ] remove the `**Status:** 📝 draft` line\n",  # quoted inside an action
+])
+def test_is_draft_ignores_anything_but_the_marker_line(text):
+    assert not h._is_draft(text)
+
+
+def test_legacy_task_without_acceptance_nor_verification_stays_startable(repo):
+    """Anti-regression: only the explicit draft marker blocks; missing metadata alone never does."""
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "TODO", "a1.md", "# T\n\n**Spec :** `docs/x.md`\n\n- [ ] x\n")
+    r = h.next_task("S1")
+    assert (r["action"], r["task"]) == ("start", "a1.md")
+
+
+def test_lint_draft_in_current_tasks_is_an_error(repo):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, "CURRENT_TASKS", "a1.md", _DRAFT)
+    r = h.lint_crew()
+    assert _codes(r["errors"]) == [("draft_in_progress", "a1.md")]
+    assert ("draft", "a1.md") not in _codes(r["warnings"])
+
+
+@pytest.mark.parametrize("folder", ["TODO", "PAUSED"])
+def test_lint_draft_not_in_progress_is_a_warning(repo, folder):
+    root, dirs, ctx = repo
+    h.BATCH_FILE.write_text(_batch_md(_sec("A", "src/", "a1.md")), encoding="utf-8")
+    _put(dirs, folder, "a1.md", _DRAFT)
+    r = h.lint_crew()
+    assert r["errors"] == [] and _codes(r["warnings"]) == [("draft", "a1.md")]

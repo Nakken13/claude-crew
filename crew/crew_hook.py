@@ -1673,6 +1673,22 @@ _SPEC_LINE_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*Spec\s*\**\s*:\**[ \t]*(.*)$"
 _EMPTY_SPEC = _NONE_WORDS + ("", "n/a", "na", "-", "—")
 _ACCEPTANCE_RE = re.compile(r"^#{2,4}\s*Accept(?:ance|ation)\b", re.IGNORECASE | re.MULTILINE)
 _VERIFICATION_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*V[ée]rification\s*\**\s*:", re.IGNORECASE | re.MULTILINE)
+# Explicit draft marker written by spec_to_task_hook (`**Status:** 📝 draft`): the ONLY thing that makes a
+# task unstartable. Missing metadata alone never blocks (legacy tasks stay startable).
+_DRAFT_RE = re.compile(r"^\s*(?:[-*]\s*)?\**\s*Statu[st]\s*\**\s*:\s*\**\s*📝️?\s*draft\b",
+                       re.IGNORECASE | re.MULTILINE)
+DRAFT_REASON = "draft: missing metadata (fill Zone/Actions/Acceptance, then remove the draft marker)"
+
+
+def _is_draft(text):
+    return bool(_DRAFT_RE.search(text))
+
+
+def _drafts_in(folder, names):
+    """Subset of `names` (slugs in crew/<folder>/) marked draft. Shared by next_task and count_batches."""
+    return {t for t in names if _is_draft(_read_task(DIRS[folder] / t))}
+
+
 _NEXT_HEADER_RE = re.compile(r"^#{1,3}\s", re.MULTILINE)
 _ZONE_PROSE_RE = re.compile(r"`[^`]*`|<[^>]*>|\S+://\S+")  # backticked paths, <placeholders>, URLs
 _EXT_RE = re.compile(r"(?<=\w)\.(\w+)$")
@@ -1747,8 +1763,8 @@ def _dependency_cycles(graph):
 def lint_crew():
     """Read-only `lint` report: {errors, warnings}, items {code, task, detail}.
     Errors: dependency cycle (read like the engine reads `Blocked by:`), task in two folders,
-    CURRENT_TASKS task with no parsed zone.
-    Warnings: self-dependency (the engine ignores it), unknown explicit `Blocked by:` ref (still never
+    CURRENT_TASKS task with no parsed zone, CURRENT_TASKS task still marked draft.
+    Warnings: draft task (TODO/PAUSED), self-dependency (the engine ignores it), unknown explicit `Blocked by:` ref (still never
     blocks, see `_open_tasks`), un-backticked zone path, task left in Unsorted, task with a `Spec :` line but
     no Acceptance section / Verification line.
     `task` is a task slug, except for a batch section's `zone_unquoted`, where it is the batch header."""
@@ -1802,6 +1818,13 @@ def lint_crew():
     for t in _unsorted_slugs(text):
         if t in texts and t not in owners:
             add(warnings, "unsorted", t, "in the Unsorted section: give it a zone and a batch before starting it")
+
+    for t in live:
+        if _is_draft(texts[t]):
+            if "CURRENT_TASKS" in where[t]:
+                add(errors, "draft_in_progress", t, "in progress but still marked draft: " + DRAFT_REASON)
+            else:
+                add(warnings, "draft", t, DRAFT_REASON)
 
     for t in live:
         if any(m.group(1).strip(" *`").lower() not in _EMPTY_SPEC for m in _SPEC_LINE_RE.finditer(texts[t])):
@@ -1962,10 +1985,15 @@ def next_task(session_id):
     paused = _task_names(DIRS["PAUSED"])
     ignored = _read_ignored()
     todo_all = _task_names(DIRS["TODO"])
-    todo = [t for t in todo_all if t not in ignored]
     skipped = [{"slug": t, "reason": f"ignored locally (task of {ignored[t]})" if ignored[t]
                 else "ignored locally (another dev's task)"}
                for t in todo_all if t in ignored]
+    # Drafts are set aside before anything else: never resumed, started nor sent to classification.
+    # A CURRENT_TASKS draft still makes its batch active (conservative: someone may be editing it; lint errors).
+    todo = [t for t in todo_all if t not in ignored]
+    drafts = _drafts_in("CURRENT_TASKS", current) | _drafts_in("TODO", todo)
+    skipped += [{"slug": t, "reason": DRAFT_REASON} for t in sorted(drafts)]
+    todo = [t for t in todo if t not in drafts]
     out = {"action": "none", "paused": paused, "skipped": skipped,
            "unclassified": [t for t in todo if find_section_for(t, sections) is None]}
 
@@ -1979,6 +2007,8 @@ def next_task(session_id):
 
     mine = []
     for name, _title, done, _total in rows:
+        if name in drafts:
+            continue  # already in skipped with DRAFT_REASON
         owner = owners.get(name)
         if owner and owner != session_id:
             skipped.append({"slug": name, "reason": f"lock: picked up by session {str(owner)[:8]}"})
@@ -2077,6 +2107,7 @@ def count_batches():
         todo -= load_ignored()
         me = _claims_identity()
         remote = {s: e for s, e in _claims_expire(_claims_local()[1], _claims_now()).items() if _claimed_by_other(e, me)}
+    todo -= _drafts_in("TODO", todo)  # same rule as next_task: a draft is never launchable
     real_tasks = held | paused_held | todo
     active, launchable, excluded, placeholders, blocked = [], [], [], [], []
     running_count = 0
