@@ -1849,6 +1849,22 @@ def _read_ignored():
         return {}
 
 
+def _write_ignored(store):
+    IGNORED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = IGNORED_FILE.with_name(IGNORED_FILE.name + ".tmp")
+    tmp.write_text(json.dumps({"ignored": dict(sorted(store.items()))}, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, IGNORED_FILE)
+
+
+def _open_ignored():
+    """Ignored entries whose task file still exists: a task closed by its owner stops counting. The entry
+    itself is kept (a branch switch can bring the file back)."""
+    folders = ("TODO", "CURRENT_TASKS", "PAUSED")
+    dirs = [DIRS[d] for d in folders] + [MAIN_ROOT / "crew" / d for d in folders]  # store shared by worktrees
+    open_slugs = _task_slugs(*dirs)
+    return {s: who for s, who in _read_ignored().items() if s in open_slugs}
+
+
 def load_ignored():
     """`.md` slugs skipped by `next_task`."""
     return set(_read_ignored())
@@ -1880,21 +1896,32 @@ _OWNER_LINE_RE = re.compile(
 _UNASSIGNED = "(unassigned)"
 
 
-def _todo_owner_mention(slug):
-    """Name written in the TODO file (`Owner: x`, `Assigned to: x`, `Claimed by: x`, `Responsible: x`,
+_NO_OWNER = _EMPTY_SPEC + ("tbd",)  # placeholders, not people
+
+
+def _todo_owner_mention(slug, folder="TODO"):
+    """Name written in the task file (`Owner: x`, `Assigned to: x`, `Claimed by: x`, `Responsible: x`,
     French aliases `Assigné à` / `Responsable` accepted; first 40 lines); None if there is no mention."""
     try:
-        with open(DIRS["TODO"] / slug, encoding="utf-8-sig") as fh:
+        with open(DIRS[folder] / slug, encoding="utf-8-sig") as fh:
             for _ in range(40):
                 line = fh.readline()
                 if not line:
                     break
                 m = _OWNER_LINE_RE.match(line)
-                if m and _valid_person_name(m.group(1)):
+                if m and _valid_person_name(m.group(1)) and m.group(1).strip().lower() not in _NO_OWNER:
                     return m.group(1).strip()
     except OSError:
         pass
     return None
+
+
+def _owner_evidence(slug, claim, folder="TODO"):
+    """(proof, hint) of a task's owner: proof = live claim, else the file mention; hint = the claim's
+    owner or author (writing a task is not owning it)."""
+    claim = claim or {}
+    live = claim.get("owner") if claim.get("status") == "current" else None
+    return live or _todo_owner_mention(slug, folder), claim.get("owner") or claim.get("author")
 
 
 def _collab_name():
@@ -1941,12 +1968,12 @@ def ignore_cli(argv):
     store, owner = dict(before), opts.get("owner", "").strip() or None
     if sub == "snapshot":
         me = _collab_name()
-        claims = _claims_local()[1] if claims_enabled() else {}
+        claims = _claims_expire(_claims_local()[1], _claims_now()) if claims_enabled() else {}
         for slug in _task_names(DIRS["TODO"]):
             if store.get(slug):
                 continue
-            c = claims.get(slug) or {}
-            who = _todo_owner_mention(slug) or c.get("owner") or c.get("author")
+            proof, hint = _owner_evidence(slug, claims.get(slug))
+            who = proof or hint
             if _same_person(who, me):
                 continue  # it is mine
             store[slug] = who or owner  # no known owner: still ignored ("unassigned"), never started
@@ -1957,10 +1984,7 @@ def ignore_cli(argv):
         for slug in slugs:
             store.pop(slug, None)
     if store != before:
-        IGNORED_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = IGNORED_FILE.with_name(IGNORED_FILE.name + ".tmp")
-        tmp.write_text(json.dumps({"ignored": dict(sorted(store.items()))}, indent=2, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, IGNORED_FILE)
+        _write_ignored(store)
     out = {"ok": True, "ignored": sorted(store), "added": sorted(set(store) - set(before)), "by_owner": _by_owner(store)}
     if sub == "snapshot":
         out["unmarked"] = sorted(t for t, who in store.items() if not who)
@@ -2710,7 +2734,7 @@ def _config_set(key, value):
 def _collab_people():
     """[{name, tasks, me}] sorted by task count: ignored TODO (per owner), other devs' remote claims
     (local view, no network) and my own current / paused tasks."""
-    me, store = _collab_name(), _read_ignored()
+    me, store = _collab_name(), _open_ignored()
     slugs = {}
     for slug, who in store.items():
         slugs.setdefault(who or _UNASSIGNED, set()).add(slug)
@@ -2721,14 +2745,46 @@ def _collab_people():
                 slugs.setdefault(who, set()).add(slug)
     if me:
         mine = set(_task_names(DIRS["CURRENT_TASKS"])) | set(_task_names(DIRS["PAUSED"]))
+        mine -= {s for who, v in slugs.items() if not _same_person(who, me) for s in v}  # started by them
         key = next((k for k in slugs if _same_person(k, me)), me)
         slugs[key] = slugs.get(key, set()) | mine
     people = [{"name": k, "tasks": len(v), "me": _same_person(k, me)} for k, v in slugs.items() if v]
     return sorted(people, key=lambda x: (-x["tasks"], x["name"]))
 
 
+def _collab_sync():
+    """Reconciles the local view after a pull: fetches the claims (`git pull` never does), then sets aside
+    every task whose owner is known and is not me, and releases those proven mine (a live claim, else the
+    file mention). The claim author only fills a task that has no owner yet: it never overrides a hand-set
+    entry. Unlike `ignore snapshot`, a TODO with no known owner is left alone (`unmarked`): it may be a
+    task I just wrote."""
+    if not claims_enabled():
+        return {"ok": False, "disabled": True, "reason": "collab mode is off (/crew-collab on)"}
+    f = claims_fetch()
+    tasks, me = _claims_expire(f["tasks"], _claims_now()), _claims_identity()
+    before = _read_ignored()
+    store, unmarked = dict(before), []
+    for folder in ("TODO", "CURRENT_TASKS", "PAUSED"):  # started tasks too: they must not count as mine
+        for slug in _task_names(DIRS[folder]):
+            proof, hint = _owner_evidence(slug, tasks.get(slug), folder)
+            if not proof and slug in store and (store[slug] or _same_person(hint, me)):
+                continue  # existing entry: only proof overrides it
+            who = proof or hint
+            if _same_person(who, me):
+                store.pop(slug, None)
+            elif who:
+                store[slug] = who
+            elif folder == "TODO" and slug not in store:
+                unmarked.append(slug)
+    if store != before:
+        _write_ignored(store)
+    return {"ok": True, "offline": f["offline"], "added": sorted(set(store) - set(before)),
+            "released": sorted(set(before) - set(store)), "unmarked": unmarked,
+            "people": _collab_people()}
+
+
 def collab_cli(argv):
-    """`crew_hook.py collab <on --name <name>|off|status>`: team mode, switched by `/crew-collab`.
+    """`crew_hook.py collab <on --name <name>|off|status|sync>`: team mode, switched by `/crew-collab`.
     `on` sets `remote_claims : true` + `collab_name` (the name owning your claims);
     `off` returns to the base form (claims off, name removed, ignore list deleted)."""
     try:
@@ -2753,8 +2809,10 @@ def collab_cli(argv):
         return {"ok": True, "collab": False}
     if sub == "status":
         return {"ok": True, "collab": claims_enabled(), "name": _collab_name(),
-                "ignored": len(_read_ignored()), "people": _collab_people()}
-    return {"ok": False, "reason": "usage: collab on --name <name>|off|status"}
+                "ignored": len(_open_ignored()), "people": _collab_people()}
+    if sub == "sync":
+        return _collab_sync()
+    return {"ok": False, "reason": "usage: collab on --name <name>|off|status|sync"}
 
 
 def _utf8_stdout():

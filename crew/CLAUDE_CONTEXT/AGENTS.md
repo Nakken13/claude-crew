@@ -42,6 +42,9 @@ tasks added afterwards stay startable, they remain visible in `/crew-status` and
 shows `👤N` (only while team mode is on). Other subcommands: `ignore add <slug> [--owner <name>]` ·
 `ignore remove <slug>` · `ignore list` · `ignore off`.
 
+After a pull, `/crew-collab sync` (`collab sync`) is the one to run: it fetches the claims (`git pull` does not) and
+sets aside only the tasks whose owner is known; a `TODO` with no owner stays yours.
+
 ## Remote claims (several devs on the same repo)
 
 Opt-in: `remote_claims : true` in `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (default
