@@ -448,3 +448,131 @@ def test_next_task_cli_survives_non_cp1252_titles(duo):
                        cwd=str(duo.root("B")), env=env, capture_output=True, stdin=subprocess.DEVNULL)
     out = json.loads(r.stdout.decode("utf-8"))
     assert out["remote_todo"][0]["title"] == "Export → PDF 🚀", r.stderr.decode("utf-8", "replace")
+
+
+# --- collab sync: reconcile the colleagues' tasks after a pull ---
+
+def _todo(duo, slug, body="# T\n- [ ] x\n"):
+    (duo.root("A") / "crew" / "TODO" / slug).write_text(body, encoding="utf-8")
+
+
+def _b_publishes(duo, slug):
+    duo.use("B")
+    assert h.claims_publish(slug, "Bob task", ["src/b/"], "# b\n")["ok"]
+    duo.use("A")
+
+
+def test_sync_fetches_claims_and_sets_aside_colleague_tasks(duo):
+    _b_publishes(duo, "bob.md")
+    _todo(duo, "bob.md")
+    r = h.collab_cli(["sync"])
+    assert (r["ok"], r["offline"], r["added"]) == (True, False, ["bob.md"])
+    assert h.load_ignored() == {"bob.md"}
+    assert {"name": "b@t.local", "tasks": 1, "me": False} in r["people"]
+
+
+def test_sync_reads_owner_line_and_leaves_unowned_tasks_mine(duo):
+    _todo(duo, "a.md", "# T\nOwner: Bob\n")
+    _todo(duo, "free.md")
+    r = h.collab_cli(["sync"])
+    assert h.load_ignored() == {"a.md"}
+    assert r["unmarked"] == ["free.md"]
+
+
+def test_sync_releases_a_task_that_is_now_mine(duo):
+    h.ignore_cli(["add", "t.md", "--owner", "Bob"])
+    _todo(duo, "t.md", "# T\nOwner: a@t.local\n")
+    r = h.collab_cli(["sync"])
+    assert r["released"] == ["t.md"]
+    assert h.load_ignored() == set()
+
+
+def test_sync_my_current_claim_beats_the_owner_line(duo):
+    _todo(duo, "t.md", "# T\nOwner: Bob\n")
+    assert _claim("t.md")["ok"]
+    h.collab_cli(["sync"])
+    assert h.load_ignored() == set()
+
+
+def test_closed_colleague_task_is_no_longer_counted(duo):
+    _todo(duo, "gone.md", "# T\nOwner: Bob\n")
+    h.collab_cli(["sync"])
+    (duo.root("A") / "crew" / "TODO" / "gone.md").unlink()
+    r = h.collab_cli(["sync"])
+    assert r["people"] == []
+    assert h.collab_cli(["status"])["ignored"] == 0
+    assert h.load_ignored() == {"gone.md"}                       # kept on disk
+
+
+def test_sync_offline_says_so(duo):
+    _git(duo.root("A"), "remote", "set-url", "origin", str(duo.tmp / "nope.git"))
+    r = h.collab_cli(["sync"])
+    assert (r["ok"], r["offline"]) == (True, True)
+
+
+def test_sync_refused_when_collab_is_off(duo):
+    duo.cfg("A").write_text("remote_claims : false\n", encoding="utf-8")
+    _todo(duo, "a.md", "# T\nOwner: Bob\n")
+    r = h.collab_cli(["sync"])
+    assert (r["ok"], r["disabled"]) == (False, True)
+    assert h.load_ignored() == set()
+
+
+def _in(duo, folder, slug, body="# T\n- [ ] x\n"):
+    (duo.root("A") / "crew" / folder / slug).write_text(body, encoding="utf-8")
+
+
+@pytest.mark.parametrize("folder", ["CURRENT_TASKS", "PAUSED"])
+def test_sync_counts_a_task_started_by_a_colleague_once_and_not_as_mine(duo, folder):
+    _in(duo, folder, "b.md", "# T\nOwner: Bob\n")
+    r = h.collab_cli(["sync"])
+    assert r["people"] == [{"name": "Bob", "tasks": 1, "me": False}]
+    assert r["unmarked"] == []
+
+
+def test_sync_keeps_a_task_i_wrote_but_delegated_by_hand(duo):
+    assert h.claims_publish("x.md", "X", ["src/x/"], "# x\n")["ok"]
+    _todo(duo, "x.md")
+    h.ignore_cli(["add", "x.md", "--owner", "Bob"])
+    r = h.collab_cli(["sync"])
+    assert r["released"] == [] and h._read_ignored() == {"x.md": "Bob"}
+
+
+def test_sync_colleague_live_claim_beats_the_owner_line_naming_me(duo):
+    duo.use("B")
+    assert _claim("t.md")["ok"]
+    duo.use("A")
+    _todo(duo, "t.md", "# T\nOwner: a@t.local\n")
+    h.collab_cli(["sync"])
+    assert h._read_ignored() == {"t.md": "b@t.local"}
+
+
+def test_sync_leaves_an_unassigned_entry_ignored(duo):
+    _todo(duo, "u.md")
+    h.ignore_cli(["add", "u.md"])
+    r = h.collab_cli(["sync"])
+    assert h.load_ignored() == {"u.md"} and r["unmarked"] == []
+
+
+@pytest.mark.parametrize("placeholder", ["TBD", "none", "-", "n/a", "aucun"])
+def test_sync_placeholder_owner_is_no_owner(duo, placeholder):
+    _todo(duo, "p.md", f"# T\nOwner: {placeholder}\n")
+    r = h.collab_cli(["sync"])
+    assert h.load_ignored() == set() and r["unmarked"] == ["p.md"]
+
+
+def test_status_from_a_worktree_still_counts_tasks_of_the_main_checkout(duo, monkeypatch):
+    main = duo.tmp / "main"
+    (main / "crew" / "TODO").mkdir(parents=True)
+    (main / "crew" / "TODO" / "w.md").write_text("# T\n", encoding="utf-8")
+    h.ignore_cli(["add", "w.md", "--owner", "Bob"])
+    monkeypatch.setattr(h, "MAIN_ROOT", main)
+    assert h.collab_cli(["status"])["ignored"] == 1
+
+
+def test_snapshot_expired_claim_does_not_outrank_the_owner_line(duo, monkeypatch):
+    _todo(duo, "e.md", "# T" + chr(10) + "Owner: Bob" + chr(10))
+    old = {"e.md": {"status": "current", "owner": "carol", "ts": "2000-01-01T00:00:00+00:00", "body": "# T"}}
+    monkeypatch.setattr(h, "_claims_local", lambda: ("tip", old))
+    h.ignore_cli(["snapshot"])
+    assert h._read_ignored() == {"e.md": "Bob"}

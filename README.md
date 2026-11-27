@@ -230,7 +230,7 @@ Everything is plain Markdown, JSON state and dependency-free code: readable, gre
 | `/crew-status` | Read-only health report: active batches, zone overlaps, locks, orphaned tasks or worktrees. | You wonder what is going on, or why a write was refused. | `/crew-status` |
 | `/crew-count` | Counts how many batches can run in parallel right now, with ready-to-use terminal titles. | You decide how many sessions to open. | `/crew-count` |
 | `/crew-dashboard` | Starts the optional local web dashboard (default `http://127.0.0.1:8943`). | You prefer clicking to typing. | `/crew-dashboard` |
-| `/crew-collab` | Team-mode switch (solo by default): asks your name, turns on remote claims, sets aside tasks other devs own, shows who has what. `on` / `off` / `status`. | Several people share the repo. | `/crew-collab on` |
+| `/crew-collab` | Team-mode switch (solo by default): asks your name, turns on remote claims, sets aside tasks other devs own, shows who has what. `on` / `off` / `status` / `sync`. | Several people share the repo. | `/crew-collab on` |
 | `/crew-update` | Pulls engine-file updates into an already set-up project without touching `crew/` task data. | You updated the plugin. | `/crew-update` |
 | `/crew-version` | Prints the installed crew-mates version. | You report a bug. | `/crew-version` |
 
@@ -380,6 +380,7 @@ By default a project is **solo**: nothing is shared beyond git, so two devs can 
 |---|---|
 | `/crew-collab on` | Asks your name (the owner of your claims), turns team mode on, and sets aside the `TODO` tasks that belong to somebody else (an `Owner:` line in the task file or a published claim). Tasks with no owner stay "unassigned" and are never started by `/crew-start`. |
 | `/crew-collab status` | Shows who has how many tasks. |
+| `/crew-collab sync` | Run after a pull: fetches the claims (`git pull` does not), sets aside the new tasks of other devs, refreshes the counts. A task with no known owner stays yours. |
 | `/crew-collab off` | Goes back to solo. |
 
 Under the hood it sets `remote_claims : true` in `crew/CLAUDE_CONTEXT/CREW_CONFIG.md` (off by default; each dev opts in). `/crew-start`, `/crew-new-task` and `/crew-close-task` then share "who is on what" and the `TODO` tasks through a dedicated git ref, `refs/crew/claims`, pushed on its own (never on `main`). A claim is an atomic compare-and-swap, so two devs cannot take the same task or two overlapping zones, and the dashboard shows a read-only team Kanban. It costs zero tokens: a script does the work, not Claude.

@@ -1,6 +1,6 @@
 ---
 name: crew-collab
-description: Turns the project's team mode on or off — asks for your name, enables remote claims (your tasks are claimed under your name, git ref pushed on its own), assigns TODO tasks that other devs already own, and shows who has how many tasks. Without this mode the project stays solo, with no sync and no 👤 in the status bar. Trigger — "/crew-collab", "collab mode", "we are several people on this project".
+description: Turns the project's team mode on or off — asks for your name, enables remote claims (your tasks are claimed under your name, git ref pushed on its own), assigns TODO tasks that other devs already own, resyncs them after a pull (`sync`), and shows who has how many tasks. Without this mode the project stays solo, with no sync and no 👤 in the status bar. Trigger — "/crew-collab", "collab mode", "we are several people on this project".
 ---
 
 "Project is a team" switch. **The project is solo by default**: no remote
@@ -21,9 +21,9 @@ CLAUDE_PROJECT_DIR="$ROOT" python "$HOOK" collab status
 ```
 
 JSON output of `collab status`: `collab` (bool), `name` (your name), `ignored`
-(number of TODO tasks set aside), `people` = `[{name, tasks, me}]` sorted by task
+(number of open tasks set aside), `people` = `[{name, tasks, me}]` sorted by task
 count (TODO tasks assigned to others, other devs' remote claims, and your own
-current tasks). Slash argument: `on`, `off`, `status`; with no argument, read
+current tasks). Slash argument: `on`, `off`, `status`, `sync`; with no argument, read
 `status` first, then suggest the sensible action (inactive → `on`; active →
 `status` + `off` / change name).
 
@@ -33,6 +33,22 @@ One line for the mode and your name, then **one person per segment, separated by
 ` | `**: `Bob 12 tasks | Alice 5 tasks | Carol (you) 1 task`. Add `(you)` when
 `me` is true; use the singular for 1. A name of `(unassigned)` means TODO tasks
 set aside with no known owner. Nothing else.
+
+## `sync`
+
+Run `collab sync` — typically after a pull: `git pull` does not fetch the claims.
+It fetches them, sets aside the tasks whose owner is known (a live claim, else the
+`Owner:` line, else the claim author), releases those a claim or `Owner:` line
+makes yours, and never asks anything. To take over a colleague's task, write
+`Owner: <you>` in it or claim it: `ignore remove` alone is undone by the next
+sync. Report, in this order:
+
+- the people line, same format as `status`;
+- `added` / `released` when not empty (one line each);
+- `unmarked` when not empty: TODO tasks with no known owner, **left in your
+  list** — `ignore add <slug> --owner "<name>"` sets one aside;
+- `offline` true → say the claims could not be fetched and the counts may be stale;
+- `disabled` → team mode is off, suggest `/crew-collab on`.
 
 ## `on`
 
@@ -55,7 +71,7 @@ set aside with no known owner. Nothing else.
    anything. If `unmarked` is not empty, say so in one sentence and mention that
    `ignore snapshot --owner "<name>"` gives them an owner if you know it (it only
    touches the unassigned ones).
-   TODO tasks added later are not affected (run `ignore snapshot` again after a
+   TODO tasks added later are not affected (run `/crew-collab sync` after a
    pull that brings some in).
 4. Summarise in 3 lines: the name saved; what was assigned (per person, `status`
    format); `/crew-start`, `/crew-new-task` and `/crew-close-task` now claim and
